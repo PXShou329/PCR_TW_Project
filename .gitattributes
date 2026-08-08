@@ -1,0 +1,16 @@
+# Application source uses LF across platforms.
+*.py text eol=lf
+*.ts text eol=lf
+*.tsx text eol=lf
+*.js text eol=lf
+*.json text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.md text eol=lf
+*.css text eol=lf
+*.toml text eol=lf
+
+# The research core is a signed/checksummed artifact. This rule must remain last
+# so broad application rules cannot override it. Its validator owns canonical
+# serialization and every embedded byte is preserved.
+research_core/pcr_tw_project/** -text
