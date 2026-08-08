@@ -93,6 +93,14 @@ ck("ST47：92 日期精度與格式一致", not [r[0] for r in r92[1:] if r[pi] 
 ti = h93.index('claim_type'); ci = h93.index('claim_confidence'); ei = h93.index('evidence_ids'); ii = h93.index('independence_check')
 ck("93：claim_type／confidence Enum", all(r[ti] in CFG['enums']['claim_type'] and r[ci] in CFG['enums']['confidence'] for r in r93[1:]))
 ck("93→92 FK 完整", all(all(e in set(ids92) for e in r[ei].split(';')) for r in r93[1:]))
+claim_i92 = h92.index('claim_id')
+ids93_set = set(ids93)
+dangling_evidence_claims = [
+    r[0] for r in r92[1:]
+    if r[claim_i92] and r[claim_i92] not in ids93_set
+]
+ck("ST86：92→93 declared Claim FK 完整", not dangling_evidence_claims,
+   ",".join(dangling_evidence_claims))
 ev = {r[0]: r for r in r92[1:]}
 def host(u):
     try: return urlparse(u).netloc.lower().replace('www.', '')

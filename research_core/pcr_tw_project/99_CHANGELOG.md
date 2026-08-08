@@ -6,6 +6,7 @@
 
 | 日期 | 檔案 | 變更摘要 | 來源 |
 |---|---|---|---|
+| 2026-08-08 | I0：92、93、99、tools/validate_project.py、tools/mutation_test.py | **Evidence→Claim closure 正規化**：依 evidence_id 逐筆將 6 筆舊 Claim 別名改綁既有 Claim，並為 ev008 新增 `CLM-TW-DEEP-A8`；新增單向 declared Claim FK 守門 ST86 與獨立 mutation M57。Evidence 正文、來源層級、信心、Gate 與 lifecycle 均未變更；未擴張為 Claim 反向 evidence_ids 完全相等檢查。 | Builder＋Maintainer 稽核 |
 | 2026-08-08 | R3i 封版稽核：22、23、25、92、93、99、tools/mutation_test.py | 兩份獨立唯讀稽核後的窄修：ev073 Source Tier 更正為 `MAJOR_GUIDE/D`；明列排除 `K=6`；TM-F810-03 補【僅供參考】、精確通關後 UI 與來源角色分工，移除 ev074 錯引；SOURCE_CONFLICT 改逐來源描述。M53–M56 除 exit code 外再要求唯一命中各自目標 FAIL，避免測試被其他守門遮蔽；未改 Validator、Gate、N=3 或 lifecycle。 | Builder＋雙人獨立稽核 |
 | 2026-08-08 | R3i-B：03、18、22–25、92、93、99、README、tools/mutation_test.py | **紅焰 8-10 實開研究完成**：固定候選來源逐頁／逐幀核對後取得 3 支不同五人的 VERIFIED effective teams；同五人多來源以 signature 去重，24 改 `team_count=3` 但因未達 5 支仍維持 `PROVISIONAL/PENDING`。18 On-Demand 新增靜流（情人節）／真步（夏日）／優衣（聖誕節）之官方可用性；#3805 單次重試成功，萊拉耶爾（聖誕節）UE1 改 AVAILABLE。GameWith 全自動②因無可定位 WIN／結算證據只留研究日誌；niconico 直頁 FAILED_TO_OPEN；未補理論隊。M54 只因第三筆 mode claim 使舊變異器未真正壓平而更新為遍歷全部 claims，Validator 約束不變。 | Builder（R3i-B） |
 | 2026-08-08 | R3i-0/A：21–23、25、README、tools/* | **PVE Gate coverage 修補＋TM-F810-01 正規化**：有效隊限定 VERIFIED／TW PASS／五 slot 均為 18 AVAILABLE／Evidence FK／合法日期，所有 24 team_count 對帳且同關卡同五人以 signature set 計數；新增 M51/M52。25 維持 20 欄，TM-F810-01 改 SOURCE_CONFLICT，requirements 改 canonical JSON 且逐 slot 未知值全保留 UNKNOWN；新增三項 schema/mode 守門與 M53–M56。22 lifecycle／成熟門檻與 README 41 欄數 drift 同步；clear_status、24 status/team_count 均未升級。 | Builder（R3i-0/A） |

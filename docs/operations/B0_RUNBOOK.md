@@ -32,13 +32,18 @@ python scripts/check_research_baseline.py
 The final line must be:
 
 ```text
-RESEARCH_BASELINE_OK | files=46 | mutation_scenarios=54 | manifest_sha256=c9aa323626b453afb7f694dd526f90121ce0bf59eda90b3a30a9d955157a773a
+RESEARCH_BASELINE_OK | files=46 | mutation_scenarios=55 | manifest_sha256=80e6be16fbfbbef1c676def920348aa006d6608a0900f2e62ba4d5cac2d62bcb
 ```
 
-This is an RP-B0-0 byte lock: `scripts/research_core_rp_b0_0_manifest.sha256`
+This is the current RP-I0 byte lock: `scripts/research_core_rp_i0_manifest.sha256`
 contains every expected relative path and file SHA-256, and the verifier also
 pins the manifest's canonical-LF SHA-256. File-count or validator-summary
 agreement alone cannot satisfy the baseline check.
+
+The historical B0 tag retains RP-B0-0 (`mutation_scenarios=54`, manifest
+`c9aa323626b453afb7f694dd526f90121ce0bf59eda90b3a30a9d955157a773a`)
+and `scripts/research_core_rp_b0_0_manifest.sha256`; do not compare that
+historical output to the current branch verifier.
 
 ## Deploy
 

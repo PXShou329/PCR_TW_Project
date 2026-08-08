@@ -5,12 +5,16 @@
 - RP-B0-0：R3i commit `6918afa13f3acd63e0563b078f60f8c4d5f41ee8`
 - Research ZIP SHA-256：`4c57ad31be4a2ef41471a70090f5058978dab41a4e1087eba5d0e403e5b66eaa`
 - A0 與 A1 已完成，只做 conformance regression。
+- RP-I0：46 檔 manifest SHA-256
+  `80e6be16fbfbbef1c676def920348aa006d6608a0900f2e62ba4d5cac2d62bcb`；
+  Evidence→Claim declared FK 已閉合，實測結果見
+  [`I0_VERIFICATION_REPORT.md`](../operations/I0_VERIFICATION_REPORT.md)。
 
 ## 實作順序
 
-1. B0a：monorepo、contracts、Compose、health skeleton。
-2. B0b：紅焰 8-10 完整三隊 closure → DB mirror → API → Web → Evidence Drawer。
-3. I0：逐筆裁決七個 Evidence→Claim 懸空引用，新增 Validator 與 Mutation。
+1. ✅ B0a：monorepo、contracts、Compose、health skeleton。
+2. ✅ B0b：紅焰 8-10 完整三隊 closure → DB mirror → API → Web → Evidence Drawer。
+3. ✅ I0：逐筆裁決七個 Evidence→Claim 懸空引用，新增 Validator 與 Mutation。
 4. A2＋B2：file-SSOT 結構化操作軸與真實深域垂直切片。
 5. B1：完整 importer／exporter／round-trip parity。
 6. A3–A6 與 B3–B5 配對完成 PVE、Gacha、Arena、P-Arena。

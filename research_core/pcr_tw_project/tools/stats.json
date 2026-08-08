@@ -26,17 +26,17 @@
   "D": 28
  },
  "cc": {
-  "A": 49,
+  "A": 50,
   "D": 18,
   "C": 2,
   "B": 15
  },
  "ct": {
-  "SOURCE_FACT": 56,
+  "SOURCE_FACT": 57,
   "DERIVED_CALCULATION": 6,
   "ANALYTICAL_JUDGMENT": 22
  },
- "claims": 84,
+ "claims": 85,
  "evidence": 75,
  "fixtures": 37,
  "public_covered": 41,
@@ -95,7 +95,7 @@
   }
  },
  "timeline_rows": 2,
- "checks": 112,
+ "checks": 113,
  "fail": 0,
  "warn": 16,
  "exec_rows": 0,

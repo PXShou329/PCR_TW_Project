@@ -499,5 +499,15 @@ def m56(d):
     rewrite_csv(P(d, "25_PVE_TEAM_REGISTRY.csv"), fn)
 results.append(mutate("M56 Parseable Noncanonical PVE Requirements JSON", m56, "FAIL", mode="PRE_SUITE",
                       target_fail="25：requirements 為 canonical JSON"))
+# M57: Evidence 宣告不存在的 Claim 不得通過 → ST86 FAIL
+def m57(d):
+    def fn(rows):
+        h = rows[0]; claim_id = h.index("claim_id")
+        for r in rows[1:]:
+            if r[0] == "ev008":
+                r[claim_id] = "CLM-MISSING-I0"; return
+    rewrite_csv(P(d, "92_EVIDENCE_LEDGER.csv"), fn)
+results.append(mutate("M57 Evidence Declares Missing Claim", m57, "FAIL", mode="PRE_SUITE",
+                      target_fail="ST86：92→93 declared Claim FK 完整"))
 print('MUTATION_TESTS', 'ALL_OK' if all(results) else 'FAILED', f'| active_scenarios={len(results)}')
 sys.exit(0 if all(results) else 1)

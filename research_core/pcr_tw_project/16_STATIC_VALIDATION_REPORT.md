@@ -3,7 +3,7 @@
 > 由 `tools/validate_project.py` 生成（唯一路徑）；回歸驗證：`python3 tools/mutation_test.py`（Active 情境數見其輸出；退休 ID 見 Archive）。
 > 生成日：2026-08-08｜版本：v1.5｜Release：2026-08-02｜Mode：PRE_SUITE
 
-## 檢查結果（112 項）
+## 檢查結果（113 項）
 
 | 檢查 | 結果 | 明細 |
 |---|---|---|
@@ -18,7 +18,7 @@
 | ST80：Active 檔無帳號匯入指令（Guide-Only） | PASS |  |
 | 41：欄數 35＋列數 ≥2 | PASS | 3 列 |
 | 92：欄數 16＋列數 ≥36 | PASS | 75 列 |
-| 93：欄數 14＋列數 ≥34 | PASS | 84 列 |
+| 93：欄數 14＋列數 ≥34 | PASS | 85 列 |
 | 17：欄數 21＋列數 ≥0 | PASS | 0 列 |
 | 24：欄數 16＋列數 ≥0 | PASS | 2 列 |
 | 39：欄數 23＋列數 ≥0 | PASS | 0 列 |
@@ -34,6 +34,7 @@
 | ST47：92 日期精度與格式一致 | PASS |  |
 | 93：claim_type／confidence Enum | PASS |  |
 | 93→92 FK 完整 | PASS |  |
+| ST86：92→93 declared Claim FK 完整 | PASS |  |
 | ST49：B／C 證據唯一＋來源獨立（17 筆） | PASS |  |
 | ST50：A Claim 與 A Evidence 相容 | PASS |  |
 | DERIVED_CALCULATION 附推導註記 | PASS |  |
@@ -131,7 +132,7 @@
 ## 統計（程式化）
 
 - 檔案 42（編號 41＋README）＋tools×4；Knowledge 40
-- 92：75 列｜Tier {'OFFICIAL': 47, 'MAJOR_GUIDE': 10, 'SINGLE_PLAYER_REPORT': 9, 'MULTI_PLAYER_REPORT': 5, 'STRUCTURED_DB': 1, 'UNKNOWN': 3}｜93：84 列｜claim_type {'SOURCE_FACT': 56, 'DERIVED_CALCULATION': 6, 'ANALYTICAL_JUDGMENT': 22}
+- 92：75 列｜Tier {'OFFICIAL': 47, 'MAJOR_GUIDE': 10, 'SINGLE_PLAYER_REPORT': 9, 'MULTI_PLAYER_REPORT': 5, 'STRUCTURED_DB': 1, 'UNKNOWN': 3}｜93：85 列｜claim_type {'SOURCE_FACT': 57, 'DERIVED_CALCULATION': 6, 'ANALYTICAL_JUDGMENT': 22}
 - 數學重驗：canonical anchors 8 筆｜LIMITED n=5 median=123｜PERMANENT n=2 median=122.5｜ALL_NEW n=7 median=123｜SYSTEM n=1 median=75｜T41=120、三情境、缺口式——全部由 anchors 即時重算
 
 ## FAIL：0｜WARN：16（阻擋 Gate C：7）
