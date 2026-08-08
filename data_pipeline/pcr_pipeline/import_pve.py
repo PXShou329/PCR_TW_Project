@@ -3,17 +3,48 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import subprocess
+import sys
 from pathlib import Path
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from .pve_fixture import import_fire_8_10
+from .research_core_snapshot import DEFAULT_MANIFEST, EXPECTED_MANIFEST_SHA256
+
+
+REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_BASELINE_CHECKER = REPOSITORY_ROOT / "scripts" / "check_research_baseline.py"
+
+
+def _verify_research_baseline(research_core: Path, checker: Path) -> None:
+    environment = os.environ.copy()
+    environment.update({"PYTHONUTF8": "1", "PYTHONDONTWRITEBYTECODE": "1"})
+    completed = subprocess.run(
+        (sys.executable, str(checker), "--project-root", str(research_core)),
+        cwd=REPOSITORY_ROOT,
+        env=environment,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+    )
+    if completed.stdout:
+        print(completed.stdout.rstrip())
+    if completed.returncode != 0:
+        raise RuntimeError(
+            f"research baseline verification failed with exit {completed.returncode}"
+        )
 
 
 def main() -> int:
     configured_database_url = os.getenv("PCR_DATABASE_URL", "").strip() or None
-    parser = argparse.ArgumentParser(description="Import the verified Fire 8-10 fixture closure")
+    parser = argparse.ArgumentParser(
+        description="Import and atomically activate the verified full-core/PVE revision"
+    )
     parser.add_argument(
         "--research-core",
         type=Path,
@@ -24,11 +55,31 @@ def main() -> int:
         default=configured_database_url,
         required=configured_database_url is None,
     )
+    parser.add_argument("--manifest", type=Path, default=DEFAULT_MANIFEST)
+    parser.add_argument(
+        "--manifest-sha256",
+        default=EXPECTED_MANIFEST_SHA256,
+        help="Reviewed digest of the manifest file; never inferred from the candidate tree.",
+    )
+    parser.add_argument(
+        "--baseline-checker",
+        type=Path,
+        default=DEFAULT_BASELINE_CHECKER,
+    )
     args = parser.parse_args()
 
+    _verify_research_baseline(
+        args.research_core.resolve(strict=True),
+        args.baseline_checker.resolve(strict=True),
+    )
     engine = create_engine(args.database_url, pool_pre_ping=True)
     with Session(engine) as session:
-        result = import_fire_8_10(session, args.research_core)
+        result = import_fire_8_10(
+            session,
+            args.research_core,
+            manifest_path=args.manifest,
+            expected_manifest_sha256=args.manifest_sha256,
+        )
     print(json.dumps(result.__dict__, ensure_ascii=False, sort_keys=True, default=list))
     return 0
 

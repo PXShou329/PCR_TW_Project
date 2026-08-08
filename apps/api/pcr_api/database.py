@@ -4,13 +4,19 @@ from collections.abc import Generator
 
 from fastapi import Request
 from sqlalchemy import Engine, create_engine
+from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session, sessionmaker
 
 from .config import Settings
 
 
 def build_engine(settings: Settings) -> Engine:
-    return create_engine(settings.database_url, pool_pre_ping=True)
+    options: dict[str, object] = {"pool_pre_ping": True}
+    if make_url(settings.database_url).get_backend_name() == "postgresql":
+        # One strategy response must observe one active pointer + serving-row
+        # snapshot even if the importer commits an activation mid-request.
+        options["isolation_level"] = "REPEATABLE READ"
+    return create_engine(settings.database_url, **options)
 
 
 def build_session_factory(engine: Engine) -> sessionmaker[Session]:

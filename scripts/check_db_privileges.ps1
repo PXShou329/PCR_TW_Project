@@ -31,10 +31,14 @@ $compose += @("--env-file", $EnvFile, "-f", $composeFile)
 $servingTables = @(
     "import_runs", "characters", "claims", "evidence", "stages", "teams",
     "team_members", "stage_evidence", "stage_claims", "team_evidence", "claim_evidence",
-    "operation_timelines", "timeline_steps"
+    "operation_timelines", "timeline_steps", "core_revisions", "core_files",
+    "core_csv_rows", "materialization_state", "revision_activations"
 )
+$appendOnlyTables = @("revision_activations")
 $controlTables = @("scheduler_leases", "scheduler_runs")
 $matrixChecks = 0
+$actualDenials = 0
+$allowedSmokes = 0
 
 function Get-Scalar {
     param([string]$Sql)
@@ -67,7 +71,11 @@ function Assert-Privilege {
 }
 
 function Assert-SqlDenied {
-    param([string]$Name, [string]$Sql)
+    param(
+        [string]$Name,
+        [string]$Sql,
+        [string]$ExpectedPattern
+    )
     $output = & docker @compose exec -T db psql `
         --username=$PostgresUser `
         --dbname=$Database `
@@ -76,13 +84,22 @@ function Assert-SqlDenied {
     if ($LASTEXITCODE -eq 0) {
         throw "Expected SQL denial did not occur: $Name"
     }
+    $outputText = ($output | Out-String)
+    if ($ExpectedPattern -and $outputText -notmatch [regex]::Escape($ExpectedPattern)) {
+        throw "SQL denial used the wrong guard: $Name expected=$ExpectedPattern output=$outputText"
+    }
+    $script:actualDenials += 1
     Write-Host "DENY_OK $Name"
 }
 
 foreach ($role in @("pcr_api", "pcr_importer", "pcr_scheduler")) {
-    $safeRole = Get-Scalar -Sql "SELECT rolcanlogin AND NOT rolsuper AND NOT rolcreatedb AND NOT rolcreaterole AND NOT rolreplication FROM pg_roles WHERE rolname='$role'"
+    $safeRole = Get-Scalar -Sql "SELECT rolcanlogin AND NOT rolsuper AND NOT rolcreatedb AND NOT rolcreaterole AND NOT rolinherit AND NOT rolreplication AND NOT rolbypassrls FROM pg_roles WHERE rolname='$role'"
     if ($safeRole -ne "t") {
         throw "Unsafe or missing service role: $role"
+    }
+    $membershipCount = Get-Scalar -Sql "SELECT COUNT(*) FROM pg_auth_members membership JOIN pg_roles member ON member.oid=membership.member WHERE member.rolname='$role'"
+    if ($membershipCount -ne "0") {
+        throw "Service role has an unexpected role membership: $role count=$membershipCount"
     }
     $schemaUsage = Get-Scalar -Sql "SELECT has_schema_privilege('$role', 'public', 'USAGE')"
     $schemaCreate = Get-Scalar -Sql "SELECT has_schema_privilege('$role', 'public', 'CREATE')"
@@ -94,7 +111,12 @@ foreach ($role in @("pcr_api", "pcr_importer", "pcr_scheduler")) {
 foreach ($table in $servingTables) {
     foreach ($privilege in @("SELECT", "INSERT", "UPDATE", "DELETE")) {
         Assert-Privilege -Role "pcr_api" -Table $table -Privilege $privilege -Expected ($privilege -eq "SELECT")
-        Assert-Privilege -Role "pcr_importer" -Table $table -Privilege $privilege -Expected $true
+        $importerExpected = if ($table -in $appendOnlyTables) {
+            $privilege -in @("SELECT", "INSERT")
+        } else {
+            $true
+        }
+        Assert-Privilege -Role "pcr_importer" -Table $table -Privilege $privilege -Expected $importerExpected
         Assert-Privilege -Role "pcr_scheduler" -Table $table -Privilege $privilege -Expected $false
     }
 }
@@ -110,18 +132,37 @@ foreach ($table in $controlTables) {
 # checks. WHERE FALSE and ROLLBACK guarantee that an accidentally allowed DML or
 # DDL statement still leaves no data/schema change.
 Assert-SqlDenied "api-serving-update" "BEGIN; SET LOCAL ROLE pcr_api; UPDATE stages SET notes=notes WHERE FALSE; ROLLBACK"
+Assert-SqlDenied "api-core-update" "BEGIN; SET LOCAL ROLE pcr_api; UPDATE core_revisions SET status=status WHERE FALSE; ROLLBACK"
 Assert-SqlDenied "api-scheduler-update" "BEGIN; SET LOCAL ROLE pcr_api; UPDATE scheduler_runs SET status=status WHERE FALSE; ROLLBACK"
 Assert-SqlDenied "importer-scheduler-update" "BEGIN; SET LOCAL ROLE pcr_importer; UPDATE scheduler_runs SET status=status WHERE FALSE; ROLLBACK"
+Assert-SqlDenied "importer-activation-update" "BEGIN; SET LOCAL ROLE pcr_importer; UPDATE revision_activations SET reason=reason WHERE FALSE; ROLLBACK"
+Assert-SqlDenied "importer-activation-delete" "BEGIN; SET LOCAL ROLE pcr_importer; DELETE FROM revision_activations WHERE FALSE; ROLLBACK"
 Assert-SqlDenied "scheduler-serving-update" "BEGIN; SET LOCAL ROLE pcr_scheduler; UPDATE stages SET notes=notes WHERE FALSE; ROLLBACK"
+Assert-SqlDenied "scheduler-core-update" "BEGIN; SET LOCAL ROLE pcr_scheduler; UPDATE core_files SET size_bytes=size_bytes WHERE FALSE; ROLLBACK"
 Assert-SqlDenied "scheduler-control-delete" "BEGIN; SET LOCAL ROLE pcr_scheduler; DELETE FROM scheduler_runs WHERE FALSE; ROLLBACK"
 Assert-SqlDenied "api-schema-create" "BEGIN; SET LOCAL ROLE pcr_api; CREATE TABLE pcr_b0_forbidden_probe(id integer); ROLLBACK"
+Assert-SqlDenied "activation-append-only-trigger" "BEGIN; UPDATE revision_activations SET reason=reason WHERE FALSE; ROLLBACK"
+Assert-SqlDenied "materialization-singleton-delete-trigger" "BEGIN; DELETE FROM materialization_state WHERE FALSE; ROLLBACK"
+Assert-SqlDenied "terminal-revision-immutable" "BEGIN; UPDATE core_revisions SET project_version=project_version WHERE revision_id=(SELECT active_revision_id FROM materialization_state WHERE id=1); ROLLBACK"
+Assert-SqlDenied "terminal-core-file-immutable" "BEGIN; UPDATE core_files SET size_bytes=size_bytes WHERE revision_id=(SELECT active_revision_id FROM materialization_state WHERE id=1) AND relative_path='README.md'; ROLLBACK"
+Assert-SqlDenied "terminal-core-row-immutable" "BEGIN; UPDATE core_csv_rows SET row_sha256=row_sha256 WHERE revision_id=(SELECT active_revision_id FROM materialization_state WHERE id=1) AND relative_path='92_EVIDENCE_LEDGER.csv' AND ordinal=1; ROLLBACK"
+Assert-SqlDenied "terminal-import-run-immutable" "BEGIN; UPDATE import_runs SET canonical_source=canonical_source WHERE id=(SELECT active_import_run_id FROM materialization_state WHERE id=1); ROLLBACK" -ExpectedPattern "terminal import run"
+Assert-SqlDenied "materialization-epoch-rewind" "BEGIN; UPDATE materialization_state SET epoch=epoch WHERE id=1; ROLLBACK" -ExpectedPattern "materialization_state epoch must strictly increase"
+Assert-SqlDenied "active-revision-run-pair-fk" "BEGIN; INSERT INTO import_runs (id,fixture_sha256,canonical_source,research_core_version,application_version,imported_at,status,manifest,row_counts) VALUES ('00000000-0000-4000-8000-000000000002',repeat('0',64),'probe','probe','probe',CURRENT_TIMESTAMP,'RUNNING','{}'::jsonb,'{}'::jsonb); UPDATE materialization_state SET active_import_run_id='00000000-0000-4000-8000-000000000002', epoch=epoch+1 WHERE id=1; ROLLBACK" -ExpectedPattern "fk_materialization_state_active_revision_run"
 
 foreach ($allowedSql in @(
     "BEGIN; SET LOCAL ROLE pcr_api; SELECT 1 FROM stages LIMIT 0; ROLLBACK",
+    "BEGIN; SET LOCAL ROLE pcr_api; SELECT 1 FROM core_revisions LIMIT 0; ROLLBACK",
     "BEGIN; SET LOCAL ROLE pcr_importer; UPDATE stages SET notes=notes WHERE FALSE; ROLLBACK",
+    "BEGIN; SET LOCAL ROLE pcr_importer; UPDATE core_files SET size_bytes=size_bytes WHERE FALSE; ROLLBACK",
+    "BEGIN; SET LOCAL ROLE pcr_importer; INSERT INTO revision_activations (activation_id,sequence_no,to_revision_id,kind,reason,actor,epoch) SELECT '00000000-0000-0000-0000-000000000000',1,repeat('0',64),'IMPORT','probe','probe',0 WHERE FALSE; ROLLBACK",
     "BEGIN; SET LOCAL ROLE pcr_scheduler; UPDATE scheduler_runs SET status=status WHERE FALSE; ROLLBACK"
 )) {
     $null = Get-Scalar -Sql $allowedSql
+    $allowedSmokes += 1
 }
 
-Write-Host "DB_PRIVILEGES_OK matrix_checks=$matrixChecks actual_denials=6 allowed_smokes=3"
+if ($actualDenials -ne 18 -or $allowedSmokes -ne 6) {
+    throw "Privilege probe coverage drifted (denials=$actualDenials allowed=$allowedSmokes)"
+}
+Write-Host "DB_PRIVILEGES_OK matrix_checks=$matrixChecks actual_denials=$actualDenials allowed_smokes=$allowedSmokes"

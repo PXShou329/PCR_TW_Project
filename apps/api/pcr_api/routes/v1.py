@@ -2,12 +2,14 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from pcr_database.models import Claim, Evidence, Stage, Team
 
 from ..database import get_session
 from ..repository import (
+    active_revision,
     baseline_data,
     claim_detail,
     evidence_detail,
@@ -36,13 +38,33 @@ router = APIRouter(prefix="/api/v1", tags=["v1"])
 
 
 def _run_or_503(session: Session):
-    run = latest_import(session)
+    try:
+        run = latest_import(session)
+    except SQLAlchemyError as error:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "DATABASE_UNAVAILABLE",
+                "resource": "database",
+                "id": None,
+            },
+        ) from error
     if run is None:
         raise HTTPException(
             status_code=503,
             detail={"code": "FIXTURE_NOT_READY", "resource": "import_run", "id": None},
         )
-    materialized, reason = mirror_readiness(session, run)
+    try:
+        materialized, reason = mirror_readiness(session, run)
+    except SQLAlchemyError as error:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "DATABASE_UNAVAILABLE",
+                "resource": "database",
+                "id": None,
+            },
+        ) from error
     if not materialized:
         raise HTTPException(
             status_code=503,
@@ -53,7 +75,18 @@ def _run_or_503(session: Session):
                 "reason": reason,
             },
         )
-    return run
+    revision = active_revision(session, run)
+    if revision is None:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "FIXTURE_DRIFT",
+                "resource": "import_run",
+                "id": run.id,
+                "reason": "active_pointer_drift",
+            },
+        )
+    return run, revision
 
 
 def _not_found(resource: str, identifier: str) -> HTTPException:
@@ -65,36 +98,49 @@ def _not_found(resource: str, identifier: str) -> HTTPException:
 
 @router.get("/baseline", response_model=Envelope[BaselineData])
 def baseline(session: Session = Depends(get_session)) -> Envelope[BaselineData]:
-    run = _run_or_503(session)
-    return Envelope(data=baseline_data(session, run), meta=response_meta(run))
+    run, revision = _run_or_503(session)
+    return Envelope(
+        data=baseline_data(session, run),
+        meta=response_meta(run, revision),
+    )
 
 
 @router.get("/stages", response_model=Envelope[list[StageSummary]])
 def list_stages(session: Session = Depends(get_session)) -> Envelope[list[StageSummary]]:
-    run = _run_or_503(session)
+    run, revision = _run_or_503(session)
     stages = session.scalars(select(Stage).order_by(Stage.guide_id)).all()
-    return Envelope(data=[stage_summary(stage) for stage in stages], meta=response_meta(run))
+    return Envelope(
+        data=[stage_summary(stage) for stage in stages],
+        meta=response_meta(run, revision),
+    )
 
 
 @router.get("/stages/{guide_id}", response_model=Envelope[StageDetail])
 def get_stage(guide_id: str, session: Session = Depends(get_session)) -> Envelope[StageDetail]:
-    run = _run_or_503(session)
+    run, revision = _run_or_503(session)
     stage = session.get(Stage, guide_id)
     if stage is None:
         raise _not_found("stage", guide_id)
-    return Envelope(data=stage_detail(session, stage), meta=response_meta(run))
+    return Envelope(
+        data=stage_detail(session, stage),
+        meta=response_meta(run, revision),
+    )
 
 
 @router.get("/teams/{team_id}", response_model=Envelope[TeamDetail])
 def get_team(team_id: str, session: Session = Depends(get_session)) -> Envelope[TeamDetail]:
-    run = _run_or_503(session)
+    run, revision = _run_or_503(session)
     team = session.get(Team, team_id)
     if team is None:
         raise _not_found("team", team_id)
     detail = team_detail(session, team)
     return Envelope(
         data=detail,
-        meta=response_meta(run, extra_warnings=timeline_warnings(detail["timeline"])),
+        meta=response_meta(
+            run,
+            revision,
+            extra_warnings=timeline_warnings(detail["timeline"]),
+        ),
     )
 
 
@@ -103,33 +149,43 @@ def get_team_timelines(
     team_id: str,
     session: Session = Depends(get_session),
 ) -> Envelope[TimelineData]:
-    run = _run_or_503(session)
+    run, revision = _run_or_503(session)
     team = session.get(Team, team_id)
     if team is None:
         raise _not_found("team", team_id)
     timeline = timeline_data(session, team)
     return Envelope(
         data=timeline,
-        meta=response_meta(run, extra_warnings=timeline_warnings(timeline)),
+        meta=response_meta(
+            run,
+            revision,
+            extra_warnings=timeline_warnings(timeline),
+        ),
     )
 
 
 @router.get("/evidence/{evidence_id}", response_model=Envelope[EvidenceData])
 def get_evidence(evidence_id: str, session: Session = Depends(get_session)) -> Envelope[EvidenceData]:
-    run = _run_or_503(session)
+    run, revision = _run_or_503(session)
     evidence = session.get(Evidence, evidence_id)
     if evidence is None:
         raise _not_found("evidence", evidence_id)
-    return Envelope(data=evidence_detail(evidence), meta=response_meta(run))
+    return Envelope(
+        data=evidence_detail(evidence),
+        meta=response_meta(run, revision),
+    )
 
 
 @router.get("/claims/{claim_id}", response_model=Envelope[ClaimData])
 def get_claim(claim_id: str, session: Session = Depends(get_session)) -> Envelope[ClaimData]:
-    run = _run_or_503(session)
+    run, revision = _run_or_503(session)
     claim = session.get(Claim, claim_id)
     if claim is None:
         raise _not_found("claim", claim_id)
-    return Envelope(data=claim_detail(session, claim), meta=response_meta(run))
+    return Envelope(
+        data=claim_detail(session, claim),
+        meta=response_meta(run, revision),
+    )
 
 
 @router.get("/pvp/counters", response_model=Envelope[list[dict[str, object]]])
@@ -138,8 +194,12 @@ def pvp_counters(
     session: Session = Depends(get_session),
 ) -> Envelope[list[dict[str, object]]]:
     del defense_signature
-    run = _run_or_503(session)
+    run, revision = _run_or_503(session)
     return Envelope(
         data=[],
-        meta=response_meta(run, extra_warnings=["NO_VERIFIED_COUNTER"]),
+        meta=response_meta(
+            run,
+            revision,
+            extra_warnings=["NO_VERIFIED_COUNTER"],
+        ),
     )

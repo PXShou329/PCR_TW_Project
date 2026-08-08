@@ -39,14 +39,17 @@ def imported_engine():
     return engine
 
 
-def test_v0002_is_the_single_migration_head() -> None:
+def test_v0003_is_the_single_migration_head() -> None:
     config = Config("database/alembic.ini")
     script = ScriptDirectory.from_config(config)
 
-    assert script.get_current_head() == "v0002_operation_timelines"
-    revision = script.get_revision("v0002_operation_timelines")
+    assert script.get_current_head() == "v0003_core_revision_mirror"
+    revision = script.get_revision("v0003_core_revision_mirror")
     assert revision is not None
-    assert revision.down_revision == "v0001_b0_read_mirror"
+    assert revision.down_revision == "v0002_operation_timelines"
+    previous = script.get_revision("v0002_operation_timelines")
+    assert previous is not None
+    assert previous.down_revision == "v0001_b0_read_mirror"
 
 
 def test_v0002_offline_postgres_sql_contains_both_additive_tables(

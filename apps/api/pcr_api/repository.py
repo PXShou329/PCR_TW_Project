@@ -1,12 +1,20 @@
 from __future__ import annotations
 
+from collections import OrderedDict
 from datetime import datetime, timezone
+from threading import Lock
 from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from pcr_pipeline.research_core_snapshot import (
+    SnapshotDriftError,
+    canonical_json_sha256,
+    materialized_report,
+)
 from pcr_database.materialization import (
+    SERVING_MODELS,
     build_materialization_manifest,
     materialization_drift_reason,
 )
@@ -14,8 +22,10 @@ from pcr_database.models import (
     Character,
     Claim,
     ClaimEvidence,
+    CoreRevision,
     Evidence,
     ImportRun,
+    MaterializationState,
     OperationTimeline,
     Stage,
     StageClaim,
@@ -29,96 +39,183 @@ from pcr_database.models import (
 from .schemas import ResponseMeta, SourceMeta
 
 
-B0_TARGET_GUIDE_ID = "TW_DEEP_FIRE_08_10_20260802"
-B0_EXPECTED_COUNTS = {
-    "stages": 1,
-    "teams": 3,
-    "team_members": 15,
-    "characters": 8,
-    "evidence": 18,
-    "claims": 13,
-    "operation_timelines": 8,
-    "timeline_steps": 14,
+_BASELINE_COUNT_TABLES = {
+    "stages": Stage,
+    "teams": Team,
+    "team_members": TeamMember,
+    "characters": Character,
+    "evidence": Evidence,
+    "claims": Claim,
+    "operation_timelines": OperationTimeline,
+    "timeline_steps": TimelineStep,
 }
+_SERVING_TABLE_NAMES = frozenset(model.__tablename__ for model in SERVING_MODELS)
+_READINESS_CACHE_MAX_ENTRIES = 32
+_readiness_cache: OrderedDict[tuple[int, str, str, int, str], None] = OrderedDict()
+_readiness_cache_lock = Lock()
 
 
 def latest_import(session: Session) -> ImportRun | None:
-    return session.scalar(
-        select(ImportRun)
-        .where(ImportRun.status == "SUCCEEDED")
-        .order_by(ImportRun.imported_at.desc(), ImportRun.id.desc())
-        .limit(1)
+    """Resolve the serving import exclusively through the active singleton pointer."""
+
+    state = session.get(MaterializationState, 1)
+    if state is None or state.active_import_run_id is None:
+        return None
+    return session.get(ImportRun, state.active_import_run_id)
+
+
+def active_revision(session: Session, run: ImportRun) -> CoreRevision | None:
+    state = session.get(MaterializationState, 1)
+    if (
+        state is None
+        or state.active_import_run_id != run.id
+        or state.active_revision_id is None
+    ):
+        return None
+    return session.get(CoreRevision, state.active_revision_id)
+
+
+def _manifest_serving_counts(run: ImportRun) -> dict[str, int] | None:
+    declared_counts = run.manifest.get("serving_row_counts")
+    if (
+        not isinstance(declared_counts, dict)
+        or set(declared_counts) != _SERVING_TABLE_NAMES
+        or any(
+            isinstance(value, bool) or not isinstance(value, int) or value < 0
+            for value in declared_counts.values()
+        )
+    ):
+        return None
+
+    materialization = run.manifest.get("materialization")
+    if not isinstance(materialization, dict):
+        return None
+    tables = materialization.get("tables")
+    if not isinstance(tables, dict) or set(tables) != _SERVING_TABLE_NAMES:
+        return None
+
+    counts: dict[str, int] = {}
+    for table_name, table_manifest in tables.items():
+        if not isinstance(table_manifest, dict):
+            return None
+        primary_keys = table_manifest.get("primary_keys")
+        row_sha256 = table_manifest.get("row_sha256")
+        if (
+            not isinstance(primary_keys, list)
+            or not isinstance(row_sha256, dict)
+            or len(primary_keys) != len(row_sha256)
+        ):
+            return None
+        counts[table_name] = len(primary_keys)
+    if counts != declared_counts:
+        return None
+    return dict(declared_counts)
+
+
+def _is_postgresql(session: Session) -> bool:
+    bind = session.get_bind()
+    return bind.dialect.name == "postgresql"
+
+
+def _readiness_cache_key(
+    session: Session,
+    state: MaterializationState,
+    run: ImportRun,
+) -> tuple[int, str, str, int, str]:
+    return (
+        id(session.get_bind()),
+        str(state.active_revision_id),
+        str(state.active_import_run_id),
+        state.epoch,
+        canonical_json_sha256(run.manifest),
     )
 
 
+def _is_cached_ready(key: tuple[int, str, str, int, str]) -> bool:
+    with _readiness_cache_lock:
+        if key not in _readiness_cache:
+            return False
+        _readiness_cache.move_to_end(key)
+        return True
+
+
+def _cache_ready(key: tuple[int, str, str, int, str]) -> None:
+    with _readiness_cache_lock:
+        _readiness_cache[key] = None
+        _readiness_cache.move_to_end(key)
+        while len(_readiness_cache) > _READINESS_CACHE_MAX_ENTRIES:
+            _readiness_cache.popitem(last=False)
+
+
 def mirror_readiness(session: Session, run: ImportRun) -> tuple[bool, str]:
-    """Verify that the B0 read mirror still materializes its imported closure.
+    """Verify the active full-core revision and its complete serving closure."""
 
-    A successful ImportRun is provenance, not proof that serving rows still
-    exist. Readiness therefore fails closed when a serving row is removed,
-    replaced by another import, or no longer matches the declared three-team
-    closure. This deliberately remains B0-specific until B1 introduces a
-    revision-generic parity manifest.
-    """
+    state = session.get(MaterializationState, 1)
+    if state is None:
+        return False, "active_pointer_missing"
+    if state.active_import_run_id != run.id or state.active_revision_id is None:
+        return False, "active_pointer_drift"
+    revision = session.get(CoreRevision, state.active_revision_id)
+    if revision is None:
+        return False, "active_revision_missing"
+    if (
+        run.status != "SUCCEEDED"
+        or revision.status != "SUCCEEDED"
+        or revision.import_run_id != run.id
+        or revision.project_version != run.research_core_version
+        or run.fixture_sha256 != revision.raw_tree_sha256
+        or revision.revision_id != revision.raw_tree_sha256
+    ):
+        return False, "active_revision_drift"
 
-    if run.row_counts != B0_EXPECTED_COUNTS:
-        return False, "manifest_count_drift"
+    expected_counts = _manifest_serving_counts(run)
+    if expected_counts is None:
+        return False, "serving_count_manifest_drift"
+    if (
+        not isinstance(state.serving_counts, dict)
+        or set(state.serving_counts) != _SERVING_TABLE_NAMES
+        or any(
+            isinstance(value, bool) or not isinstance(value, int) or value < 0
+            for value in state.serving_counts.values()
+        )
+        or state.serving_counts != expected_counts
+    ):
+        return False, "serving_count_state_drift"
 
-    actual_counts = {
-        "stages": session.scalar(select(func.count()).select_from(Stage)) or 0,
-        "teams": session.scalar(select(func.count()).select_from(Team)) or 0,
-        "team_members": session.scalar(select(func.count()).select_from(TeamMember)) or 0,
-        "characters": session.scalar(select(func.count()).select_from(Character)) or 0,
-        "evidence": session.scalar(select(func.count()).select_from(Evidence)) or 0,
-        "claims": session.scalar(select(func.count()).select_from(Claim)) or 0,
-        "operation_timelines": session.scalar(
-            select(func.count()).select_from(OperationTimeline)
-        ) or 0,
-        "timeline_steps": session.scalar(select(func.count()).select_from(TimelineStep)) or 0,
-    }
-    if actual_counts != B0_EXPECTED_COUNTS:
-        return False, "row_count_drift"
+    expected_materialization = run.manifest.get("materialization")
+    expected_materialization_sha256 = (
+        expected_materialization.get("sha256")
+        if isinstance(expected_materialization, dict)
+        else None
+    )
+    if (
+        not isinstance(expected_materialization_sha256, str)
+        or len(expected_materialization_sha256) != 64
+        or revision.materialization_sha256 != expected_materialization_sha256
+        or state.materialization_sha256 != expected_materialization_sha256
+    ):
+        return False, "materialization_digest_drift"
+
+    cache_key = _readiness_cache_key(session, state, run)
+    if _is_postgresql(session) and _is_cached_ready(cache_key):
+        return True, "imported"
+
+    try:
+        core_report = materialized_report(session, revision.revision_id).as_dict()
+    except SnapshotDriftError as error:
+        return False, error.reason
+    if run.manifest.get("core_revision") != core_report:
+        return False, "core_revision_manifest_drift"
 
     drift_reason = materialization_drift_reason(
-        run.manifest.get("materialization"),
+        expected_materialization,
         build_materialization_manifest(session),
     )
     if drift_reason is not None:
         return False, drift_reason
 
-    stage = session.get(Stage, B0_TARGET_GUIDE_ID)
-    if stage is None or stage.import_run_id != run.id or stage.team_count != 3:
-        return False, "stage_drift"
-
-    teams = session.scalars(
-        select(Team).where(Team.guide_id == B0_TARGET_GUIDE_ID).order_by(Team.team_id)
-    ).all()
-    if (
-        len(teams) != 3
-        or len({team.signature for team in teams}) != 3
-        or any(team.import_run_id != run.id for team in teams)
-    ):
-        return False, "team_drift"
-
-    member_counts = dict(
-        session.execute(
-            select(TeamMember.team_id, func.count())
-            .where(TeamMember.team_id.in_([team.team_id for team in teams]))
-            .group_by(TeamMember.team_id)
-        ).all()
-    )
-    if member_counts != {team.team_id: 5 for team in teams}:
-        return False, "team_member_drift"
-
-    if len(effective_team_signatures(session, B0_TARGET_GUIDE_ID)) != 3:
-        return False, "effective_team_drift"
-
-    for model in (Character, Evidence, Claim, OperationTimeline, TimelineStep):
-        foreign_rows = session.scalar(
-            select(func.count()).select_from(model).where(model.import_run_id != run.id)
-        )
-        if foreign_rows:
-            return False, f"{model.__tablename__}_revision_drift"
+    if _is_postgresql(session):
+        _cache_ready(cache_key)
 
     return True, "imported"
 
@@ -200,9 +297,12 @@ def effective_team_signatures(session: Session, guide_id: str) -> set[str]:
 
 def response_meta(
     run: ImportRun,
+    revision: CoreRevision,
     *,
     extra_warnings: list[str] | None = None,
 ) -> ResponseMeta:
+    if revision.materialization_sha256 is None:
+        raise RuntimeError("active revision has no materialization digest")
     warnings = list(run.manifest.get("warnings", []))
     warnings.extend(extra_warnings or [])
     return ResponseMeta(
@@ -211,25 +311,24 @@ def response_meta(
             canonical_source=run.canonical_source,
             fixture_sha256=run.fixture_sha256,
             import_run_id=run.id,
+            revision_id=revision.revision_id,
             imported_at=run.imported_at,
             research_core_version=run.research_core_version,
+            raw_tree_sha256=revision.raw_tree_sha256,
+            semantic_tree_sha256=revision.semantic_tree_sha256,
+            materialization_sha256=revision.materialization_sha256,
         ),
         warnings=warnings,
     )
 
 
 def baseline_data(session: Session, run: ImportRun) -> dict[str, Any]:
+    serving_counts = _manifest_serving_counts(run)
+    if serving_counts is None:
+        raise RuntimeError("active ImportRun has no valid serving count manifest")
     counts = {
-        "stages": session.scalar(select(func.count()).select_from(Stage)) or 0,
-        "teams": session.scalar(select(func.count()).select_from(Team)) or 0,
-        "team_members": session.scalar(select(func.count()).select_from(TeamMember)) or 0,
-        "characters": session.scalar(select(func.count()).select_from(Character)) or 0,
-        "evidence": session.scalar(select(func.count()).select_from(Evidence)) or 0,
-        "claims": session.scalar(select(func.count()).select_from(Claim)) or 0,
-        "operation_timelines": session.scalar(
-            select(func.count()).select_from(OperationTimeline)
-        ) or 0,
-        "timeline_steps": session.scalar(select(func.count()).select_from(TimelineStep)) or 0,
+        name: serving_counts[model.__tablename__]
+        for name, model in _BASELINE_COUNT_TABLES.items()
     }
     featured = session.scalar(select(Stage).order_by(Stage.guide_id).limit(1))
     return {

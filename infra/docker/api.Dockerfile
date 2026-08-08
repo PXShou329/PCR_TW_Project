@@ -25,6 +25,8 @@ COPY --chown=10001:10001 apps/api ./apps/api
 COPY --chown=10001:10001 database ./database
 COPY --chown=10001:10001 data_pipeline ./data_pipeline
 COPY --chown=10001:10001 research_core ./research_core
+COPY --chown=10001:10001 scripts/check_research_baseline.py ./scripts/check_research_baseline.py
+COPY --chown=10001:10001 scripts/research_core_rp_a2_manifest.sha256 ./scripts/research_core_rp_a2_manifest.sha256
 
 USER 10001:10001
 EXPOSE 8000

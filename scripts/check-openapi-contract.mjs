@@ -18,7 +18,7 @@ const pythonCandidates = [
 const openApiCommand = [
   "import json,os,sys",
   "os.environ.setdefault('PCR_DATABASE_URL','sqlite://')",
-  "sys.path[:0]=['apps/api','database']",
+  "sys.path[:0]=['apps/api','data_pipeline','database']",
   "from pcr_api.main import app",
   "print(json.dumps(app.openapi(), separators=(',',':')))"
 ].join(";");

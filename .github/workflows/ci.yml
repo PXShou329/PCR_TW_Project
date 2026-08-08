@@ -1,4 +1,4 @@
-name: B0 validation
+name: B1 full-core parity validation
 
 on:
   push:
@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: b0-${{ github.workflow }}-${{ github.ref }}
+  group: b1-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -50,6 +50,11 @@ jobs:
           PYTHONPATH: apps/api:data_pipeline:database
           PYTHONDONTWRITEBYTECODE: "1"
         run: python -m pytest tests apps/scheduler/tests
+      - name: Verify isolated DB/export round trip and exported baseline
+        env:
+          PYTHONPATH: apps/api:data_pipeline:database
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: python -m pcr_pipeline.verify_round_trip --run-baseline
 
   web:
     name: Web typecheck and production build
@@ -119,20 +124,28 @@ jobs:
           $scheduler = Invoke-RestMethod http://127.0.0.1:8081/health
           $web = Invoke-RestMethod http://127.0.0.1:3000/api/health
           if ($scheduler.enabled -or -not $scheduler.shadow_mode -or $scheduler.canonical_write_capable) {
-            throw "Scheduler B0 safety boundary failed"
+            throw "Scheduler shadow-mode safety boundary failed"
           }
       - name: Verify PostgreSQL least-privilege matrix and real denials
         shell: pwsh
         run: ./scripts/check_db_privileges.ps1 -EnvFile .env.ci
       - name: Verify scheduler lease and idempotency contract
         run: docker compose --profile verification -f infra/compose.yml run --rm scheduler-smoke
+      - name: Verify read-only PostgreSQL round trip and exported five-command baseline
+        run: docker compose --profile verification -f infra/compose.yml run --rm --no-deps round-trip-smoke
+      - name: Verify one API request cannot observe a mixed importer snapshot
+        run: docker compose --profile verification -f infra/compose.yml run --rm --no-deps consistency-smoke
+      - name: Verify warmed cache fails closed and epoch cannot rewind
+        run: docker compose --profile verification -f infra/compose.yml run --rm --no-deps cache-epoch-smoke
+      - name: Verify artifact writes serialize against revision finalization
+        run: docker compose --profile verification -f infra/compose.yml run --rm --no-deps artifact-lock-smoke
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
       - name: Run browser E2E
         run: npm run test:e2e
       - name: Backup into an empty DB and restore
         shell: pwsh
-        run: ./scripts/backup_restore_smoke.ps1 -EnvFile .env.ci
+        run: ./scripts/backup_restore_smoke.ps1 -EnvFile .env.ci -SeedRevisionHistory
       - name: Capture container state
         if: always()
         run: |

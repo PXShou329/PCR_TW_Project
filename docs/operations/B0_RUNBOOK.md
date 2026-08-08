@@ -1,5 +1,9 @@
 # B0 local/private staging runbook
 
+> Historical audit document only. Do not use these B0 rollback steps on B1.
+> B1 uses immutable multi-revision history and V0003 downgrade reconciliation;
+> follow [`B1_RUNBOOK.md`](B1_RUNBOOK.md) for current operations.
+
 ## Safety boundary
 
 B0 is a deployable walking skeleton, not a public production release.
