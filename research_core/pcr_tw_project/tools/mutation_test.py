@@ -509,5 +509,49 @@ def m57(d):
     rewrite_csv(P(d, "92_EVIDENCE_LEDGER.csv"), fn)
 results.append(mutate("M57 Evidence Declares Missing Claim", m57, "FAIL", mode="PRE_SUITE",
                       target_fail="ST86：92→93 declared Claim FK 完整"))
+# M58: timeline step 的角色不得脫離該隊五人 → FAIL
+def m58(d):
+    def fn(rows):
+        h = rows[0]
+        rows[1][h.index("actor_unit_key")] = "missing_a2_unit"
+    rewrite_csv(P(d, "27_PVE_TIMELINE_STEPS.csv"), fn)
+results.append(mutate("M58 Timeline Actor Outside Team", m58, "FAIL", mode="PRE_SUITE",
+                      target_fail="27：step FK／Enum／時間範圍／角色成員資格完整"))
+# M59: 同來源 sequence_no 不得重複或跳號 → FAIL
+def m59(d):
+    def fn(rows):
+        h = rows[0]
+        rows[2][h.index("sequence_no")] = rows[1][h.index("sequence_no")]
+    rewrite_csv(P(d, "27_PVE_TIMELINE_STEPS.csv"), fn)
+results.append(mutate("M59 Duplicate Timeline Sequence", m59, "FAIL", mode="PRE_SUITE",
+                      target_fail="27：每來源 sequence_no 唯一且連續"))
+# M60: VERIFIED 半自動／衝突隊伍的來源不可無聲消失 → FAIL
+def m60(d):
+    def fn(rows):
+        h = rows[0]; source_id = h.index("source_id")
+        rows[:] = [rows[0]] + [r for r in rows[1:] if r[source_id] != "yt_jkPXr3aUZZQ"]
+    rewrite_csv(P(d, "26_PVE_OPERATION_TIMELINES.csv"), fn)
+results.append(mutate("M60 Missing Declared Source Axis", m60, "FAIL", mode="PRE_SUITE",
+                      target_fail="25→26：VERIFIED 手動／半自動／衝突隊伍每個來源均有結構化軸或明示缺口"))
+# M61: JP 來源的結構化軸不得偽裝成台服已逐步重現 → FAIL
+def m61(d):
+    def fn(rows):
+        h = rows[0]; status = h.index("status"); repro = h.index("reproducibility")
+        for r in rows[1:]:
+            if r[status] == "STRUCTURED":
+                r[repro] = "TW_REPRODUCED"; return
+    rewrite_csv(P(d, "26_PVE_OPERATION_TIMELINES.csv"), fn)
+results.append(mutate("M61 Cross-Server Timeline Falsely Reproduced", m61, "FAIL", mode="PRE_SUITE",
+                      target_fail="26：跨服結構化軸不得冒充台服已重現"))
+# M62: SOURCE_GAP 的 UNKNOWN 不得改成空白冒充已知 → FAIL
+def m62(d):
+    def fn(rows):
+        h = rows[0]; status = h.index("status"); duration = h.index("battle_duration_ms")
+        for r in rows[1:]:
+            if r[status] == "SOURCE_GAP":
+                r[duration] = ""; return
+    rewrite_csv(P(d, "26_PVE_OPERATION_TIMELINES.csv"), fn)
+results.append(mutate("M62 Blank Timeline Gap Unknown", m62, "FAIL", mode="PRE_SUITE",
+                      target_fail="26：STRUCTURED／SOURCE_GAP 狀態不得強化 UNKNOWN"))
 print('MUTATION_TESTS', 'ALL_OK' if all(results) else 'FAILED', f'| active_scenarios={len(results)}')
 sys.exit(0 if all(results) else 1)

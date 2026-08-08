@@ -29,9 +29,9 @@
   "補第 3 錨點",
   "必須揭露 n=2"
  ],
- "expected_total_non_tools": 42,
- "expected_numbered": 41,
- "expected_knowledge": 40,
+ "expected_total_non_tools": 44,
+ "expected_numbered": 43,
+ "expected_knowledge": 42,
  "csv_specs": {
   "41_GACHA_TIMELINE.csv": {
    "cols": 35,
@@ -64,6 +64,14 @@
   "25_PVE_TEAM_REGISTRY.csv": {
    "cols": 20,
    "min_rows": 0
+  },
+  "26_PVE_OPERATION_TIMELINES.csv": {
+   "cols": 16,
+   "min_rows": 1
+  },
+  "27_PVE_TIMELINE_STEPS.csv": {
+   "cols": 19,
+   "min_rows": 1
   },
   "45_GACHA_COMMUNITY_SOURCE_INDEX.csv": {
    "cols": 14,
@@ -146,6 +154,56 @@
    "AUTO",
    "SEMI_AUTO",
    "MANUAL_TIMELINE"
+  ],
+  "pve_timeline_status": [
+   "STRUCTURED",
+   "SOURCE_GAP"
+  ],
+  "pve_timeline_reproducibility": [
+   "UNVERIFIED_ON_TW",
+   "TW_REPRODUCED",
+   "UNKNOWN"
+  ],
+  "pve_clock_mode": [
+   "COUNTDOWN",
+   "ELAPSED",
+   "UNKNOWN"
+  ],
+  "pve_auto_state": [
+   "ON",
+   "OFF",
+   "UNKNOWN"
+  ],
+  "pve_timeline_trigger": [
+   "CLOCK",
+   "UB_READY",
+   "ANIMATION_CUE",
+   "HP_THRESHOLD",
+   "WAVE_START",
+   "BOSS_ACTION",
+   "SOURCE_TEXT_ONLY"
+  ],
+  "pve_timeline_action": [
+   "USE_UB",
+   "WAIT",
+   "AUTO_ON",
+   "AUTO_OFF",
+   "SET_ON",
+   "SET_OFF",
+   "PAUSE",
+   "RESUME",
+   "TARGET",
+   "NO_ACTION"
+  ],
+  "pve_timeline_criticality": [
+   "NORMAL",
+   "CRITICAL",
+   "UNKNOWN"
+  ],
+  "pve_timeline_gap_reason": [
+   "NONE",
+   "INSUFFICIENT_SOURCE_DETAIL",
+   "PENDING_EXTRACTION"
   ],
   "source_update_status": [
    "PENDING_FETCH",
@@ -678,6 +736,45 @@
   "verified_date",
   "last_review_due",
   "notes"
+ ],
+ "t26_header": [
+  "source_axis_id",
+  "timeline_id",
+  "team_id",
+  "source_id",
+  "source_evidence_id",
+  "source_locator",
+  "timeline_variant_name",
+  "operation_mode",
+  "clock_mode",
+  "battle_duration_ms",
+  "initial_auto_state",
+  "status",
+  "reproducibility",
+  "gap_reason",
+  "last_verified_at",
+  "notes"
+ ],
+ "t27_header": [
+  "timeline_step_id",
+  "timeline_id",
+  "sequence_no",
+  "source_step_no",
+  "trigger_type",
+  "trigger_actor_unit_key",
+  "clock_from_ms",
+  "clock_to_ms",
+  "actor_unit_key",
+  "action_type",
+  "target_unit_key",
+  "auto_state_after",
+  "animation_cue",
+  "hp_threshold",
+  "tolerance_ms",
+  "criticality",
+  "instruction_zh_tw",
+  "failure_if_missed",
+  "source_locator"
  ],
  "t45_header": [
   "source_id",

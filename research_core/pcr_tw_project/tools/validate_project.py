@@ -61,9 +61,10 @@ ck("ST80：Active 檔無帳號匯入指令（Guide-Only）", not _acct_bad, ",".
 r41, r92, r93, r17 = load('41_GACHA_TIMELINE.csv'), load('92_EVIDENCE_LEDGER.csv'), load('93_CLAIM_REGISTER.csv'), load('17_TEST_EXECUTION_LOG.csv')
 r24, r39 = load('24_PVE_GUIDE_REGISTRY.csv'), load('39_ARENA_COUNTER_REGISTRY.csv')
 r18, r25 = load('18_TW_CHARACTER_AVAILABILITY.csv'), load('25_PVE_TEAM_REGISTRY.csv')
+r26, r27 = load('26_PVE_OPERATION_TIMELINES.csv'), load('27_PVE_TIMELINE_STEPS.csv')
 r45, r46 = load('45_GACHA_COMMUNITY_SOURCE_INDEX.csv'), load('46_ARENA_SOURCE_REGISTRY.csv')
 r47 = load('47_PRINCESS_ARENA_CASE_REGISTRY.csv')
-for name, rows in [('41', r41), ('92', r92), ('93', r93), ('17', r17), ('24', r24), ('39', r39), ('18', r18), ('25', r25), ('45', r45), ('46', r46), ('47', r47)]:
+for name, rows in [('41', r41), ('92', r92), ('93', r93), ('17', r17), ('24', r24), ('39', r39), ('18', r18), ('25', r25), ('26', r26), ('27', r27), ('45', r45), ('46', r46), ('47', r47)]:
     spec = CFG['csv_specs'][[k for k in CFG['csv_specs'] if k.startswith(name)][0]]
     ck(f"{name}：欄數 {spec['cols']}＋列數 ≥{spec['min_rows']}", all(len(r) == spec['cols'] for r in rows) and len(rows) - 1 >= spec['min_rows'], f"{len(rows)-1} 列")
 ids92 = [r[0] for r in r92[1:]]; ids93 = [r[0] for r in r93[1:]]
@@ -72,6 +73,7 @@ ck("ID 唯一（evidence／claim／event／sync／unit／team／source）",
    len(set(ids92)) == len(ids92) and len(set(ids93)) == len(ids93)
    and len({r[0] for r in r41[1:]}) == len(r41) - 1 and len({s for s, _ in sync_rows}) == len(sync_rows)
    and len({r[0] for r in r18[1:]}) == len(r18) - 1 and len({r[0] for r in r25[1:]}) == len(r25) - 1
+   and len({r[0] for r in r26[1:]}) == len(r26) - 1 and len({r[0] for r in r27[1:]}) == len(r27) - 1
    and len({r[0] for r in r45[1:]}) == len(r45) - 1 and len({r[0] for r in r46[1:]}) == len(r46) - 1
    and len({r[0] for r in r47[1:]}) == len(r47) - 1)
 h92, h93 = r92[0], r93[0]
@@ -233,6 +235,140 @@ ck("25：SOURCE_CONFLICT 至少兩來源＋兩種 mode；非衝突 mode 與來�
 ))
 _combo = [(t['server'], t['stage'], tuple(sorted(_pve_slots(t)))) for t in t25]
 ck("25：同關卡相同五人不得重複列（多來源合併）", len(_combo) == len(set(_combo)))
+
+# ========== A2 source-separated operation timelines (26/27) ==========
+h26, h27 = r26[0], r27[0]
+ck("26：欄位標頭符合規格", h26 == CFG['t26_header'])
+ck("27：欄位標頭符合規格", h27 == CFG['t27_header'])
+t26 = [dict(zip(h26, r)) for r in r26[1:]]
+t27 = [dict(zip(h27, r)) for r in r27[1:]]
+_teams_by_id = {t['team_id']: t for t in t25}
+_requirements_by_team = {
+    t['team_id']: obj for t, obj in zip(t25, _pve_requirement_objects) if obj is not None
+}
+_timelines_by_id = {t['timeline_id']: t for t in t26}
+_steps_by_timeline = defaultdict(list)
+for step in t27:
+    _steps_by_timeline[step['timeline_id']].append(step)
+
+def _timeline_source_link_ok(tl):
+    team = _teams_by_id.get(tl['team_id'])
+    req = _requirements_by_team.get(tl['team_id'])
+    if not team:
+        return False
+    if not req or not _pve_mode_claims_match(team, req):
+        return True  # 25 JSON／mode guard owns this failure; do not mask its mutation oracle.
+    claims = {c['source_id']: c['mode'] for c in req['operation_mode_claims']}
+    return (tl['source_id'] in claims
+            and claims[tl['source_id']] == tl['operation_mode']
+            and tl['source_evidence_id'] in set(team['evidence_ids'].split(';'))
+            and tl['source_evidence_id'] in ev
+            and ev[tl['source_evidence_id']][si92] == 'ACTIVE')
+
+ck("26：team／Evidence FK 與逐來源 operation mode 聲明一致", all(
+    _timeline_source_link_ok(tl) for tl in t26
+))
+_structured_timeline_ids = [tl['timeline_id'] for tl in t26 if tl['status'] == 'STRUCTURED']
+ck("26：同隊同來源只保留一條 source axis；結構化 timeline_id 唯一", (
+    len({(tl['team_id'], tl['source_id']) for tl in t26}) == len(t26)
+    and len(_structured_timeline_ids) == len(set(_structured_timeline_ids))
+))
+
+def _timeline_state_ok(tl):
+    if (tl['status'] not in CFG['enums']['pve_timeline_status']
+        or tl['operation_mode'] not in CFG['enums']['pve_mode_claim']
+        or tl['clock_mode'] not in CFG['enums']['pve_clock_mode']
+        or tl['initial_auto_state'] not in CFG['enums']['pve_auto_state']
+        or tl['reproducibility'] not in CFG['enums']['pve_timeline_reproducibility']
+        or tl['gap_reason'] not in CFG['enums']['pve_timeline_gap_reason']
+        or not date_ok(tl['last_verified_at'])
+        or not _filled_text(tl['source_locator'])
+        or not _filled_text(tl['timeline_variant_name'])
+        or not _filled_text(tl['notes'])):
+        return False
+    if tl['status'] == 'STRUCTURED':
+        return (tl['timeline_id'] != 'UNKNOWN'
+                and tl['clock_mode'] != 'UNKNOWN'
+                and tl['battle_duration_ms'].isdigit() and int(tl['battle_duration_ms']) > 0
+                and tl['initial_auto_state'] != 'UNKNOWN'
+                and tl['gap_reason'] == 'NONE')
+    return (tl['timeline_id'] == 'UNKNOWN'
+            and tl['clock_mode'] == 'UNKNOWN'
+            and tl['battle_duration_ms'] == 'UNKNOWN'
+            and tl['initial_auto_state'] == 'UNKNOWN'
+            and tl['reproducibility'] == 'UNKNOWN'
+            and tl['gap_reason'] != 'NONE')
+
+ck("26：STRUCTURED／SOURCE_GAP 狀態不得強化 UNKNOWN", all(_timeline_state_ok(tl) for tl in t26))
+
+def _timeline_step_ok(step):
+    tl = _timelines_by_id.get(step['timeline_id'])
+    if not tl or tl['status'] != 'STRUCTURED':
+        return False
+    team = _teams_by_id.get(tl['team_id'])
+    members = set(_pve_slots(team)) if team else set()
+    if (not step['sequence_no'].isdigit() or int(step['sequence_no']) < 1
+        or not step['source_step_no'].isdigit() or int(step['source_step_no']) < 1
+        or step['trigger_type'] not in CFG['enums']['pve_timeline_trigger']
+        or step['action_type'] not in CFG['enums']['pve_timeline_action']
+        or step['auto_state_after'] not in CFG['enums']['pve_auto_state']
+        or step['criticality'] not in CFG['enums']['pve_timeline_criticality']):
+        return False
+    duration = int(tl['battle_duration_ms'])
+    for value in (step['clock_from_ms'], step['clock_to_ms']):
+        if not value.isdigit() or not 0 <= int(value) <= duration:
+            return False
+    if tl['clock_mode'] == 'COUNTDOWN' and int(step['clock_from_ms']) < int(step['clock_to_ms']):
+        return False
+    for key in ('trigger_actor_unit_key', 'actor_unit_key', 'target_unit_key'):
+        if step[key] != 'NONE' and step[key] not in members:
+            return False
+    if step['action_type'] in {'USE_UB', 'SET_ON', 'SET_OFF', 'TARGET'} and step['actor_unit_key'] not in members:
+        return False
+    if step['action_type'] == 'TARGET' and step['target_unit_key'] not in members:
+        return False
+    return all(_filled_text(step[key]) for key in (
+        'animation_cue', 'hp_threshold', 'tolerance_ms', 'instruction_zh_tw',
+        'failure_if_missed', 'source_locator'
+    ))
+
+ck("27：step FK／Enum／時間範圍／角色成員資格完整", all(_timeline_step_ok(step) for step in t27))
+_sequence_ok = True
+for timeline_id, steps in _steps_by_timeline.items():
+    seq = sorted(int(step['sequence_no']) for step in steps if step['sequence_no'].isdigit())
+    if seq != list(range(1, len(steps) + 1)):
+        _sequence_ok = False
+ck("27：每來源 sequence_no 唯一且連續", _sequence_ok)
+ck("26／27：STRUCTURED 必有步驟；SOURCE_GAP 必為零步驟", all(
+    (tl['status'] == 'STRUCTURED' and bool(_steps_by_timeline.get(tl['timeline_id'])))
+    or (tl['status'] == 'SOURCE_GAP' and not _steps_by_timeline.get(tl['timeline_id']))
+    for tl in t26
+))
+
+def _timeline_claim_coverage_ok(team):
+    if team['clear_status'] != 'VERIFIED' or team['operation_mode'] not in {'SEMI_AUTO', 'MANUAL_TIMELINE', 'SOURCE_CONFLICT'}:
+        return True
+    req = _requirements_by_team.get(team['team_id'])
+    if not req or not _pve_mode_claims_match(team, req):
+        return True  # 25 JSON／mode guard owns this failure; do not mask its mutation oracle.
+    expected = {(c['source_id'], c['mode']) for c in req['operation_mode_claims']}
+    actual = {(tl['source_id'], tl['operation_mode']) for tl in t26 if tl['team_id'] == team['team_id']}
+    return expected == actual
+
+ck("25→26：VERIFIED 手動／半自動／衝突隊伍每個來源均有結構化軸或明示缺口", all(
+    _timeline_claim_coverage_ok(team) for team in t25
+))
+
+def _cross_server_repro_ok(tl):
+    if tl['status'] != 'STRUCTURED':
+        return True
+    team = _teams_by_id[tl['team_id']]
+    evidence = ev[tl['source_evidence_id']]
+    if team['server'] == 'TW' and evidence[svi92] != 'TW':
+        return tl['reproducibility'] == 'UNVERIFIED_ON_TW'
+    return tl['reproducibility'] != 'TW_REPRODUCED' or evidence[svi92] == 'TW'
+
+ck("26：跨服結構化軸不得冒充台服已重現", all(_cross_server_repro_ok(tl) for tl in t26))
 _valid_team_signatures_by_guide = defaultdict(set)
 _evidence_ids = set(ids92)
 for t in t25:
