@@ -7,7 +7,13 @@ from sqlalchemy import delete, select
 from pcr_api.config import Settings
 from pcr_api.main import create_app
 from pcr_api.repository import effective_team_signatures
-from pcr_database.models import Character, Team, TeamEvidence, TeamMember
+from pcr_database.models import (
+    Character,
+    OperationTimeline,
+    Team,
+    TeamEvidence,
+    TeamMember,
+)
 
 from .conftest import make_factory
 
@@ -116,6 +122,43 @@ def test_readiness_fails_closed_when_normalized_team_field_is_tampered() -> None
     assert response.json()["checks"]["fixture"] == "materialization_teams_drift"
 
 
+def test_all_strategy_reads_fail_closed_on_timeline_materialization_drift() -> None:
+    factory = make_factory()
+    with factory() as session:
+        timeline = session.get(OperationTimeline, "AX-F810-02-EV073")
+        assert timeline is not None
+        timeline.notes = "tampered without changing source_payload"
+        session.commit()
+
+    app = create_app(
+        settings=Settings(database_url="sqlite://", application_version="3.0.0-b0"),
+        session_factory=factory,
+    )
+    endpoints = [
+        "/api/v1/baseline",
+        "/api/v1/stages",
+        f"/api/v1/stages/{GUIDE_ID}",
+        "/api/v1/teams/TM-F810-02",
+        "/api/v1/teams/TM-F810-02/timelines",
+        "/api/v1/evidence/ev073",
+        "/api/v1/claims/CLM-PVE-F810-SHIZURU",
+        "/api/v1/pvp/counters",
+    ]
+    with TestClient(app) as drifted_client:
+        readiness = drifted_client.get("/health/ready")
+        responses = [drifted_client.get(path) for path in endpoints]
+
+    assert readiness.status_code == 503
+    assert (
+        readiness.json()["checks"]["fixture"]
+        == "materialization_operation_timelines_drift"
+    )
+    assert all(response.status_code == 503 for response in responses)
+    assert {
+        response.json()["detail"]["reason"] for response in responses
+    } == {"materialization_operation_timelines_drift"}
+
+
 def _effective_team_count(factory) -> int:
     with factory() as session:
         return len(effective_team_signatures(session, GUIDE_ID))
@@ -183,8 +226,10 @@ def test_baseline_reports_real_counts_and_research_gates(client: TestClient) -> 
         "teams": 3,
         "team_members": 15,
         "characters": 8,
-        "evidence": 18,
-        "claims": 13,
+            "evidence": 18,
+            "claims": 13,
+            "operation_timelines": 8,
+            "timeline_steps": 14,
     }
     assert data["gates"]["gate_a"] is False
     assert data["gates"]["gate_b"] is False
@@ -228,9 +273,62 @@ def test_source_conflict_unknowns_and_timeline_gap_are_not_strengthened(client: 
         for value in slot.values()
     )
     assert data["timeline"]["status"] == "SOURCE_GAP"
+    assert data["timeline"]["structured_sources"] == 0
+    assert data["timeline"]["registered_sources"] == 3
+    assert all(
+        source["status"] == "SOURCE_GAP" for source in data["timeline"]["sources"]
+    )
     assert data["timeline"]["steps"] == []
-    assert data["timeline"]["references"]
+    assert [reference["raw"] for reference in data["timeline"]["references"]] == [
+        "AX-F810-01-EV050",
+        "AX-F810-01-EV052",
+        "AX-F810-01-EV069",
+    ]
     assert "STRUCTURED_TIMELINE_SOURCE_GAP" in payload["meta"]["warnings"]
+
+
+def test_partial_timeline_is_source_separated_and_preserves_cross_server_status(
+    client: TestClient,
+) -> None:
+    response = client.get("/api/v1/teams/TM-F810-02")
+    assert response.status_code == 200
+    payload = response.json()
+    timeline = payload["data"]["timeline"]
+    assert timeline["status"] == "PARTIAL"
+    assert timeline["registered_sources"] == 4
+    assert timeline["structured_sources"] == 1
+    assert timeline["steps"] == []
+    assert [source["source_axis_id"] for source in timeline["sources"]] == [
+        "AX-F810-02-EV070",
+        "AX-F810-02-EV071",
+        "AX-F810-02-EV072",
+        "AX-F810-02-EV073",
+    ]
+
+    structured = next(
+        source for source in timeline["sources"] if source["status"] == "STRUCTURED"
+    )
+    assert structured["timeline_id"] == "TL-F810-02-EV073"
+    assert structured["source_evidence_id"] == "ev073"
+    assert structured["battle_duration_ms"] is None
+    assert structured["reproducibility"] == "UNVERIFIED_ON_TW"
+    assert structured["gap_reason"] is None
+    assert len(structured["steps"]) == 14
+    assert [step["sequence_no"] for step in structured["steps"]] == list(range(1, 15))
+    assert all(step["criticality"] == "UNKNOWN" for step in structured["steps"])
+    assert all(
+        step["time_state"] == "NOT_STATED"
+        and step["clock_from_ms"] is None
+        and step["clock_to_ms"] is None
+        for step in structured["steps"][:4]
+    )
+    assert structured["steps"][4]["time_state"] == "STATED"
+    assert structured["steps"][4]["clock_from_ms"] == 70000
+    assert "STRUCTURED_TIMELINE_PARTIAL" in payload["meta"]["warnings"]
+
+    nested = client.get("/api/v1/teams/TM-F810-02/timelines")
+    assert nested.status_code == 200
+    assert nested.json()["data"] == timeline
 
 
 def test_evidence_claim_drawer_and_pvp_no_result(client: TestClient) -> None:
@@ -270,6 +368,7 @@ def test_openapi_contains_only_get_for_public_strategy_routes(client: TestClient
         "/api/v1/stages",
         "/api/v1/stages/{guide_id}",
         "/api/v1/teams/{team_id}",
+        "/api/v1/teams/{team_id}/timelines",
         "/api/v1/evidence/{evidence_id}",
         "/api/v1/claims/{claim_id}",
         "/api/v1/pvp/counters",

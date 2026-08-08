@@ -9,13 +9,16 @@
   `80e6be16fbfbbef1c676def920348aa006d6608a0900f2e62ba4d5cac2d62bcb`；
   Evidence→Claim declared FK 已閉合，實測結果見
   [`I0_VERIFICATION_REPORT.md`](../operations/I0_VERIFICATION_REPORT.md)。
+- RP-A2：48 檔 manifest SHA-256
+  `3a242b521d830af12ce8559d88b733068fb1b6cb503219395d2986b89e5dc352`；
+  8 條來源操作軸與 14 個原子步驟已納入 file SSOT。
 
 ## 實作順序
 
 1. ✅ B0a：monorepo、contracts、Compose、health skeleton。
 2. ✅ B0b：紅焰 8-10 完整三隊 closure → DB mirror → API → Web → Evidence Drawer。
 3. ✅ I0：逐筆裁決七個 Evidence→Claim 懸空引用，新增 Validator 與 Mutation。
-4. A2＋B2：file-SSOT 結構化操作軸與真實深域垂直切片。
+4. ✅ A2＋B2：file-SSOT 結構化操作軸與真實深域垂直切片。
 5. B1：完整 importer／exporter／round-trip parity。
 6. A3–A6 與 B3–B5 配對完成 PVE、Gacha、Arena、P-Arena。
 7. B6 Shadow → B7 Review／Audit／Rollback。
@@ -31,6 +34,16 @@
   資料，但連線層錯誤仍由框架形成一般 500。
 - Production Gate 前以 OpenAPI generator 取代手寫 client types，並產生 Python
   transitive dependency lock／SBOM；B0 先以可執行 schema parity check 守住漂移。
+
+## A2＋B2 交付邊界
+
+- TM-F810-01 為 `SOURCE_GAP 0/3`、TM-F810-02 為 `PARTIAL 1/4`、
+  TM-F810-03 為 `SOURCE_GAP 0/1`；局部來源軸不會被合併成虛構共識軸。
+- PostgreSQL read mirror 新增 8 條 timeline、14 個 atomic steps；import replay、
+  完整 fixture fingerprint 與 serving-boundary drift 均 fail-closed。
+- 下一固定里程碑為 B1 round-trip parity；Data Gate A／B／C 與 Gates D–G 仍未宣稱通過。
+- 回滾點：A2 research core 使用 `rp-a2-2`；A2＋B2 完整切片使用
+  `rp-a2-b2-1`。
 
 ## 不可突破的停止條件
 

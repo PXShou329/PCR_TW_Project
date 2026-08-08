@@ -1,21 +1,21 @@
 # 公主連結台服 AI 攻略研究所
 
-Guide-Only Strategy Platform v3.0 的 B0 walking skeleton。這是一個可部署的
+Guide-Only Strategy Platform v3.0 的 A2＋B2 operation-timeline 垂直切片。這是一個可部署的
 **本機／私人 staging**，不是公開正式版，也尚未宣稱 Gates D–G 通過。
 
 目前端到端垂直切片以「紅焰深域 8-10」為例，提供三支實際通關隊伍、逐 Slot
-條件、來源操作聲明、Evidence Drawer，以及誠實的結構化操作軸缺口。競技場在
+條件、來源分離的操作軸、逐步 Evidence Drawer，以及誠實的結構化操作軸缺口。競技場在
 尚無 exact verified counter 時只回傳空結果，不建立示意隊。
 
 ## 真相與安全邊界
 
-- `research_core/pcr_tw_project/` 是唯一 canonical source；目前 RP-I0 的 46 個檔案
-  由 `scripts/research_core_rp_i0_manifest.sha256` 逐檔 SHA-256 鎖定。
+- `research_core/pcr_tw_project/` 是唯一 canonical source；目前 RP-A2 的 48 個檔案
+  由 `scripts/research_core_rp_a2_manifest.sha256` 逐檔 SHA-256 鎖定。
 - PostgreSQL 只是可重建的 read mirror，不會回寫 research core。
 - 台服是攻略主體；日服只作未來視與可轉用研究。中國服／B 服資料不作核心、
   替代或補洞依據。
 - 不含帳號匯入、roster／owned、個人寶石或個人化推薦，也不登入或操作遊戲。
-- Scheduler 預設停用且固定 Shadow Mode；B0 沒有 fetcher、publisher 或 canonical
+- Scheduler 預設停用且固定 Shadow Mode；B2 沒有 fetcher、publisher 或 canonical
   writer。
 - Migration、Importer、API、Scheduler 使用分離的 PostgreSQL roles；API 只有
   serving tables 的 `SELECT` 權限。
@@ -52,11 +52,11 @@ python tools/validate_project.py --mode ARTIFACT_READY
 python tools/mutation_test.py
 ```
 
-目前預期 ARTIFACT_READY 仍以 exit 1 誠實揭露 Gate A／B／C 三項缺口；B0 不會為了
+目前預期 ARTIFACT_READY 仍以 exit 1 誠實揭露 Gate A／B／C 三項缺口；B2 不會為了
 讓測試變綠而降低研究 Gate。
 
-I0 的實際五命令、Mutation、PostgreSQL 與 E2E 輸出見
-[`docs/operations/I0_VERIFICATION_REPORT.md`](docs/operations/I0_VERIFICATION_REPORT.md)。
+A2＋B2 的實際五命令、Mutation、PostgreSQL、瀏覽器與 E2E 輸出見
+[`docs/operations/A2_B2_VERIFICATION_REPORT.md`](docs/operations/A2_B2_VERIFICATION_REPORT.md)。
 
 ## 啟動本機私人堆疊
 

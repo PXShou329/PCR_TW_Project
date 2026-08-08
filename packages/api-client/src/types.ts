@@ -4,7 +4,11 @@ export type StrategyStatus =
   | "IN_RESEARCH"
   | "PENDING";
 
-export type OperationMode = "AUTO" | "SEMI_AUTO" | "MANUAL" | "SOURCE_CONFLICT";
+export type OperationMode =
+  | "AUTO"
+  | "SEMI_AUTO"
+  | "MANUAL_TIMELINE"
+  | "SOURCE_CONFLICT";
 
 export interface SourceMetadata {
   canonical_source: string;
@@ -50,6 +54,8 @@ export interface BaselineCounts {
   characters: number;
   evidence: number;
   claims: number;
+  operation_timelines: number;
+  timeline_steps: number;
 }
 
 export interface Coverage {
@@ -125,14 +131,107 @@ export interface TeamRequirements {
   timeline_ref?: string;
 }
 
-export interface TimelineGap {
-  status: "SOURCE_GAP" | "MISSING";
-  references: Array<{
-    source_id: string;
-    locator: string;
-    raw: string;
-  }>;
-  steps: Array<Record<string, unknown>>;
+export type TimelineStatus = "STRUCTURED" | "PARTIAL" | "SOURCE_GAP" | "MISSING";
+export type TimelineSourceStatus = "STRUCTURED" | "SOURCE_GAP";
+export type TimelineOperationMode = "AUTO" | "SEMI_AUTO" | "MANUAL_TIMELINE";
+export type TimelineClockMode = "COUNTDOWN" | "ELAPSED";
+export type KnownTimelineAutoState = "ON" | "OFF";
+export type TimelineAutoState = KnownTimelineAutoState | "UNKNOWN";
+export type TimelineReproducibility = "UNVERIFIED_ON_TW" | "TW_REPRODUCED" | "UNKNOWN";
+export type TimelineGapReason = "INSUFFICIENT_SOURCE_DETAIL" | "PENDING_EXTRACTION";
+export type TimelineTriggerType =
+  | "CLOCK"
+  | "UB_READY"
+  | "ANIMATION_CUE"
+  | "HP_THRESHOLD"
+  | "WAVE_START"
+  | "BOSS_ACTION"
+  | "SOURCE_TEXT_ONLY";
+export type TimelineActionType =
+  | "USE_UB"
+  | "WAIT"
+  | "AUTO_ON"
+  | "AUTO_OFF"
+  | "SET_ON"
+  | "SET_OFF"
+  | "PAUSE"
+  | "RESUME"
+  | "TARGET"
+  | "NO_ACTION";
+export type TimelineCriticality = "NORMAL" | "CRITICAL" | "UNKNOWN";
+export type TimelineTimeState = "STATED" | "NOT_STATED";
+
+export interface TimelineReference {
+  source_id: string;
+  locator: string;
+  raw: string;
+}
+
+export interface TimelineStep {
+  timeline_step_id: string;
+  timeline_id: string;
+  sequence_no: number;
+  source_step_no: number;
+  time_state: TimelineTimeState;
+  trigger_type: TimelineTriggerType;
+  trigger_actor_unit_key: string;
+  clock_from_ms: number | null;
+  clock_to_ms: number | null;
+  actor_unit_key: string;
+  action_type: TimelineActionType;
+  target_unit_key: string;
+  auto_state_after: TimelineAutoState;
+  animation_cue: string;
+  hp_threshold: string;
+  tolerance_ms: number | null;
+  criticality: TimelineCriticality;
+  instruction_zh_tw: string;
+  failure_if_missed: string;
+  source_locator: string;
+}
+
+interface TimelineSourceBase {
+  source_axis_id: string;
+  source_id: string;
+  source_evidence_id: string;
+  source_locator: string;
+  timeline_variant_name: string;
+  operation_mode: TimelineOperationMode;
+  reproducibility: TimelineReproducibility;
+  last_verified_at: string;
+  notes: string;
+}
+
+export interface StructuredTimelineSource extends TimelineSourceBase {
+  status: "STRUCTURED";
+  timeline_id: string;
+  clock_mode: TimelineClockMode;
+  battle_duration_ms: number | null;
+  initial_auto_state: KnownTimelineAutoState;
+  gap_reason: null;
+  steps: TimelineStep[];
+}
+
+export interface GapTimelineSource extends TimelineSourceBase {
+  status: "SOURCE_GAP";
+  timeline_id: null;
+  clock_mode: null;
+  battle_duration_ms: null;
+  initial_auto_state: null;
+  gap_reason: TimelineGapReason;
+  steps: [];
+}
+
+export type TimelineSource = StructuredTimelineSource | GapTimelineSource;
+
+export interface TeamTimeline {
+  status: TimelineStatus;
+  structured_sources: number;
+  registered_sources: number;
+  sources: TimelineSource[];
+  references: TimelineReference[];
+  /** @deprecated Source axes must never be flattened or merged. */
+  steps: [];
 }
 
 export interface TeamDetail extends TeamSummary {
@@ -141,7 +240,7 @@ export interface TeamDetail extends TeamSummary {
   stage: string;
   support_slot: string | null;
   requirements: TeamRequirements;
-  timeline: TimelineGap;
+  timeline: TeamTimeline;
   source_ids: string[];
   evidence_ids: string[];
   verified_date: string;

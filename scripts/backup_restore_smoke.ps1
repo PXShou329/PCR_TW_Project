@@ -244,7 +244,8 @@ try {
 
     $baseline = Invoke-RestMethod -Uri "http://127.0.0.1:${apiPort}/api/v1/baseline" -TimeoutSec 5
     $expectedCounts = @{
-        stages = 1; teams = 3; team_members = 15; characters = 8; evidence = 18; claims = 13
+        stages = 1; teams = 3; team_members = 15; characters = 8; evidence = 18; claims = 13;
+        operation_timelines = 8; timeline_steps = 14
     }
     foreach ($name in $expectedCounts.Keys) {
         if ([int]$baseline.data.counts.$name -ne $expectedCounts[$name]) {
@@ -252,11 +253,23 @@ try {
         }
     }
     $stage = Invoke-RestMethod -Uri "http://127.0.0.1:${apiPort}/api/v1/stages/TW_DEEP_FIRE_08_10_20260802" -TimeoutSec 5
+    $timeline = Invoke-RestMethod -Uri "http://127.0.0.1:${apiPort}/api/v1/teams/TM-F810-02/timelines" -TimeoutSec 5
     $evidence = Invoke-RestMethod -Uri "http://127.0.0.1:${apiPort}/api/v1/evidence/ev052" -TimeoutSec 5
-    if ($stage.data.status -ne "PROVISIONAL" -or [int]$stage.data.team_count -ne 3 -or $evidence.data.evidence_id -ne "ev052") {
+    if (
+        $stage.data.status -ne "PROVISIONAL" -or
+        [int]$stage.data.team_count -ne 3 -or
+        $timeline.data.status -ne "PARTIAL" -or
+        [int]$timeline.data.structured_sources -ne 1 -or
+        [int]$timeline.data.registered_sources -ne 4 -or
+        $timeline.data.steps.Count -ne 0 -or
+        $timeline.data.sources[-1].reproducibility -ne "UNVERIFIED_ON_TW" -or
+        $timeline.data.sources[-1].battle_duration_ms -ne $null -or
+        $timeline.data.sources[-1].steps.Count -ne 14 -or
+        $evidence.data.evidence_id -ne "ev052"
+    ) {
         throw "Restored API critical read path failed"
     }
-    Write-Host "RESTORED_API_READINESS_OK role=pcr_api stage=PROVISIONAL teams=3 evidence=ev052"
+    Write-Host "RESTORED_API_READINESS_OK role=pcr_api stage=PROVISIONAL teams=3 timelines=8 steps=14 evidence=ev052"
 
     Invoke-DockerChecked run --detach --no-deps `
         --name $webContainer `

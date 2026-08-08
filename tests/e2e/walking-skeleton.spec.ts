@@ -10,6 +10,8 @@ test("首頁如實顯示紅焰 8-10 的 PROVISIONAL 3/5", async ({ page }) => {
   await expect(page.getByText("research_core_file_ssot")).toBeVisible();
   await expect(page.locator(".baseline-card dl")).toContainText(/Evidence\s*18/);
   await expect(page.locator(".baseline-card dl")).toContainText(/Claims\s*13/);
+  await expect(page.locator(".baseline-card dl")).toContainText(/來源軸\s*8/);
+  await expect(page.locator(".baseline-card dl")).toContainText(/操作步驟\s*14/);
   await expect(page.getByRole("link", { name: "查看紅焰深域 8-10" })).toBeVisible();
 
   await stageCard.click();
@@ -32,7 +34,7 @@ test("關卡到隊伍再到 Evidence Drawer 的完整路徑", async ({ page }) =
   await expect(page.getByText("未確認", { exact: true }).first()).toBeVisible();
   await expect(page.getByRole("heading", { name: "尚未建立可驗證的結構化操作軸" })).toBeVisible();
 
-  await page.getByRole("button", { name: /ev052/ }).click();
+  await page.getByRole("button", { name: "ev052", exact: true }).click();
   const drawer = page.getByRole("dialog", { name: "ev052" });
   await expect(drawer).toBeVisible();
   await expect(drawer).toContainText("YouTube 深域クエスト火8-10攻略編成動画");

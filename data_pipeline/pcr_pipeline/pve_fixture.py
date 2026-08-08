@@ -19,12 +19,14 @@ from pcr_database.models import (
     ClaimEvidence,
     Evidence,
     ImportRun,
+    OperationTimeline,
     Stage,
     StageClaim,
     StageEvidence,
     Team,
     TeamEvidence,
     TeamMember,
+    TimelineStep,
 )
 from pcr_database.materialization import (
     build_materialization_manifest,
@@ -52,10 +54,60 @@ SOURCE_FILES = (
     "18_TW_CHARACTER_AVAILABILITY.csv",
     "24_PVE_GUIDE_REGISTRY.csv",
     "25_PVE_TEAM_REGISTRY.csv",
+    "26_PVE_OPERATION_TIMELINES.csv",
+    "27_PVE_TIMELINE_STEPS.csv",
     "92_EVIDENCE_LEDGER.csv",
     "93_CLAIM_REGISTER.csv",
     "tools/stats.json",
 )
+
+TIMELINE_OPERATION_MODES = frozenset({"AUTO", "SEMI_AUTO", "MANUAL_TIMELINE"})
+TIMELINE_CLOCK_MODES = frozenset({"COUNTDOWN", "ELAPSED", "UNKNOWN"})
+TIMELINE_AUTO_STATES = frozenset({"ON", "OFF", "UNKNOWN"})
+TIMELINE_REPRODUCIBILITY = frozenset({"UNVERIFIED_ON_TW", "TW_REPRODUCED", "UNKNOWN"})
+TIMELINE_GAP_REASONS = frozenset(
+    {"NONE", "INSUFFICIENT_SOURCE_DETAIL", "PENDING_EXTRACTION"}
+)
+TIMELINE_TRIGGERS = frozenset(
+    {
+        "CLOCK",
+        "UB_READY",
+        "ANIMATION_CUE",
+        "HP_THRESHOLD",
+        "WAVE_START",
+        "BOSS_ACTION",
+        "SOURCE_TEXT_ONLY",
+    }
+)
+TIMELINE_ACTIONS = frozenset(
+    {
+        "USE_UB",
+        "WAIT",
+        "AUTO_ON",
+        "AUTO_OFF",
+        "SET_ON",
+        "SET_OFF",
+        "PAUSE",
+        "RESUME",
+        "TARGET",
+        "NO_ACTION",
+    }
+)
+TIMELINE_CRITICALITIES = frozenset({"NORMAL", "CRITICAL", "UNKNOWN"})
+TIMELINE_TIME_STATES = frozenset({"STATED", "NOT_STATED"})
+
+# This audited boundary records what the actually opened source states.  It is
+# deliberately code-owned: editing a CSV cannot turn an unstated time into a
+# canonical value or invent a battle duration.
+AUDITED_TIMELINE_TIME_BOUNDARIES = {
+    "AX-F810-02-EV073": {
+        "battle_duration_ms": "UNKNOWN",
+        "criticality": "UNKNOWN",
+        "source_locator_prefix": "2025年9月魔法半自動／手順",
+        "source_step_numbers": frozenset(range(1, 9)),
+        "not_stated_source_steps": frozenset({1}),
+    }
+}
 
 
 class FixtureValidationError(ValueError):
@@ -74,6 +126,8 @@ class FixtureClosure:
     characters: tuple[dict[str, str], ...]
     evidence: tuple[dict[str, str], ...]
     claims: tuple[dict[str, str], ...]
+    timelines: tuple[dict[str, str], ...]
+    timeline_steps: tuple[dict[str, str], ...]
     stage_evidence_ids: tuple[str, ...]
     stage_claim_ids: tuple[str, ...]
     team_evidence_ids: dict[str, tuple[str, ...]]
@@ -105,6 +159,28 @@ def _parse_date(value: str, *, field: str, required: bool = False) -> date | Non
         return date.fromisoformat(normalized)
     except ValueError as exc:
         raise FixtureValidationError(f"{field} is not an ISO date: {value!r}") from exc
+
+
+def _parse_int(
+    value: str,
+    *,
+    field: str,
+    allow_unknown: bool = False,
+    positive: bool = False,
+) -> int | None:
+    normalized = value.strip()
+    if allow_unknown and normalized == "UNKNOWN":
+        return None
+    if not normalized.isdigit():
+        raise FixtureValidationError(f"{field} must be an unsigned integer")
+    parsed = int(normalized)
+    if positive and parsed < 1:
+        raise FixtureValidationError(f"{field} must be a positive integer")
+    return parsed
+
+
+def _unit_or_none(value: str) -> str | None:
+    return None if value == "NONE" else value
 
 
 def _read_csv(path: Path, key: str) -> tuple[dict[str, str], ...]:
@@ -194,7 +270,22 @@ def _validate_requirements(team: dict[str, str]) -> dict[str, Any]:
     claims = requirements.get("operation_mode_claims")
     if not isinstance(claims, list) or not claims:
         raise FixtureValidationError(f"{team['team_id']} has no operation_mode_claims")
-    modes = {item.get("mode") for item in claims if isinstance(item, dict)}
+    if any(
+        not isinstance(item, dict)
+        or not isinstance(item.get("source_id"), str)
+        or not item["source_id"].strip()
+        or item.get("mode") not in TIMELINE_OPERATION_MODES
+        for item in claims
+    ):
+        raise FixtureValidationError(
+            f"{team['team_id']} operation_mode_claims contain an invalid source or mode"
+        )
+    claim_sources = [item["source_id"] for item in claims]
+    if len(claim_sources) != len(set(claim_sources)):
+        raise FixtureValidationError(
+            f"{team['team_id']} operation_mode_claims contain duplicate sources"
+        )
+    modes = {item["mode"] for item in claims}
     if team["operation_mode"] == "SOURCE_CONFLICT" and len(modes) < 2:
         raise FixtureValidationError(
             f"{team['team_id']} SOURCE_CONFLICT must preserve conflicting source modes"
@@ -203,7 +294,297 @@ def _validate_requirements(team: dict[str, str]) -> dict[str, Any]:
         raise FixtureValidationError(
             f"{team['team_id']} operation mode differs from its source claims"
         )
+    timeline_ref = requirements.get("timeline_ref")
+    if not isinstance(timeline_ref, str) or not _split_ids(timeline_ref):
+        raise FixtureValidationError(f"{team['team_id']} has no source-axis timeline_ref")
     return requirements
+
+
+def _validate_timeline_closure(
+    *,
+    teams: tuple[dict[str, str], ...],
+    requirements_by_team: dict[str, dict[str, Any]],
+    evidence_by_id: dict[str, dict[str, str]],
+    team_evidence_ids: dict[str, tuple[str, ...]],
+    timelines_all: tuple[dict[str, str], ...],
+    steps_all: tuple[dict[str, str], ...],
+) -> tuple[tuple[dict[str, str], ...], tuple[dict[str, str], ...]]:
+    teams_by_id = {team["team_id"]: team for team in teams}
+    timelines = tuple(
+        sorted(
+            (row for row in timelines_all if row["team_id"] in teams_by_id),
+            key=lambda row: row["source_axis_id"],
+        )
+    )
+    pairs = [(row["team_id"], row["source_id"]) for row in timelines]
+    if len(pairs) != len(set(pairs)):
+        raise FixtureValidationError("operation timelines duplicate a team/source axis")
+
+    structured_ids = [
+        row["timeline_id"] for row in timelines if row["status"] == "STRUCTURED"
+    ]
+    if len(structured_ids) != len(set(structured_ids)):
+        raise FixtureValidationError("structured timeline_id values must be unique")
+    steps = tuple(
+        sorted(
+            (row for row in steps_all if row["timeline_id"] in set(structured_ids)),
+            key=lambda row: (row["timeline_id"], int(row["sequence_no"]) if row["sequence_no"].isdigit() else -1),
+        )
+    )
+    known_structured_ids = {
+        row["timeline_id"]
+        for row in timelines_all
+        if row["status"] == "STRUCTURED" and row["timeline_id"] != "UNKNOWN"
+    }
+    orphan_step_ids = sorted(
+        {row["timeline_id"] for row in steps_all} - known_structured_ids
+    )
+    if orphan_step_ids:
+        raise FixtureValidationError(
+            f"timeline steps reference non-structured timelines: {orphan_step_ids}"
+        )
+
+    for timeline in timelines:
+        axis_id = timeline["source_axis_id"]
+        team = teams_by_id[timeline["team_id"]]
+        requirements = requirements_by_team[timeline["team_id"]]
+        source_claims = {
+            item.get("source_id"): item.get("mode")
+            for item in requirements["operation_mode_claims"]
+            if isinstance(item, dict)
+        }
+        if source_claims.get(timeline["source_id"]) != timeline["operation_mode"]:
+            raise FixtureValidationError(
+                f"{axis_id} operation mode differs from its team source claim"
+            )
+        if timeline["operation_mode"] not in TIMELINE_OPERATION_MODES:
+            raise FixtureValidationError(f"{axis_id} operation_mode is invalid")
+        evidence_id = timeline["source_evidence_id"]
+        evidence = evidence_by_id.get(evidence_id)
+        if (
+            evidence is None
+            or evidence_id not in team_evidence_ids[timeline["team_id"]]
+            or evidence["status"] != "ACTIVE"
+        ):
+            raise FixtureValidationError(f"{axis_id} source evidence is outside its team closure")
+        evidence_locator = evidence["source_locator"]
+        if not (
+            timeline["source_locator"] == evidence_locator
+            or timeline["source_locator"].startswith(f"{evidence_locator}#")
+        ):
+            raise FixtureValidationError(
+                f"{axis_id} locator is not the Evidence locator or its # sub-location"
+            )
+        if (
+            timeline["clock_mode"] not in TIMELINE_CLOCK_MODES
+            or timeline["initial_auto_state"] not in TIMELINE_AUTO_STATES
+            or timeline["reproducibility"] not in TIMELINE_REPRODUCIBILITY
+            or timeline["gap_reason"] not in TIMELINE_GAP_REASONS
+        ):
+            raise FixtureValidationError(f"{axis_id} contains an invalid timeline enum")
+        for field in ("source_locator", "timeline_variant_name", "notes"):
+            if not timeline[field].strip():
+                raise FixtureValidationError(f"{axis_id}.{field} must not be blank")
+        _parse_date(
+            timeline["last_verified_at"],
+            field=f"{axis_id}.last_verified_at",
+            required=True,
+        )
+
+        if timeline["status"] == "STRUCTURED":
+            if (
+                timeline["timeline_id"] == "UNKNOWN"
+                or timeline["clock_mode"] == "UNKNOWN"
+                or timeline["initial_auto_state"] == "UNKNOWN"
+                or timeline["gap_reason"] != "NONE"
+            ):
+                raise FixtureValidationError(f"{axis_id} STRUCTURED state shape is invalid")
+            _parse_int(
+                timeline["battle_duration_ms"],
+                field=f"{axis_id}.battle_duration_ms",
+                allow_unknown=True,
+                positive=True,
+            )
+            if (
+                team["server"] == "TW"
+                and evidence["server"] != "TW"
+                and timeline["reproducibility"] != "UNVERIFIED_ON_TW"
+            ):
+                raise FixtureValidationError(
+                    f"{axis_id} cross-server timeline must remain UNVERIFIED_ON_TW"
+                )
+            if timeline["reproducibility"] == "TW_REPRODUCED" and evidence["server"] != "TW":
+                raise FixtureValidationError(
+                    f"{axis_id} non-TW evidence cannot claim TW_REPRODUCED"
+                )
+        elif timeline["status"] == "SOURCE_GAP":
+            if (
+                timeline["timeline_id"] != "UNKNOWN"
+                or timeline["clock_mode"] != "UNKNOWN"
+                or timeline["battle_duration_ms"] != "UNKNOWN"
+                or timeline["initial_auto_state"] != "UNKNOWN"
+                or timeline["reproducibility"] != "UNKNOWN"
+                or timeline["gap_reason"] == "NONE"
+            ):
+                raise FixtureValidationError(f"{axis_id} SOURCE_GAP state shape is invalid")
+        else:
+            raise FixtureValidationError(f"{axis_id} status is invalid")
+
+        boundary = AUDITED_TIMELINE_TIME_BOUNDARIES.get(axis_id)
+        if boundary and timeline["battle_duration_ms"] != boundary["battle_duration_ms"]:
+            raise FixtureValidationError(f"{axis_id} invents an unstated battle duration")
+
+    for team in teams:
+        declared_axes = set(_split_ids(requirements_by_team[team["team_id"]].get("timeline_ref", "")))
+        actual_axes = {
+            timeline["source_axis_id"]
+            for timeline in timelines
+            if timeline["team_id"] == team["team_id"]
+        }
+        if declared_axes != actual_axes:
+            raise FixtureValidationError(
+                f"{team['team_id']} timeline_ref differs from its source_axis_id closure"
+            )
+        if (
+            team["operation_mode"] not in {"SEMI_AUTO", "MANUAL_TIMELINE", "SOURCE_CONFLICT"}
+        ):
+            continue
+        expected = {
+            (item["source_id"], item["mode"])
+            for item in requirements_by_team[team["team_id"]]["operation_mode_claims"]
+        }
+        actual = {
+            (timeline["source_id"], timeline["operation_mode"])
+            for timeline in timelines
+            if timeline["team_id"] == team["team_id"]
+        }
+        if actual != expected:
+            raise FixtureValidationError(
+                f"{team['team_id']} operation timeline source closure is incomplete"
+            )
+
+    timeline_by_id = {
+        timeline["timeline_id"]: timeline
+        for timeline in timelines
+        if timeline["status"] == "STRUCTURED"
+    }
+    steps_by_timeline: dict[str, list[dict[str, str]]] = {
+        timeline_id: [] for timeline_id in timeline_by_id
+    }
+    for step in steps:
+        timeline = timeline_by_id[step["timeline_id"]]
+        team = teams_by_id[timeline["team_id"]]
+        members = {team[f"slot{slot}"] for slot in range(1, 6)}
+        step_id = step["timeline_step_id"]
+        sequence_no = _parse_int(
+            step["sequence_no"], field=f"{step_id}.sequence_no", positive=True
+        )
+        source_step_no = _parse_int(
+            step["source_step_no"], field=f"{step_id}.source_step_no", positive=True
+        )
+        assert sequence_no is not None and source_step_no is not None
+        if (
+            step["trigger_type"] not in TIMELINE_TRIGGERS
+            or step["time_state"] not in TIMELINE_TIME_STATES
+            or step["action_type"] not in TIMELINE_ACTIONS
+            or step["auto_state_after"] not in TIMELINE_AUTO_STATES
+            or step["criticality"] not in TIMELINE_CRITICALITIES
+        ):
+            raise FixtureValidationError(f"{step_id} contains an invalid timeline step enum")
+
+        if step["time_state"] == "STATED":
+            clock_from = _parse_int(step["clock_from_ms"], field=f"{step_id}.clock_from_ms")
+            clock_to = _parse_int(step["clock_to_ms"], field=f"{step_id}.clock_to_ms")
+            assert clock_from is not None and clock_to is not None
+            if timeline["clock_mode"] == "COUNTDOWN" and clock_from < clock_to:
+                raise FixtureValidationError(f"{step_id} countdown range is reversed")
+            if timeline["clock_mode"] == "ELAPSED" and clock_from > clock_to:
+                raise FixtureValidationError(f"{step_id} elapsed range is reversed")
+            duration = _parse_int(
+                timeline["battle_duration_ms"],
+                field=f"{timeline['source_axis_id']}.battle_duration_ms",
+                allow_unknown=True,
+                positive=True,
+            )
+            if duration is not None and (clock_from > duration or clock_to > duration):
+                raise FixtureValidationError(f"{step_id} exceeds its stated battle duration")
+        elif step["clock_from_ms"] != "UNKNOWN" or step["clock_to_ms"] != "UNKNOWN":
+            raise FixtureValidationError(f"{step_id} invents a time not stated by the source")
+
+        _parse_int(
+            step["tolerance_ms"],
+            field=f"{step_id}.tolerance_ms",
+            allow_unknown=True,
+        )
+        for key in ("trigger_actor_unit_key", "actor_unit_key", "target_unit_key"):
+            if step[key] != "NONE" and step[key] not in members:
+                raise FixtureValidationError(f"{step_id}.{key} is not a member of its team")
+        if (
+            step["action_type"] in {"USE_UB", "SET_ON", "SET_OFF", "TARGET"}
+            and step["actor_unit_key"] not in members
+        ):
+            raise FixtureValidationError(f"{step_id} action requires a team actor")
+        if step["action_type"] == "TARGET" and step["target_unit_key"] not in members:
+            raise FixtureValidationError(f"{step_id} TARGET requires a team target")
+        for field in (
+            "animation_cue",
+            "hp_threshold",
+            "tolerance_ms",
+            "instruction_zh_tw",
+            "failure_if_missed",
+            "source_locator",
+        ):
+            if not step[field].strip():
+                raise FixtureValidationError(f"{step_id}.{field} must not be blank")
+
+        boundary = AUDITED_TIMELINE_TIME_BOUNDARIES.get(timeline["source_axis_id"])
+        if (
+            boundary
+            and source_step_no in boundary["not_stated_source_steps"]
+            and step["time_state"] != "NOT_STATED"
+        ):
+            raise FixtureValidationError(f"{step_id} strengthens an unstated source time")
+        steps_by_timeline[step["timeline_id"]].append(step)
+
+    for timeline_id, timeline_steps in steps_by_timeline.items():
+        ordered_steps = sorted(timeline_steps, key=lambda step: int(step["sequence_no"]))
+        sequence = [int(step["sequence_no"]) for step in ordered_steps]
+        if sequence != list(range(1, len(timeline_steps) + 1)):
+            raise FixtureValidationError(f"{timeline_id} sequence_no must be contiguous from 1")
+        if not timeline_steps:
+            raise FixtureValidationError(f"{timeline_id} STRUCTURED timeline has no steps")
+        source_sequence = [int(step["source_step_no"]) for step in ordered_steps]
+        if (
+            source_sequence != sorted(source_sequence)
+            or set(source_sequence) != set(range(1, max(source_sequence, default=0) + 1))
+        ):
+            raise FixtureValidationError(
+                f"{timeline_id} source_step_no groups must be ordered and contiguous"
+            )
+
+        timeline = timeline_by_id[timeline_id]
+        boundary = AUDITED_TIMELINE_TIME_BOUNDARIES.get(timeline["source_axis_id"])
+        if boundary and (
+            set(source_sequence) != boundary["source_step_numbers"]
+            or any(
+                step["source_locator"]
+                != f"{boundary['source_locator_prefix']}{step['source_step_no']}"
+                for step in ordered_steps
+            )
+            or any(
+                step["criticality"] != boundary["criticality"]
+                for step in ordered_steps
+            )
+        ):
+            raise FixtureValidationError(
+                f"{timeline['source_axis_id']} steps violate the audited source boundary"
+            )
+
+    if len(timelines) != 8 or len(steps) != 14:
+        raise FixtureValidationError(
+            f"audited Fire 8-10 timeline closure must be 8/14, got {len(timelines)}/{len(steps)}"
+        )
+    return timelines, steps
 
 
 def load_fire_8_10_closure(research_core: Path) -> FixtureClosure:
@@ -216,9 +597,11 @@ def load_fire_8_10_closure(research_core: Path) -> FixtureClosure:
     characters_all = _read_csv(root / SOURCE_FILES[0], "unit_key")
     guides_all = _read_csv(root / SOURCE_FILES[1], "guide_id")
     teams_all = _read_csv(root / SOURCE_FILES[2], "team_id")
-    evidence_all = _read_csv(root / SOURCE_FILES[3], "evidence_id")
-    claims_all = _read_csv(root / SOURCE_FILES[4], "claim_id")
-    stats = json.loads((root / SOURCE_FILES[5]).read_text(encoding="utf-8"))
+    timelines_all = _read_csv(root / SOURCE_FILES[3], "source_axis_id")
+    timeline_steps_all = _read_csv(root / SOURCE_FILES[4], "timeline_step_id")
+    evidence_all = _read_csv(root / SOURCE_FILES[5], "evidence_id")
+    claims_all = _read_csv(root / SOURCE_FILES[6], "claim_id")
+    stats = json.loads((root / SOURCE_FILES[7]).read_text(encoding="utf-8"))
 
     characters_by_id = {row["unit_key"]: row for row in characters_all}
     guides_by_id = {row["guide_id"]: row for row in guides_all}
@@ -242,6 +625,7 @@ def load_fire_8_10_closure(research_core: Path) -> FixtureClosure:
     signatures: set[tuple[str, ...]] = set()
     unit_keys: set[str] = set()
     team_evidence_ids: dict[str, tuple[str, ...]] = {}
+    requirements_by_team: dict[str, dict[str, Any]] = {}
     for team in teams:
         if team["clear_status"] != "VERIFIED" or team["tw_availability_check"] != "PASS":
             raise FixtureValidationError(
@@ -255,7 +639,7 @@ def load_fire_8_10_closure(research_core: Path) -> FixtureClosure:
             raise FixtureValidationError(f"duplicate five-unit signature at {team['team_id']}")
         signatures.add(signature)
         unit_keys.update(members)
-        _validate_requirements(team)
+        requirements_by_team[team["team_id"]] = _validate_requirements(team)
         support_slot = team["support_slot"].strip()
         if support_slot and support_slot not in {f"slot{slot}" for slot in range(1, 6)}:
             raise FixtureValidationError(f"{team['team_id']} support_slot is invalid")
@@ -323,6 +707,15 @@ def load_fire_8_10_closure(research_core: Path) -> FixtureClosure:
     for row in evidence:
         _validate_evidence_url(row)
 
+    timelines, timeline_steps = _validate_timeline_closure(
+        teams=teams,
+        requirements_by_team=requirements_by_team,
+        evidence_by_id=evidence_by_id,
+        team_evidence_ids=team_evidence_ids,
+        timelines_all=timelines_all,
+        steps_all=timeline_steps_all,
+    )
+
     return FixtureClosure(
         fingerprint=fingerprint,
         guide=guide,
@@ -330,6 +723,8 @@ def load_fire_8_10_closure(research_core: Path) -> FixtureClosure:
         characters=characters,
         evidence=evidence,
         claims=tuple(claims_by_id[key] for key in sorted(selected_claims)),
+        timelines=timelines,
+        timeline_steps=timeline_steps,
         stage_evidence_ids=stage_evidence_ids,
         stage_claim_ids=stage_claim_ids,
         team_evidence_ids=team_evidence_ids,
@@ -348,6 +743,89 @@ def _upsert(session: Session, model: type[Any], key: Any, values: dict[str, Any]
         setattr(row, name, value)
 
 
+def _timeline_values(row: dict[str, str], *, import_run_id: str) -> dict[str, Any]:
+    axis_id = row["source_axis_id"]
+    return {
+        "source_axis_id": axis_id,
+        "timeline_id": None if row["timeline_id"] == "UNKNOWN" else row["timeline_id"],
+        "team_id": row["team_id"],
+        "source_id": row["source_id"],
+        "source_evidence_id": row["source_evidence_id"],
+        "source_locator": row["source_locator"],
+        "timeline_variant_name": row["timeline_variant_name"],
+        "operation_mode": row["operation_mode"],
+        "clock_mode": row["clock_mode"],
+        "battle_duration_ms": _parse_int(
+            row["battle_duration_ms"],
+            field=f"{axis_id}.battle_duration_ms",
+            allow_unknown=True,
+            positive=True,
+        ),
+        "initial_auto_state": row["initial_auto_state"],
+        "status": row["status"],
+        "reproducibility": row["reproducibility"],
+        "gap_reason": row["gap_reason"],
+        "last_verified_at": _parse_date(
+            row["last_verified_at"],
+            field=f"{axis_id}.last_verified_at",
+            required=True,
+        ),
+        "notes": row["notes"],
+        "source_payload": row,
+        "import_run_id": import_run_id,
+    }
+
+
+def _timeline_step_values(
+    row: dict[str, str],
+    *,
+    team_id: str,
+    import_run_id: str,
+) -> dict[str, Any]:
+    step_id = row["timeline_step_id"]
+    return {
+        "timeline_step_id": step_id,
+        "timeline_id": row["timeline_id"],
+        "team_id": team_id,
+        "sequence_no": _parse_int(
+            row["sequence_no"], field=f"{step_id}.sequence_no", positive=True
+        ),
+        "source_step_no": _parse_int(
+            row["source_step_no"], field=f"{step_id}.source_step_no", positive=True
+        ),
+        "trigger_type": row["trigger_type"],
+        "trigger_actor_unit_key": _unit_or_none(row["trigger_actor_unit_key"]),
+        "time_state": row["time_state"],
+        "clock_from_ms": _parse_int(
+            row["clock_from_ms"],
+            field=f"{step_id}.clock_from_ms",
+            allow_unknown=True,
+        ),
+        "clock_to_ms": _parse_int(
+            row["clock_to_ms"],
+            field=f"{step_id}.clock_to_ms",
+            allow_unknown=True,
+        ),
+        "actor_unit_key": _unit_or_none(row["actor_unit_key"]),
+        "action_type": row["action_type"],
+        "target_unit_key": _unit_or_none(row["target_unit_key"]),
+        "auto_state_after": row["auto_state_after"],
+        "animation_cue": row["animation_cue"],
+        "hp_threshold": row["hp_threshold"],
+        "tolerance_ms": _parse_int(
+            row["tolerance_ms"],
+            field=f"{step_id}.tolerance_ms",
+            allow_unknown=True,
+        ),
+        "criticality": row["criticality"],
+        "instruction_zh_tw": row["instruction_zh_tw"],
+        "failure_if_missed": row["failure_if_missed"],
+        "source_locator": row["source_locator"],
+        "source_payload": row,
+        "import_run_id": import_run_id,
+    }
+
+
 def _counts(closure: FixtureClosure) -> dict[str, int]:
     return {
         "stages": 1,
@@ -356,6 +834,8 @@ def _counts(closure: FixtureClosure) -> dict[str, int]:
         "characters": len(closure.characters),
         "evidence": len(closure.evidence),
         "claims": len(closure.claims),
+        "operation_timelines": len(closure.timelines),
+        "timeline_steps": len(closure.timeline_steps),
     }
 
 
@@ -400,6 +880,55 @@ def _assert_materialized(session: Session, closure: FixtureClosure) -> None:
             ]
         ):
             raise MirrorDriftError(f"idempotent fixture team {row['team_id']} drifted")
+
+    timeline_ids_by_axis = {
+        row["source_axis_id"]: row for row in closure.timelines
+    }
+    actual_axis_ids = set(
+        session.scalars(
+            select(OperationTimeline.source_axis_id).where(
+                OperationTimeline.team_id.in_(expected_team_ids)
+            )
+        ).all()
+    )
+    if actual_axis_ids != set(timeline_ids_by_axis):
+        raise MirrorDriftError("idempotent fixture operation timeline axes drifted")
+    for axis_id, source_row in timeline_ids_by_axis.items():
+        stored = session.get(OperationTimeline, axis_id)
+        expected = _timeline_values(source_row, import_run_id=stored.import_run_id if stored else "")
+        if stored is None or any(
+            getattr(stored, name) != value for name, value in expected.items()
+        ):
+            raise MirrorDriftError(f"idempotent fixture timeline {axis_id} drifted")
+
+    structured_team_by_id = {
+        row["timeline_id"]: row["team_id"]
+        for row in closure.timelines
+        if row["status"] == "STRUCTURED"
+    }
+    expected_step_ids = {row["timeline_step_id"] for row in closure.timeline_steps}
+    actual_step_ids = set(
+        session.scalars(
+            select(TimelineStep.timeline_step_id).where(
+                TimelineStep.timeline_id.in_(structured_team_by_id)
+            )
+        ).all()
+    )
+    if actual_step_ids != expected_step_ids:
+        raise MirrorDriftError("idempotent fixture timeline steps drifted")
+    for source_row in closure.timeline_steps:
+        stored = session.get(TimelineStep, source_row["timeline_step_id"])
+        expected = _timeline_step_values(
+            source_row,
+            team_id=structured_team_by_id[source_row["timeline_id"]],
+            import_run_id=stored.import_run_id if stored else "",
+        )
+        if stored is None or any(
+            getattr(stored, name) != value for name, value in expected.items()
+        ):
+            raise MirrorDriftError(
+                f"idempotent fixture timeline step {source_row['timeline_step_id']} drifted"
+            )
 
     for model, key_name, rows in (
         (Character, "unit_key", closure.characters),
@@ -718,6 +1247,34 @@ def import_fire_8_10(
                     session.add(ClaimEvidence(claim_id=row["claim_id"], evidence_id=evidence_id))
 
         session.flush()
+
+        for row in closure.timelines:
+            _upsert(
+                session,
+                OperationTimeline,
+                row["source_axis_id"],
+                _timeline_values(row, import_run_id=run_id),
+            )
+        session.flush()
+
+        structured_team_by_id = {
+            row["timeline_id"]: row["team_id"]
+            for row in closure.timelines
+            if row["status"] == "STRUCTURED"
+        }
+        for row in closure.timeline_steps:
+            _upsert(
+                session,
+                TimelineStep,
+                row["timeline_step_id"],
+                _timeline_step_values(
+                    row,
+                    team_id=structured_team_by_id[row["timeline_id"]],
+                    import_run_id=run_id,
+                ),
+            )
+        session.flush()
+
         _assert_materialized(session, closure)
         run.manifest = {
             **run.manifest,

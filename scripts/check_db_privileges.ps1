@@ -30,7 +30,8 @@ if ($ProjectName) {
 $compose += @("--env-file", $EnvFile, "-f", $composeFile)
 $servingTables = @(
     "import_runs", "characters", "claims", "evidence", "stages", "teams",
-    "team_members", "stage_evidence", "stage_claims", "team_evidence", "claim_evidence"
+    "team_members", "stage_evidence", "stage_claims", "team_evidence", "claim_evidence",
+    "operation_timelines", "timeline_steps"
 )
 $controlTables = @("scheduler_leases", "scheduler_runs")
 $matrixChecks = 0

@@ -3,6 +3,7 @@ import { Badge, Definition, Panel } from "@pcr-tw/ui";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { EvidenceDrawer } from "../../../../../components/evidence-drawer";
+import { OperationTimeline } from "../../../../../components/operation-timeline";
 import { RequirementsMatrix } from "../../../../../components/requirements-matrix";
 import { TeamRoster } from "../../../../../components/team-roster";
 import { serverApi } from "../../../../../lib/api";
@@ -77,19 +78,7 @@ export default async function TeamPage({
             <RequirementsMatrix members={team.members} requirements={team.requirements} />
           </section>
 
-          <Panel className="timeline-gap">
-            <div className="timeline-gap__icon" aria-hidden="true">!</div>
-            <div>
-              <p className="eyebrow">OPERATION TIMELINE · SOURCE GAP</p>
-              <h2>尚未建立可驗證的結構化操作軸</h2>
-              <p>來源定位已保留，但 B0 不會把影片區間或文字備註冒充逐步操作軸。需於 A2＋B2 完成 timeline／steps schema、驗證器與 mutation 後才能呈現。</p>
-              <ul className="reference-list">
-                {team.timeline.references.map((reference) => (
-                  <li key={reference.raw}><code>{reference.raw}</code></li>
-                ))}
-              </ul>
-            </div>
-          </Panel>
+          <OperationTimeline timeline={team.timeline} members={team.members} />
         </div>
 
         <aside className="detail-aside" aria-label="隊伍證據與中繼資料">

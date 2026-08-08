@@ -24,7 +24,7 @@ dev = [
 
 [tool.pytest.ini_options]
 addopts = "-q --strict-markers --strict-config"
-testpaths = ["tests/api", "tests/importer", "apps/scheduler/tests"]
+testpaths = ["tests/api", "tests/importer", "tests/database", "apps/scheduler/tests"]
 pythonpath = ["apps/api", "data_pipeline", "database", "apps/scheduler/src"]
 
 [tool.coverage.run]

@@ -35,6 +35,8 @@ export default async function HomePage() {
             <div><dt>API</dt><dd>{baseline.meta.api_version}</dd></div>
             <div><dt>Evidence</dt><dd>{baseline.data.counts.evidence}</dd></div>
             <div><dt>Claims</dt><dd>{baseline.data.counts.claims}</dd></div>
+            <div><dt>來源軸</dt><dd>{baseline.data.counts.operation_timelines}</dd></div>
+            <div><dt>操作步驟</dt><dd>{baseline.data.counts.timeline_steps}</dd></div>
           </dl>
           <p className="baseline-card__note">資料由 read-only mirror 提供；file core 仍是唯一可寫 SSOT。</p>
         </Panel>
