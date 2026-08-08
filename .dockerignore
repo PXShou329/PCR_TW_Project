@@ -1,0 +1,15 @@
+.git
+.env
+.runtime
+.venv
+node_modules
+**/node_modules
+**/.next
+**/__pycache__
+**/.pytest_cache
+**/.coverage
+coverage.xml
+htmlcov
+playwright-report
+test-results
+npm-debug.log*

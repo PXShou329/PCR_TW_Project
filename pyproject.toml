@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=80,<81", "wheel>=0.46,<0.47"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pcr-tw-strategy-platform"
+version = "3.0.0b0"
+description = "Guide-only PCR TW strategy platform walking skeleton"
+requires-python = ">=3.12,<3.14"
+dependencies = [
+  "alembic==1.19.0",
+  "fastapi==0.141.1",
+  "psycopg[binary]==3.3.4",
+  "sqlalchemy==2.0.51",
+  "uvicorn[standard]==0.40.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "httpx2==2.0.0",
+  "pytest==9.0.2",
+  "pytest-cov==7.0.0",
+]
+
+[tool.pytest.ini_options]
+addopts = "-q --strict-markers --strict-config"
+testpaths = ["tests/api", "tests/importer", "apps/scheduler/tests"]
+pythonpath = ["apps/api", "data_pipeline", "database", "apps/scheduler/src"]
+
+[tool.coverage.run]
+branch = true
+source = ["pcr_api", "pcr_pipeline", "pcr_database"]

@@ -1,0 +1,149 @@
+name: B0 validation
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: b0-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  research-core:
+    name: Research core exact baseline
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13.14"
+      - name: Run five commands in a disposable copy
+        run: python scripts/check_research_baseline.py
+
+  python:
+    name: API, importer, and scheduler tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13.14"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+            apps/scheduler/pyproject.toml
+      - name: Install locked-compatible dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --requirement requirements-dev.txt
+          python -m pip install --editable "apps/scheduler[dev]"
+      - name: Run Python tests
+        env:
+          PYTHONPATH: apps/api:data_pipeline:database
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: python -m pytest tests apps/scheduler/tests
+
+  web:
+    name: Web typecheck and production build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13.14"
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.18.0"
+          cache: npm
+      - run: npm ci
+      - run: python -m pip install --requirement requirements.txt
+      - run: npm run check:contract
+      - run: npm run typecheck
+      - run: npm run build:web
+        env:
+          API_BASE_URL: http://127.0.0.1:8000
+
+  e2e:
+    name: Compose health and browser E2E
+    runs-on: ubuntu-24.04
+    needs: [research-core, python, web]
+    timeout-minutes: 30
+    env:
+      POSTGRES_PASSWORD: ci-ephemeral-not-a-real-secret
+      POSTGRES_USER: pcr_owner
+      POSTGRES_DB: pcr_tw
+      PCR_API_DB_PASSWORD: ci-api-readonly-ephemeral-only
+      PCR_IMPORTER_DB_PASSWORD: ci-importer-dml-ephemeral-only
+      PCR_SCHEDULER_DB_PASSWORD: ci-scheduler-control-ephemeral-only
+      SCHEDULER_ENABLED: "false"
+      SHADOW_MODE: "true"
+      AUTO_PUBLISH: "false"
+      PLAYWRIGHT_BASE_URL: http://127.0.0.1:3000
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.18.0"
+          cache: npm
+      - run: npm ci
+      - name: Materialize ignored ephemeral Compose environment
+        shell: pwsh
+        run: |
+          @"
+          POSTGRES_PASSWORD=$env:POSTGRES_PASSWORD
+          POSTGRES_USER=$env:POSTGRES_USER
+          POSTGRES_DB=$env:POSTGRES_DB
+          PCR_API_DB_PASSWORD=$env:PCR_API_DB_PASSWORD
+          PCR_IMPORTER_DB_PASSWORD=$env:PCR_IMPORTER_DB_PASSWORD
+          PCR_SCHEDULER_DB_PASSWORD=$env:PCR_SCHEDULER_DB_PASSWORD
+          "@ | Set-Content -LiteralPath .env.ci -Encoding utf8NoBOM
+      - name: Validate resolved Compose configuration
+        run: docker compose -f infra/compose.yml config --quiet
+      - name: Build and start private staging stack
+        run: docker compose -f infra/compose.yml up --build --wait
+      - name: Verify service health and safety flags
+        shell: pwsh
+        run: |
+          $api = Invoke-RestMethod http://127.0.0.1:8000/health/ready
+          $scheduler = Invoke-RestMethod http://127.0.0.1:8081/health
+          $web = Invoke-RestMethod http://127.0.0.1:3000/api/health
+          if ($scheduler.enabled -or -not $scheduler.shadow_mode -or $scheduler.canonical_write_capable) {
+            throw "Scheduler B0 safety boundary failed"
+          }
+      - name: Verify PostgreSQL least-privilege matrix and real denials
+        shell: pwsh
+        run: ./scripts/check_db_privileges.ps1 -EnvFile .env.ci
+      - name: Verify scheduler lease and idempotency contract
+        run: docker compose --profile verification -f infra/compose.yml run --rm scheduler-smoke
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Run browser E2E
+        run: npm run test:e2e
+      - name: Backup into an empty DB and restore
+        shell: pwsh
+        run: ./scripts/backup_restore_smoke.ps1 -EnvFile .env.ci
+      - name: Capture container state
+        if: always()
+        run: |
+          docker compose -f infra/compose.yml ps --all
+          docker compose -f infra/compose.yml logs --no-color > compose.log
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: compose-logs
+          path: compose.log
+          retention-days: 7
+      - name: Stop stack and remove CI volumes
+        if: always()
+        run: docker compose -f infra/compose.yml down --volumes --remove-orphans
