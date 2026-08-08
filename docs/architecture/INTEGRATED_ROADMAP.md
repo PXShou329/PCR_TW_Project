@@ -42,8 +42,8 @@
 - PostgreSQL read mirror 新增 8 條 timeline、14 個 atomic steps；import replay、
   完整 fixture fingerprint 與 serving-boundary drift 均 fail-closed。
 - 下一固定里程碑為 B1 round-trip parity；Data Gate A／B／C 與 Gates D–G 仍未宣稱通過。
-- 回滾點：A2 research core 使用 `rp-a2-2`；A2＋B2 完整切片使用
-  `rp-a2-b2-1`。
+- 回滾點：A2 research core 使用 `rp-a2-2`；A2＋B2 通過 Compose CI 的完整切片使用
+  `rp-a2-b2-2`。`rp-a2-b2-1` 僅保留作 CI parity 修正前的稽核 checkpoint。
 
 ## 不可突破的停止條件
 

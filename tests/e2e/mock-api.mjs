@@ -342,7 +342,7 @@ const evidence073 = envelope({
   published_date_precision: "DAY",
   verified_date: "2026-08-08",
   claim_summary: "全文實開：2025年9月魔法半自動完整列出同五人及操作步驟；本測試資料依 canonical 手順 1–8 呈現十四個原子動作。",
-  limitations: "大型攻略站單頁上限 D；此操作軸來自日服，尚未逐步於台服重現，且來源未明載戰鬥總長、容錯與漏按結果。",
+  limitations: "大型攻略站單頁上限 D；全自動②雖列完整五人但頁面未提供可定位的 WIN／結算證據故不建立正式隊；只作文字化與版本辨識旁證",
   status: "ACTIVE",
 });
 

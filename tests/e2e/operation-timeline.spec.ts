@@ -36,7 +36,8 @@ test("TM-F810-02 逐來源呈現 PARTIAL 操作軸且不合併缺口來源", asy
   const drawer = page.getByRole("dialog", { name: "ev073" });
   await expect(drawer).toBeVisible();
   await expect(drawer).toContainText("GameWith 深域クエスト「火8-10」攻略");
-  await expect(drawer).toContainText("尚未逐步於台服重現");
+  await expect(drawer).toContainText("全自動②雖列完整五人但頁面未提供可定位的 WIN／結算證據");
+  await expect(drawer).not.toContainText("尚未逐步於台服重現");
   await expect(drawer.getByText("本次核對定位：2025年9月魔法半自動／手順1")).toBeVisible();
   await expect(drawer.getByRole("button", { name: "關閉" })).toBeFocused();
   await page.keyboard.press("Shift+Tab");

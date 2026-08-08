@@ -36,6 +36,7 @@ OpenAPI／TypeScript parity:       OPENAPI_CLIENT_PARITY_OK schemas=16
 TypeScript typecheck:             exit 0
 Next.js production build:         exit 0
 Mock Playwright desktop/mobile:   12 passed
+Real Compose Playwright:          12 passed
 pip check:                        No broken requirements found
 ```
 
@@ -73,13 +74,17 @@ closure 約束。
 - 14 個步驟完整呈現，前四步保持「時間未確認」。
 - Evidence Drawer 同時顯示登錄 locator 與本次逐步 locator
   `2025年9月魔法半自動／手順1`。
+- Compose E2E 使用 canonical Evidence 限制文字；mock 不再把 timeline 的台服重現
+  狀態混入 ev073，避免 mock-only false green。
 - Shift+Tab 焦點留在 dialog；Escape 關閉後回到原 trigger。
 - 桌面與手機均無水平溢位；瀏覽器 console 的 warn／error 為 0。
 
 ## 回滾與保留資料
 
 - Research A2 回滾點：`rp-a2-2`。
-- A2＋B2 完整垂直切片回滾點：`rp-a2-b2-1`。
+- A2＋B2 通過 Compose CI 的完整垂直切片回滾點：`rp-a2-b2-2`。
+- `rp-a2-b2-1` 保留為發現 mock／canonical Evidence 限制文字漂移前的稽核
+  checkpoint，不作最終交付回滾點。
 - Compose 容器於驗證後停止；不刪除可重建的
   `pcr-tw-a2b2-final_pg_data` checkpoint volume。
 - canonical SSOT 仍是 48 檔 research core；PostgreSQL 永遠只是可重建 read mirror。
