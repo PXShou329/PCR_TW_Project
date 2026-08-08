@@ -617,5 +617,41 @@ def m68(d):
     rewrite_csv(P(d, "27_PVE_TIMELINE_STEPS.csv"), fn)
 results.append(mutate("M68 Inferred Timeline Criticality", m68, "FAIL", mode="PRE_SUITE",
                       target_fail="ST87：來源邊界、locator 與未載欄位不得推測"))
+# M69: Arena 的 PASS 不得只信任旗標；敵我十名都必須存在於 18 且 AVAILABLE。
+def m69(d):
+    def fn(rows):
+        h = rows[0]
+        row = [""] * len(h)
+        values = {
+            "counter_id": "TW_ARENA_M69",
+            "server": "TW",
+            "environment_version": "TEST_ONLY",
+            "enemy_team_ids": "missing_arena_1;missing_arena_2;missing_arena_3;missing_arena_4;missing_arena_5",
+            "counter_team_ids": "missing_counter_1;missing_counter_2;missing_counter_3;missing_counter_4;missing_counter_5",
+            "status": "PROVISIONAL",
+            "verified_date": "2026-08-08",
+            "source_tier": "SINGLE_PLAYER_REPORT",
+            "claim_confidence": "D",
+            "evidence_ids": "ev001",
+            "claim_ids": "CLM-TW-WAKANA-WINTER-REL",
+            "sample_size": "1",
+            "randomness": "UNKNOWN",
+            "reproducibility": "UNVERIFIED_ON_TW",
+            "last_review_due": "2026-12-31",
+            "notes": "TEST_ONLY mutation",
+            "source_record_count": "1",
+            "source_platforms": "TEST_ONLY",
+            "tw_availability_check": "PASS",
+            "unavailable_unit_ids": "",
+            "required_upgrade_check": "UNKNOWN",
+            "record_date_min": "2026-08-08",
+            "record_date_max": "2026-08-08",
+        }
+        for field, value in values.items():
+            row[h.index(field)] = value
+        rows.append(row)
+    rewrite_csv(P(d, "39_ARENA_COUNTER_REGISTRY.csv"), fn)
+results.append(mutate("M69 Arena PASS With Missing 18 Units", m69, "FAIL", mode="PRE_SUITE",
+                      target_fail="39：tw_availability_check Enum；PASS 的敵我各五人須不同且均為 18 AVAILABLE"))
 print('MUTATION_TESTS', 'ALL_OK' if all(results) else 'FAILED', f'| active_scenarios={len(results)}')
 sys.exit(0 if all(results) else 1)

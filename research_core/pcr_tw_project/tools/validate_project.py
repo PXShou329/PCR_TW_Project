@@ -161,6 +161,21 @@ ck("18：強化欄位 Enum", all(r[i] in CFG['enums']['upgrade_status'] for r in
 ck("18：Evidence FK", all(e in set(ids92) for r in r18[1:] for e in r[_e18].split(';') if e))
 ck("18：日期格式", all((not r[h18.index('tw_release_date')] or date_ok(r[h18.index('tw_release_date')])) and date_ok(r[h18.index('last_verified')]) for r in r18[1:]))
 TW_UNITS = {r[0] for r in r18[1:] if r[_a18] == 'AVAILABLE'}
+h39 = r39[0]
+t39 = [dict(zip(h39, r)) for r in r39[1:]]
+def _arena_team_ids(row, field):
+    return [unit_key for unit_key in row[field].split(';') if unit_key]
+ck("39：tw_availability_check Enum；PASS 的敵我各五人須不同且均為 18 AVAILABLE", all(
+    row['tw_availability_check'] in CFG['enums']['tw_check']
+    and (row['tw_availability_check'] != 'PASS' or all(
+        len(team) == 5 and len(set(team)) == 5 and all(unit_key in TW_UNITS for unit_key in team)
+        for team in (
+            _arena_team_ids(row, 'enemy_team_ids'),
+            _arena_team_ids(row, 'counter_team_ids'),
+        )
+    ))
+    for row in t39
+))
 h25 = r25[0]
 ck("25：欄位標頭符合規格", h25 == CFG['t25_header'])
 t25 = [dict(zip(h25, r)) for r in r25[1:]]
@@ -598,7 +613,7 @@ for r in r39[1:]:
     eids = [e for e in r[c39['evidence_ids']].split(';') if e]; cids = [c for c in r[c39['claim_ids']].split(';') if c]
     fresh = (not r[c39['last_review_due']]) or r[c39['last_review_due']] >= TODAY
     twc = r[h39.index('tw_availability_check')] if 'tw_availability_check' in h39 else ''
-    if len(en) == 5 and len(co) == 5 and len(set(en)) == 5 and len(set(co)) == 5 and date_ok(r[c39['verified_date']]) and all(e in set(ids92) for e in eids) and all(c in set(ids93) for c in cids) and r[c39['reproducibility']] and fresh and eids and cids and twc == 'PASS':
+    if len(en) == 5 and len(co) == 5 and len(set(en)) == 5 and len(set(co)) == 5 and all(u in TW_UNITS for u in en + co) and date_ok(r[c39['verified_date']]) and all(e in set(ids92) for e in eids) and all(c in set(ids93) for c in cids) and r[c39['reproducibility']] and fresh and eids and cids and twc == 'PASS':
         arena_ok.append((r[c39['enemy_team_ids']], r[c39['counter_id']]))
 _def_groups = Counter(e for e, _ in arena_ok)
 ARENA_F = sum(1 for e, n in _def_groups.items() if n >= CFG['gate_thresholds']['B']['counters_per_defense'])

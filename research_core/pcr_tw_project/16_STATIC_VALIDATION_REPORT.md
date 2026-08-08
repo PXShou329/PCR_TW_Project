@@ -3,7 +3,7 @@
 > 由 `tools/validate_project.py` 生成（唯一路徑）；回歸驗證：`python3 tools/mutation_test.py`（Active 情境數見其輸出；退休 ID 見 Archive）。
 > 生成日：2026-08-08｜版本：v1.5｜Release：2026-08-02｜Mode：PRE_SUITE
 
-## 檢查結果（128 項）
+## 檢查結果（129 項）
 
 | 檢查 | 結果 | 明細 |
 |---|---|---|
@@ -47,6 +47,7 @@
 | 18：強化欄位 Enum | PASS |  |
 | 18：Evidence FK | PASS |  |
 | 18：日期格式 | PASS |  |
+| 39：tw_availability_check Enum；PASS 的敵我各五人須不同且均為 18 AVAILABLE | PASS |  |
 | 25：欄位標頭符合規格 | PASS |  |
 | 25：guide_id FK→24 | PASS |  |
 | 25：五 slot 完整 | PASS |  |
