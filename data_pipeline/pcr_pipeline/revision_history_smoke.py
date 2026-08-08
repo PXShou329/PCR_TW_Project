@@ -16,6 +16,7 @@ from .pve_fixture import import_fire_8_10
 from .research_core_snapshot import (
     DEFAULT_MANIFEST,
     EXPECTED_MANIFEST_SHA256,
+    VALIDATOR_RUNTIME_PATHS,
     canonical_manifest_sha256,
 )
 
@@ -35,6 +36,8 @@ def _write_manifest(root: Path, destination: Path) -> str:
     lines: list[str] = []
     for path in sorted(candidate for candidate in root.rglob("*") if candidate.is_file()):
         relative_path = path.relative_to(root).as_posix()
+        if relative_path in VALIDATOR_RUNTIME_PATHS:
+            continue
         lines.append(f"{hashlib.sha256(path.read_bytes()).hexdigest()}  {relative_path}")
     destination.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
     return canonical_manifest_sha256(lines)

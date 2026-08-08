@@ -10,6 +10,7 @@ const fields: Array<[keyof SlotRequirement, string]> = [
   ["connect_rank", "連結品級"],
   ["element_boost", "屬性強化"],
 ];
+const slotKeys = ["slot1", "slot2", "slot3", "slot4", "slot5"] as const;
 
 export function RequirementsMatrix({
   members,
@@ -21,8 +22,8 @@ export function RequirementsMatrix({
   return (
     <div className="requirements-grid">
       {members.map((member, index) => {
-        const slotKey = `slot${member.slot}`;
-        const slot = requirements.slots[slotKey] ?? requirements.slots[`slot${index + 1}`];
+        const slotKey = slotKeys[member.slot - 1] ?? slotKeys[index] ?? "slot1";
+        const slot = requirements.slots[slotKey];
         return (
           <article className="requirement-card" key={`${slotKey}-${member.unit_key}`}>
             <div className="requirement-card__heading">

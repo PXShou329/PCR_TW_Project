@@ -18,18 +18,50 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 
-# RP-A2 是 B1 read-mirror 的輸入契約；變更這個 pin 必須伴隨新的研究核心 checkpoint。
-EXPECTED_MANIFEST_SHA256 = "3a242b521d830af12ce8559d88b733068fb1b6cb503219395d2986b89e5dc352"
+@dataclass(frozen=True)
+class SnapshotContract:
+    """Immutable structural pins for one research-core manifest generation."""
+
+    file_count: int
+    csv_file_count: int
+    csv_row_count: int
+    evidence_to_claim_count: int
+    claim_to_evidence_count: int
+
+
+# RP-A3 是 A3 read-mirror 的輸入契約；歷史 RP-A2 pin 與 manifest
+# 保留供 version-aware rollback 測試，不覆寫其 immutable checkpoint。
+EXPECTED_MANIFEST_SHA256 = "ab62e07483dfea07c992b950b9c05c74fa0e3767fa0b3bce64b20193a1860333"
 EXPECTED_FILE_COUNT = 48
 EXPECTED_CSV_FILE_COUNT = 13
-EXPECTED_CSV_ROW_COUNT = 215
-EXPECTED_EVIDENCE_TO_CLAIM_COUNT = 75
-EXPECTED_CLAIM_TO_EVIDENCE_COUNT = 162
+EXPECTED_CSV_ROW_COUNT = 239
+EXPECTED_EVIDENCE_TO_CLAIM_COUNT = 81
+EXPECTED_CLAIM_TO_EVIDENCE_COUNT = 184
 TREE_SERIALIZATION_VERSION = 1
+
+RP_A2_MANIFEST_SHA256 = "3a242b521d830af12ce8559d88b733068fb1b6cb503219395d2986b89e5dc352"
+CURRENT_SNAPSHOT_CONTRACT = SnapshotContract(
+    file_count=EXPECTED_FILE_COUNT,
+    csv_file_count=EXPECTED_CSV_FILE_COUNT,
+    csv_row_count=EXPECTED_CSV_ROW_COUNT,
+    evidence_to_claim_count=EXPECTED_EVIDENCE_TO_CLAIM_COUNT,
+    claim_to_evidence_count=EXPECTED_CLAIM_TO_EVIDENCE_COUNT,
+)
+RP_A2_SNAPSHOT_CONTRACT = SnapshotContract(
+    file_count=48,
+    csv_file_count=13,
+    csv_row_count=215,
+    evidence_to_claim_count=75,
+    claim_to_evidence_count=162,
+)
+PINNED_SNAPSHOT_CONTRACTS: Mapping[str, SnapshotContract] = {
+    EXPECTED_MANIFEST_SHA256: CURRENT_SNAPSHOT_CONTRACT,
+    RP_A2_MANIFEST_SHA256: RP_A2_SNAPSHOT_CONTRACT,
+}
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_RESEARCH_CORE = REPOSITORY_ROOT / "research_core" / "pcr_tw_project"
-DEFAULT_MANIFEST = REPOSITORY_ROOT / "scripts" / "research_core_rp_a2_manifest.sha256"
+DEFAULT_MANIFEST = REPOSITORY_ROOT / "scripts" / "research_core_rp_a3_manifest.sha256"
 
 CSV_NATURAL_KEYS: Mapping[str, str] = {
     "17_TEST_EXECUTION_LOG.csv": "run_id",
@@ -53,6 +85,17 @@ VALIDATOR_GENERATED_PATHS = frozenset(
         "15_DATA_QUALITY_REPORT.md",
         "16_STATIC_VALIDATION_REPORT.md",
         "tools/stats.json",
+    }
+)
+
+# Validator mode reports are explicitly non-canonical diagnostics (README ADR
+# 35).  They may exist after the required validation workflow, but must never
+# enter a revision manifest or the immutable CoreFile mirror.
+VALIDATOR_RUNTIME_PATHS = frozenset(
+    {
+        "tools/reports/pre_suite.json",
+        "tools/reports/operational.json",
+        "tools/reports/artifact_ready.json",
     }
 )
 
@@ -537,6 +580,8 @@ def _walk_regular_files(root: Path) -> dict[str, Path]:
                 relative = candidate.relative_to(root).as_posix()
                 raise SnapshotValidationError(f"research core contains non-regular file: {relative}")
             relative = candidate.relative_to(root).as_posix()
+            if relative in VALIDATOR_RUNTIME_PATHS:
+                continue
             files[relative] = candidate
 
     _reject_path_collisions(files, label="research-core")
@@ -652,17 +697,56 @@ def _extract_claim_edges(
     return tuple(sorted(evidence_to_claim)), tuple(sorted(claim_to_evidence))
 
 
+def snapshot_contract_for_manifest(manifest_sha256: str) -> SnapshotContract:
+    """Resolve exact structural pins for a known manifest generation.
+
+    Explicit, non-checkpoint manifests retain the current-generation contract so
+    callers can validate a candidate with the same shape.  Synthetic tests or
+    future migrations that intentionally change one pin must pass that override
+    explicitly; historical checkpoint manifests never inherit newer counts.
+    """
+
+    return PINNED_SNAPSHOT_CONTRACTS.get(
+        manifest_sha256,
+        CURRENT_SNAPSHOT_CONTRACT,
+    )
+
+
 def load_research_core_snapshot(
     research_core: Path = DEFAULT_RESEARCH_CORE,
     manifest_path: Path = DEFAULT_MANIFEST,
     *,
     expected_manifest_sha256: str = EXPECTED_MANIFEST_SHA256,
-    expected_file_count: int = EXPECTED_FILE_COUNT,
-    expected_csv_file_count: int = EXPECTED_CSV_FILE_COUNT,
-    expected_csv_row_count: int = EXPECTED_CSV_ROW_COUNT,
-    expected_evidence_to_claim_count: int = EXPECTED_EVIDENCE_TO_CLAIM_COUNT,
-    expected_claim_to_evidence_count: int = EXPECTED_CLAIM_TO_EVIDENCE_COUNT,
+    expected_file_count: int | None = None,
+    expected_csv_file_count: int | None = None,
+    expected_csv_row_count: int | None = None,
+    expected_evidence_to_claim_count: int | None = None,
+    expected_claim_to_evidence_count: int | None = None,
 ) -> ResearchCoreSnapshot:
+    contract = snapshot_contract_for_manifest(expected_manifest_sha256)
+    expected_file_count = (
+        contract.file_count if expected_file_count is None else expected_file_count
+    )
+    expected_csv_file_count = (
+        contract.csv_file_count
+        if expected_csv_file_count is None
+        else expected_csv_file_count
+    )
+    expected_csv_row_count = (
+        contract.csv_row_count
+        if expected_csv_row_count is None
+        else expected_csv_row_count
+    )
+    expected_evidence_to_claim_count = (
+        contract.evidence_to_claim_count
+        if expected_evidence_to_claim_count is None
+        else expected_evidence_to_claim_count
+    )
+    expected_claim_to_evidence_count = (
+        contract.claim_to_evidence_count
+        if expected_claim_to_evidence_count is None
+        else expected_claim_to_evidence_count
+    )
     lexical_root = _assert_source_path_has_no_reparse(
         research_core, label="research core root"
     )

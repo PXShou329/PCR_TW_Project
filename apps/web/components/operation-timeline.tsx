@@ -16,6 +16,7 @@ const operationLabels: Record<TimelineOperationMode, string> = {
   AUTO: "全自動聲明",
   SEMI_AUTO: "半自動",
   MANUAL_TIMELINE: "手動操作軸",
+  UNKNOWN: "操作模式未確認",
 };
 
 const triggerLabels: Record<TimelineTriggerType, string> = {

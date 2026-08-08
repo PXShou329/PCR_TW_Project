@@ -14,6 +14,8 @@ const character = {
   shizuru_valentine: "靜流（情人節）",
   maho_summer: "真步（夏日）",
   yui_xmas: "優衣（聖誕節）",
+  anne_grea_orig: "安＆古蕾婭",
+  mio_ngs: "未央（NGs）",
 };
 
 const teamSeeds = [
@@ -22,6 +24,7 @@ const teamSeeds = [
     operation_mode: "SOURCE_CONFLICT",
     stability: "多來源交叉驗證",
     units: ["luisemarie_orig", "lailael_xmas", "croce_aerial", "vurm_orig", "lind_orig"],
+    source_ids: ["appmatch_fire_guide", "yt_jkPXr3aUZZQ", "yt_tYwLvHHbKXo"],
     evidence_ids: ["ev050", "ev052", "ev056", "ev057", "ev058", "ev059", "ev060", "ev069"],
     operation_mode_claims: [
       { mode: "AUTO", source_id: "appmatch_fire_guide" },
@@ -37,6 +40,7 @@ const teamSeeds = [
     operation_mode: "SEMI_AUTO",
     stability: "多來源交叉驗證",
     units: ["shizuru_valentine", "lailael_xmas", "croce_aerial", "vurm_orig", "luisemarie_orig"],
+    source_ids: ["yt_F39PkRIg0T4", "yt_OtiJrk3jacg", "yt_i4pE3GxTMMA", "gamewith_fire_8_10"],
     evidence_ids: ["ev056", "ev057", "ev058", "ev060", "ev070", "ev071", "ev072", "ev073", "ev074", "ev075"],
     operation_mode_claims: [
       { mode: "SEMI_AUTO", source_id: "yt_F39PkRIg0T4" },
@@ -53,11 +57,40 @@ const teamSeeds = [
     operation_mode: "SEMI_AUTO",
     stability: "單一實戰",
     units: ["maho_summer", "lailael_xmas", "croce_aerial", "vurm_orig", "yui_xmas"],
+    source_ids: ["yt_ZXUDJm_AsSA", "gamewith_fire_8_10"],
     evidence_ids: ["ev051", "ev057", "ev058", "ev060", "ev073", "ev075", "ev076"],
     operation_mode_claims: [{ mode: "SEMI_AUTO", source_id: "yt_ZXUDJm_AsSA" }],
     timeline_ref: "AX-F810-03-EV051",
     support: { unit: "croce_aerial", requirements: "yt_ZXUDJm_AsSA=borrowed Croce (Aerial); exact build UNKNOWN" },
     notes: "僅供參考：單一實戰；克蘿茜（航空）為借角，精確練度仍 UNKNOWN。",
+  },
+  {
+    team_id: "TM-F810-04",
+    operation_mode: "UNKNOWN",
+    stability: "單一實戰",
+    units: ["lailael_xmas", "croce_aerial", "vurm_orig", "anne_grea_orig", "yui_xmas"],
+    source_ids: ["yt_p95ZoBCWuYE"],
+    evidence_ids: ["ev057", "ev058", "ev060", "ev076", "ev078", "ev079", "ev082"],
+    operation_mode_claims: [{ mode: "UNKNOWN", source_id: "yt_p95ZoBCWuYE" }],
+    timeline_ref: "AX-F810-04-EV082",
+    support: { unit: "UNKNOWN", requirements: "UNKNOWN" },
+    notes: "僅供參考：單一實戰；來源未充分聲明操作模式，故 operation mode 與逐 slot 條件均維持 UNKNOWN。",
+  },
+  {
+    team_id: "TM-F810-05",
+    operation_mode: "SEMI_AUTO",
+    stability: "單一實戰",
+    units: ["croce_aerial", "vurm_orig", "mio_ngs", "anne_grea_orig", "yui_xmas"],
+    source_ids: ["yt_Zw31omyYDKI"],
+    evidence_ids: ["ev057", "ev060", "ev076", "ev078", "ev079", "ev080", "ev081", "ev083"],
+    operation_mode_claims: [{ mode: "SEMI_AUTO", source_id: "yt_Zw31omyYDKI" }],
+    timeline_ref: "AX-F810-05-EV083",
+    support: { unit: "UNKNOWN", requirements: "UNKNOWN" },
+    failure_conditions: [
+      "來源全域養成條件只作整隊說明，不拆填逐 slot。",
+      "來源只寫優衣（聖誕節）＝適当，精確條件 UNKNOWN。",
+    ],
+    notes: "僅供參考：來源聲明 SEMI_AUTO；不明確的 actor/action 只保存為 SOURCE_TEXT_ONLY／NO_ACTION。",
   },
 ];
 
@@ -92,10 +125,22 @@ const stageSummary = {
   mode: "DEEP",
   area: "紅焰",
   stage: "8-10",
-  status: "PROVISIONAL",
-  team_count: 3,
-  reproducibility: "PENDING",
+  status: "VERIFIED",
+  team_count: 5,
+  reproducibility: "CONFIRMED",
   verified_date: "2026-08-08",
+};
+
+const secondaryStageSummary = {
+  guide_id: "TW_DEEP_FIRE_10_10_20260802",
+  server: "TW",
+  mode: "DEEP",
+  area: "紅焰",
+  stage: "10-10",
+  status: "IN_RESEARCH",
+  team_count: 0,
+  reproducibility: "PENDING",
+  verified_date: "2026-08-02",
 };
 
 const meta = (warnings = []) => ({
@@ -119,18 +164,18 @@ const envelope = (data, warnings = []) => ({ data, meta: meta(warnings) });
 
 const baseline = envelope({
   research_core_version: "v1.5",
-  application_version: "3.0.0-b1",
+  application_version: "3.0.0-a3",
   canonical_source: "research_core_file_ssot",
   generated_at: "2026-08-08T00:00:00Z",
   counts: {
-    stages: 1,
-    teams: 3,
-    team_members: 15,
-    characters: 8,
-    evidence: 18,
-    claims: 13,
-    operation_timelines: 8,
-    timeline_steps: 14,
+    stages: 2,
+    teams: 5,
+    team_members: 25,
+    characters: 17,
+    evidence: 34,
+    claims: 27,
+    operation_timelines: 10,
+    timeline_steps: 19,
   },
   gates: { gate_a: false, gate_b: false, gate_c: false },
   featured_stage: stageSummary,
@@ -142,11 +187,24 @@ const stageDetail = envelope({
   source_tier: "SINGLE_PLAYER_REPORT",
   claim_confidence: "D",
   last_review_due: "2026-09-30",
-  notes: "本輪實際開頁與逐幀核對後取得 3 支不同五人的 VERIFIED effective teams；距成熟門檻 5 支仍差 2 支。",
-  coverage: { verified_distinct_teams: 3, maturity_target: 5, remaining: 2, is_mature: false },
+  notes: "實際開頁與逐幀核對後取得 5 支不同五人的 VERIFIED effective teams；相同五人多來源已去重，未知操作模式與逐 slot 條件仍誠實保留。",
+  coverage: { verified_distinct_teams: 5, maturity_target: 5, remaining: 0, is_mature: true },
   teams: teamSeeds.map(teamSummary),
-  evidence_ids: ["ev050", "ev051", "ev052", "ev056", "ev057", "ev058", "ev059", "ev060", "ev069", "ev070", "ev071", "ev072", "ev073", "ev074", "ev075", "ev076", "ev077"],
-  claim_ids: ["CLM-PVE-F810-STD", "CLM-PVE-F810-SHIZURU", "CLM-PVE-F810-NOLUISE"],
+  evidence_ids: ["ev050", "ev051", "ev052", "ev056", "ev057", "ev058", "ev059", "ev060", "ev069", "ev070", "ev071", "ev072", "ev073", "ev074", "ev075", "ev076", "ev077", "ev078", "ev079", "ev080", "ev081", "ev082", "ev083"],
+  claim_ids: ["CLM-PVE-F810-STD", "CLM-PVE-F810-SHIZURU", "CLM-PVE-F810-NOLUISE", "CLM-PVE-F810-ANNEGREA", "CLM-PVE-F810-MIO", "CLM-PVE-TL-F810-MIO", "CLM-TW-LUISE-ORIG-REL", "CLM-TW-CROCE-AERIAL-REL", "CLM-TW-LAILAEL-XMAS-REL", "CLM-TW-LIND-REL", "CLM-TW-VURM-REL", "CLM-TW-SHIZURU-VAL-AVAILABLE", "CLM-TW-MAHO-SUMMER-AVAILABLE", "CLM-TW-YUI-XMAS-REL", "CLM-TW-LAILAEL-XMAS-UE1", "CLM-TW-ANNE-GREA-REL", "CLM-LOC-ANNE-GREA", "CLM-TW-MIO-NGS-AVAILABLE", "CLM-LOC-MIO-NGS"].sort(),
+});
+
+const secondaryStageDetail = envelope({
+  ...secondaryStageSummary,
+  applicable_version: "ch16/Lv373",
+  source_tier: "SINGLE_PLAYER_REPORT",
+  claim_confidence: "D",
+  last_review_due: "2026-08-31",
+  notes: "目前只有稀缺性與版本脈絡，尚無符合完整五人、明確關卡及實際通關三項條件的有效隊伍。",
+  coverage: { verified_distinct_teams: 0, maturity_target: 5, remaining: 5, is_mature: false },
+  teams: [],
+  evidence_ids: ["ev029", "ev054", "ev055"],
+  claim_ids: ["CLM-PVE-F1010-SCARCE"],
 });
 
 function splitTimeline(raw) {
@@ -179,6 +237,7 @@ function gapSource({ axis, source, evidence, locator, variant, operationMode, no
 
 function timelineStep({
   id,
+  timelineId = "TL-F810-02-EV073",
   sequence,
   sourceStep,
   timeState,
@@ -194,7 +253,7 @@ function timelineStep({
 }) {
   return {
     timeline_step_id: id,
-    timeline_id: "TL-F810-02-EV073",
+    timeline_id: timelineId,
     sequence_no: sequence,
     source_step_no: sourceStep,
     time_state: timeState,
@@ -233,6 +292,14 @@ const tm2StructuredSteps = [
   timelineStep({ id: "TLS-F810-02-014", sequence: 14, sourceStep: 8, timeState: "STATED", milliseconds: 5000, trigger: "ANIMATION_CUE", triggerActor: "croce_aerial", actor: "shizuru_valentine", action: "USE_UB", autoState: "OFF", cue: "克蘿茜（航空）UB 結束後", instruction: "倒數 0:05 左右，在克蘿茜（航空）UB 後立即施放靜流（情人節）UB，以取消來源所稱「セグメント」技能動作。", locator: "2025年9月魔法半自動／手順8" }),
 ];
 
+const tm5SourceTextSteps = [
+  timelineStep({ id: "TLS-F810-05-001", timelineId: "TL-F810-05-EV083", sequence: 1, sourceStep: 1, timeState: "STATED", milliseconds: 90000, trigger: "SOURCE_TEXT_ONLY", actor: "NONE", action: "NO_ACTION", autoState: "OFF", cue: "raw_set_pattern=[〇〇〇〇〇]", instruction: "來源原文：1:30 [〇〇〇〇〇](OFF)；actor 未標示，方括號圖樣定義 UNKNOWN。", locator: "影片說明／timeline 1" }),
+  timelineStep({ id: "TLS-F810-05-002", timelineId: "TL-F810-05-EV083", sequence: 2, sourceStep: 2, timeState: "STATED", milliseconds: 38000, trigger: "SOURCE_TEXT_ONLY", triggerActor: "anne_grea_orig", actor: "anne_grea_orig", action: "NO_ACTION", autoState: "OFF", cue: "raw_set_pattern=[〇〇〇ー〇]", instruction: "來源原文：0:38 アングレア [〇〇〇ー〇](OFF)；僅保存角色 marker，不推定動作。", locator: "影片說明／timeline 2" }),
+  timelineStep({ id: "TLS-F810-05-003", timelineId: "TL-F810-05-EV083", sequence: 3, sourceStep: 3, timeState: "STATED", milliseconds: 27000, trigger: "SOURCE_TEXT_ONLY", triggerActor: "vurm_orig", actor: "vurm_orig", action: "NO_ACTION", autoState: "OFF", cue: "raw_set_pattern=[〇〇〇〇〇]", instruction: "來源原文：0:27 ヴルム [〇〇〇〇〇](OFF)；僅保存角色 marker，不推定動作。", locator: "影片說明／timeline 3" }),
+  timelineStep({ id: "TLS-F810-05-004", timelineId: "TL-F810-05-EV083", sequence: 4, sourceStep: 4, timeState: "STATED", milliseconds: 26000, trigger: "SOURCE_TEXT_ONLY", triggerActor: "yui_xmas", actor: "yui_xmas", action: "NO_ACTION", autoState: "OFF", cue: "raw_set_pattern=[〇〇〇〇ー]", instruction: "來源原文：0:26 ユイ [〇〇〇〇ー](OFF)；僅保存角色 marker，不推定動作。", locator: "影片說明／timeline 4" }),
+  timelineStep({ id: "TLS-F810-05-005", timelineId: "TL-F810-05-EV083", sequence: 5, sourceStep: 5, timeState: "STATED", milliseconds: 7000, trigger: "SOURCE_TEXT_ONLY", triggerActor: "vurm_orig", actor: "vurm_orig", action: "NO_ACTION", autoState: "ON", cue: "raw_set_pattern=[〇〇〇〇ー]", instruction: "來源原文：0:07 ヴルム [〇〇〇〇ー](ON)；僅保存角色 marker，不推定動作。", locator: "影片說明／timeline 5" }),
+];
+
 const sourcesByTeam = {
   "TM-F810-01": [
     gapSource({ axis: "AX-F810-01-EV050", source: "appmatch_fire_guide", evidence: "ev050", locator: "appmatch_fire_deep_guide", variant: "AUTO 聲明來源", operationMode: "AUTO", notes: "正文只聲明全自動編成；未提供可驗證的逐步操作軸" }),
@@ -264,6 +331,29 @@ const sourcesByTeam = {
   ],
   "TM-F810-03": [
     gapSource({ axis: "AX-F810-03-EV051", source: "yt_ZXUDJm_AsSA", evidence: "ev051", locator: "yt_ZXUDJm_AsSA@00:12-03:15", variant: "無露易絲瑪莉實戰來源", operationMode: "SEMI_AUTO", notes: "影片可定位隊伍與通關且操作需 AUTO／SET 切換；未取得完整逐步操作軸" }),
+  ],
+  "TM-F810-04": [
+    gapSource({ axis: "AX-F810-04-EV082", source: "yt_p95ZoBCWuYE", evidence: "ev082", locator: "yt_p95ZoBCWuYE@00:00-02:35", variant: "安＆古蕾婭實戰來源", operationMode: "UNKNOWN", notes: "影片可定位關卡、完整五人與 Boss HP 歸零；AUTO／SET 畫面不足以證明全程模式。" }),
+  ],
+  "TM-F810-05": [
+    {
+      source_axis_id: "AX-F810-05-EV083",
+      timeline_id: "TL-F810-05-EV083",
+      source_id: "yt_Zw31omyYDKI",
+      source_evidence_id: "ev083",
+      source_locator: "yt_Zw31omyYDKI@00:00-01:56#description-timeline",
+      timeline_variant_name: "未央（NGs）半自動來源文字",
+      operation_mode: "SEMI_AUTO",
+      clock_mode: "COUNTDOWN",
+      battle_duration_ms: null,
+      initial_auto_state: "OFF",
+      status: "STRUCTURED",
+      reproducibility: "UNVERIFIED_ON_TW",
+      gap_reason: null,
+      last_verified_at: "2026-08-08",
+      notes: "只保存來源明載時間、文字與 AUTO 狀態；不明確 actor/action 不推定；尚未在台服逐步重現。",
+      steps: tm5SourceTextSteps,
+    },
   ],
 };
 
@@ -299,11 +389,11 @@ function teamDetail(seed) {
       slots: Object.fromEntries([1, 2, 3, 4, 5].map((slot) => [`slot${slot}`, unknownSlot()])),
       support: seed.support,
       operation_mode_claims: seed.operation_mode_claims,
-      failure_conditions: ["UNKNOWN"],
+      failure_conditions: seed.failure_conditions ?? ["UNKNOWN"],
       timeline_ref: seed.timeline_ref,
     },
     timeline: timelineForTeam(seed),
-    source_ids: seed.operation_mode_claims.map((claim) => claim.source_id),
+    source_ids: seed.source_ids,
     evidence_ids: seed.evidence_ids,
     tw_availability_check: "PASS",
     verified_date: "2026-08-08",
@@ -350,6 +440,63 @@ const evidence073 = envelope({
   status: "ACTIVE",
 });
 
+const evidence029 = envelope({
+  evidence_id: "ev029",
+  declared_claim_id: "CLM-TW-DEEP-A10",
+  linked_claim_id: "CLM-TW-DEEP-A10",
+  module: "baseline",
+  server: "TW",
+  source_tier: "OFFICIAL",
+  evidence_confidence: "A",
+  source_title: "台服官網 2026/07/14 公告（「深域冒險」追加新冒險）",
+  source_url: "https://www.princessconnect.so-net.tw/news/newsDetail/3938",
+  source_locator: "tw_official_notice_3938",
+  published_date: "2026-07-14",
+  published_date_precision: "DAY",
+  verified_date: "2026-08-02",
+  claim_summary: "2026/07/15 16:00起深域冒險追加：紅焰/蒼波/翠嵐/珀天/紫冥 各10-1~10-10（63-1 NORMAL通關後解放）",
+  limitations: "無（2026-08-02官方直頁完整抓取確認；來源映射更正為#3938）",
+  status: "ACTIVE",
+});
+
+const evidence054 = envelope({
+  evidence_id: "ev054",
+  declared_claim_id: "CLM-PVE-F1010-SCARCE",
+  linked_claim_id: "CLM-PVE-F1010-SCARCE",
+  module: "pve",
+  server: "JP",
+  source_tier: "UNKNOWN",
+  evidence_confidence: "D",
+  source_title: "nicozon 深域クエスト標籤全量清點（73件・第1–2頁完整開啟）",
+  source_url: "https://www.nicozon.net/tag/%E6%B7%B1%E5%9F%9F%E3%82%AF%E3%82%A8%E3%82%B9%E3%83%88",
+  source_locator: "nicozon_tag_deep",
+  published_date: "2026-08-02",
+  published_date_precision: "DAY",
+  verified_date: "2026-08-02",
+  claim_summary: "niconico範圍內風10-10・闇10-10（闇含完整文字TL＝プリキャル／水ホマレ／ニャル／ヴァイオレット／エリス）已存在而火10-10缺席",
+  limitations: "平台範圍限niconico；不代表全網",
+  status: "ACTIVE",
+});
+
+const evidence055 = envelope({
+  evidence_id: "ev055",
+  declared_claim_id: "CLM-PVE-F1010-SCARCE",
+  linked_claim_id: "CLM-PVE-F1010-SCARCE",
+  module: "pve",
+  server: "TW",
+  source_tier: "SINGLE_PLAYER_REPORT",
+  evidence_confidence: "D",
+  source_title: "YouTube 煌靈／LongTimeNoC 火屬性深域10-1到10-9打法分享（台服）",
+  source_url: "https://www.youtube.com/watch?v=y41LtKnRPvs",
+  source_locator: "yt_y41LtKnRPvs",
+  published_date: "2026-07-01",
+  published_date_precision: "MONTH",
+  verified_date: "2026-08-02",
+  claim_summary: "台服主要深域創作者於第10區開放後約三週僅發布至10-9＝台服火10-10公開通關未見；頻道主身分經播放清單中繼資料確認",
+  limitations: "搜尋摘要層引用；發布日僅月精度",
+  status: "ACTIVE",
+});
+
 function supportingEvidence({
   evidenceId,
   claimId,
@@ -382,9 +529,12 @@ function supportingEvidence({
 }
 
 const evidenceFixtures = new Map([
+  ["ev029", evidence029],
   ["ev050", supportingEvidence({ evidenceId: "ev050", claimId: "CLM-PVE-F810-STD", server: "JP", sourceTier: "UNKNOWN", sourceTitle: "スマホゲームNavi 紅焔の深域完全攻略（2026-01-31發布・2026-07-14更新）", sourceUrl: "https://games.appmatch.jp/gamewiki/princessconnect/1134429300-89/", sourceLocator: "appmatch_fire_deep_guide", publishedDate: "2026-01-31", verifiedDate: "2026-08-02" })],
   ["ev051", supportingEvidence({ evidenceId: "ev051", claimId: "CLM-PVE-F810-NOLUISE", server: "JP", sourceTier: "SINGLE_PLAYER_REPORT", sourceTitle: "YouTube 深域クエスト火属性8-10「ルイズなしクローチェエアリアルサポ借り想定」", sourceUrl: "https://www.youtube.com/watch?v=ZXUDJm_AsSA", sourceLocator: "yt_ZXUDJm_AsSA@00:12-03:15", publishedDate: "2025-11-30" })],
   ["ev052", evidence052],
+  ["ev054", evidence054],
+  ["ev055", evidence055],
   ["ev056", supportingEvidence({ evidenceId: "ev056", claimId: "CLM-TW-LUISE-ORIG-REL", server: "TW", sourceTier: "OFFICIAL", sourceTitle: "台服官網 2025/09/03 公告（精選轉蛋 期間限定角色「露易絲瑪莉」登場）", sourceUrl: "https://www.princessconnect.so-net.tw/news/newsDetail/3529", sourceLocator: "tw_official_notice_3529", publishedDate: "2025-09-03", verifiedDate: "2026-08-02" })],
   ["ev057", supportingEvidence({ evidenceId: "ev057", claimId: "CLM-TW-CROCE-AERIAL-REL", server: "TW", sourceTier: "OFFICIAL", sourceTitle: "台服官網 2025/08/08 公告（精選轉蛋 期間限定角色「克蘿茜（航空）」登場）", sourceUrl: "https://www.princessconnect.so-net.tw/news/newsDetail/3500", sourceLocator: "tw_official_notice_3500", publishedDate: "2025-08-08", verifiedDate: "2026-08-02" })],
   ["ev058", supportingEvidence({ evidenceId: "ev058", claimId: "CLM-TW-LAILAEL-XMAS-REL", server: "TW", sourceTier: "OFFICIAL", sourceTitle: "台服官網 2025/03/31 公告（精選轉蛋 期間限定角色「萊拉耶爾（聖誕節）」登場）", sourceUrl: "https://www.princessconnect.so-net.tw/news/newsDetail/3313", sourceLocator: "tw_official_notice_3313", publishedDate: "2025-03-31", verifiedDate: "2026-08-02" })],
@@ -398,6 +548,13 @@ const evidenceFixtures = new Map([
   ["ev074", supportingEvidence({ evidenceId: "ev074", claimId: "CLM-TW-SHIZURU-VAL-AVAILABLE", server: "TW", sourceTier: "OFFICIAL", sourceTitle: "台服官網 2026/05/31 自選角色精選獎勵轉蛋公告", sourceUrl: "https://www.princessconnect.so-net.tw/news/newsDetail/3873", sourceLocator: "tw_official_notice_3873", publishedDate: "2026-05-31" })],
   ["ev075", supportingEvidence({ evidenceId: "ev075", claimId: "CLM-TW-MAHO-SUMMER-AVAILABLE", server: "TW", sourceTier: "OFFICIAL", sourceTitle: "台服官網 2024/06/16 火屬性自選★3必中白金轉蛋公告", sourceUrl: "https://www.princessconnect.so-net.tw/news/newsDetail/2873", sourceLocator: "tw_official_notice_2873", publishedDate: "2024-06-16" })],
   ["ev076", supportingEvidence({ evidenceId: "ev076", claimId: "CLM-TW-YUI-XMAS-REL", server: "TW", sourceTier: "OFFICIAL", sourceTitle: "台服官網 2026/03/31 優衣（聖誕節）精選轉蛋公告", sourceUrl: "https://www.princessconnect.so-net.tw/news/newsDetail/3795", sourceLocator: "tw_official_notice_3795", publishedDate: "2026-03-31" })],
+  ["ev077", supportingEvidence({ evidenceId: "ev077", claimId: "CLM-TW-LAILAEL-XMAS-UE1", server: "TW", sourceTier: "OFFICIAL", sourceTitle: "台服官網 2026/04/10 角色專用裝備1追加公告", sourceUrl: "https://www.princessconnect.so-net.tw/news/newsDetail/3805", sourceLocator: "tw_official_notice_3805", publishedDate: "2026-04-10" })],
+  ["ev078", supportingEvidence({ evidenceId: "ev078", claimId: "CLM-TW-ANNE-GREA-REL", server: "TW", sourceTier: "OFFICIAL", sourceTitle: "台服官網 2023/05/03 安＆古蕾婭公主祭典精選轉蛋公告", sourceUrl: "https://www.princessconnect.so-net.tw/news/newsDetail/2246", sourceLocator: "tw_official_notice_2246", publishedDate: "2023-05-03" })],
+  ["ev079", supportingEvidence({ evidenceId: "ev079", claimId: "CLM-LOC-ANNE-GREA", server: "JP", sourceTier: "OFFICIAL", sourceTitle: "日服官網 2023/01/06 アン＆グレア登場公告", sourceUrl: "https://priconne-redive.jp/news/information/20815/", sourceLocator: "jp_official_20815", publishedDate: "2023-01-06" })],
+  ["ev080", supportingEvidence({ evidenceId: "ev080", claimId: "CLM-TW-MIO-NGS-AVAILABLE", server: "TW", sourceTier: "OFFICIAL", sourceTitle: "台服官網 2026/04/08 復刻 NGs 活動公告", sourceUrl: "https://www.princessconnect.so-net.tw/news/newsDetail/3802", sourceLocator: "tw_official_notice_3802", publishedDate: "2026-04-08" })],
+  ["ev081", supportingEvidence({ evidenceId: "ev081", claimId: "CLM-LOC-MIO-NGS", server: "JP", sourceTier: "OFFICIAL", sourceTitle: "日服官網 2022/11/15 ミオ（デレマス）相關公告", sourceUrl: "https://priconne-redive.jp/news/information/20200/", sourceLocator: "jp_official_20200", publishedDate: "2022-11-15" })],
+  ["ev082", supportingEvidence({ evidenceId: "ev082", claimId: "CLM-PVE-F810-ANNEGREA", server: "JP", sourceTier: "SINGLE_PLAYER_REPORT", sourceTitle: "YouTube 深域火 8-10 安＆古蕾婭通關實戰", sourceUrl: "https://www.youtube.com/watch?v=p95ZoBCWuYE", sourceLocator: "yt_p95ZoBCWuYE@00:00-02:35", publishedDate: "2025-12-03" })],
+  ["ev083", supportingEvidence({ evidenceId: "ev083", claimId: "CLM-PVE-F810-MIO", server: "JP", sourceTier: "SINGLE_PLAYER_REPORT", sourceTitle: "YouTube 深域火 8-10 未央（NGs）半自動通關實戰", sourceUrl: "https://www.youtube.com/watch?v=Zw31omyYDKI", sourceLocator: "yt_Zw31omyYDKI@00:00-01:56", publishedDate: "2026-01-02" })],
 ]);
 
 function send(response, status, payload) {
@@ -419,8 +576,9 @@ const server = createServer((request, response) => {
     return send(response, 200, { status: "ok", checks: { fixture: "TEST_ONLY" } });
   }
   if (url.pathname === "/api/v1/baseline") return send(response, 200, baseline);
-  if (url.pathname === "/api/v1/stages") return send(response, 200, envelope([stageSummary]));
+  if (url.pathname === "/api/v1/stages") return send(response, 200, envelope([stageSummary, secondaryStageSummary]));
   if (url.pathname === `/api/v1/stages/${guideId}`) return send(response, 200, stageDetail);
+  if (url.pathname === `/api/v1/stages/${secondaryStageSummary.guide_id}`) return send(response, 200, secondaryStageDetail);
   if (url.pathname === "/api/v1/pvp/counters") {
     return send(response, 200, envelope([], ["NO_VERIFIED_COUNTER"]));
   }
@@ -428,7 +586,7 @@ const server = createServer((request, response) => {
   if (evidenceMatch && evidenceFixtures.has(evidenceMatch[1])) {
     return send(response, 200, evidenceFixtures.get(evidenceMatch[1]));
   }
-  const timelineMatch = url.pathname.match(/^\/api\/v1\/teams\/(TM-F810-0[1-3])\/timelines$/);
+  const timelineMatch = url.pathname.match(/^\/api\/v1\/teams\/(TM-F810-0[1-5])\/timelines$/);
   if (timelineMatch) {
     const seed = teamSeeds.find((item) => item.team_id === timelineMatch[1]);
     const timeline = timelineForTeam(seed);
@@ -439,7 +597,7 @@ const server = createServer((request, response) => {
         : [];
     return send(response, 200, envelope(timeline, warnings));
   }
-  const teamMatch = url.pathname.match(/^\/api\/v1\/teams\/(TM-F810-0[1-3])$/);
+  const teamMatch = url.pathname.match(/^\/api\/v1\/teams\/(TM-F810-0[1-5])$/);
   if (teamMatch) {
     const seed = teamSeeds.find((item) => item.team_id === teamMatch[1]);
     return send(response, 200, teamDetail(seed));

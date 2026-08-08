@@ -50,9 +50,17 @@ from pcr_pipeline.research_core_snapshot import (
 # Compatibility identifier for the original B0 vertical-slice API.  The typed
 # projection itself is no longer restricted to this guide.
 TARGET_GUIDE_ID = "TW_DEEP_FIRE_08_10_20260802"
-APPLICATION_VERSION = "3.0.0-b1"
+APPLICATION_VERSION = "3.0.0-a3"
 CANONICAL_SOURCE = "research_core_file_ssot"
 IMPORT_LOCK_KEY = 0x5043524231
+FULL_PVE_PROJECTION = "pve_18_24_25_26_27_closure_v2"
+LEGACY_FIRE_PROJECTION = "fire_8_10_18_24_25_26_27_closure_v1"
+# rp-b1-1 / rp-a2 raw tree.  Its historical ImportRun materialized only the
+# Fire 8-10 vertical slice.  Keeping this identity code-owned makes a clean
+# restore deterministic even when no historical database row is present yet.
+LEGACY_FIRE_REVISION_IDS = frozenset(
+    {"fd3f1a0a102873ad4a0f0248e24f52cfc0e4e2e7f371e3abe35fd6848ba00900"}
+)
 
 # The PVE projection may only materialize Evidence from this reviewed host
 # boundary. Restricted/China sources are deliberately absent and can never
@@ -79,7 +87,9 @@ SOURCE_FILES = (
     "tools/stats.json",
 )
 
-TIMELINE_OPERATION_MODES = frozenset({"AUTO", "SEMI_AUTO", "MANUAL_TIMELINE"})
+TIMELINE_OPERATION_MODES = frozenset(
+    {"AUTO", "SEMI_AUTO", "MANUAL_TIMELINE", "UNKNOWN"}
+)
 TIMELINE_CLOCK_MODES = frozenset({"COUNTDOWN", "ELAPSED", "UNKNOWN"})
 TIMELINE_AUTO_STATES = frozenset({"ON", "OFF", "UNKNOWN"})
 TIMELINE_REPRODUCIBILITY = frozenset({"UNVERIFIED_ON_TW", "TW_REPRODUCED", "UNKNOWN"})
@@ -116,7 +126,7 @@ TIMELINE_TIME_STATES = frozenset({"STATED", "NOT_STATED"})
 PVE_CLEAR_STATUSES = frozenset({"VERIFIED", "PROVISIONAL", "STALE"})
 PVE_TW_CHECKS = frozenset({"PASS", "FAIL", "UNVERIFIED"})
 PVE_OPERATION_MODES = frozenset(
-    {"AUTO", "SEMI_AUTO", "MANUAL_TIMELINE", "SOURCE_CONFLICT"}
+    {"AUTO", "SEMI_AUTO", "MANUAL_TIMELINE", "SOURCE_CONFLICT", "UNKNOWN"}
 )
 
 # This audited boundary records what the actually opened source states.  It is
@@ -799,8 +809,14 @@ def load_pve_closure(research_core: Path) -> FixtureClosure:
     effective_signatures_by_guide: dict[str, set[tuple[str, ...]]] = {
         guide["guide_id"]: set() for guide in guides
     }
-    seen_stage_signatures: set[tuple[str, str, tuple[str, ...]]] = set()
+    seen_stage_signatures: set[tuple[str, tuple[str, ...]]] = set()
     for team in teams:
+        guide = guides_by_id[team["guide_id"]]
+        expected_stage = f"{guide['area']}{guide['stage']}"
+        if team["server"] != guide["server"] or team["stage"] != expected_stage:
+            raise FixtureValidationError(
+                f"{team['team_id']} server/stage differs from its guide relation"
+            )
         if team["clear_status"] not in PVE_CLEAR_STATUSES:
             raise FixtureValidationError(
                 f"{team['team_id']} clear_status is invalid"
@@ -818,7 +834,7 @@ def load_pve_closure(research_core: Path) -> FixtureClosure:
             raise FixtureValidationError(f"{team['team_id']} must contain five distinct units")
         _require_ids(members, characters_by_id, relation=f"{team['team_id']} slots")
         signature = tuple(sorted(members))
-        stage_signature = (team["server"], team["stage"], signature)
+        stage_signature = (team["guide_id"], signature)
         if stage_signature in seen_stage_signatures:
             raise FixtureValidationError(
                 f"duplicate stage five-unit signature at {team['team_id']}"
@@ -957,6 +973,100 @@ def load_pve_closure(research_core: Path) -> FixtureClosure:
         dangling_claim_ids=tuple(sorted(dangling_claims)),
         stats=stats,
         file_hashes=file_hashes,
+    )
+
+
+def _legacy_fire_projection(closure: FixtureClosure) -> FixtureClosure:
+    """Rebuild the immutable B1 Fire 8-10 typed projection from a full closure."""
+
+    guide = closure.guide
+    teams = tuple(
+        team for team in closure.teams if team["guide_id"] == TARGET_GUIDE_ID
+    )
+    team_ids = {team["team_id"] for team in teams}
+    unit_keys = {
+        team[f"slot{slot}"] for team in teams for slot in range(1, 6)
+    }
+    characters = tuple(
+        character
+        for character in closure.characters
+        if character["unit_key"] in unit_keys
+    )
+    team_evidence_ids = {
+        team_id: closure.team_evidence_ids[team_id] for team_id in sorted(team_ids)
+    }
+
+    evidence_by_id = {row["evidence_id"]: row for row in closure.evidence}
+    claims_by_id = {row["claim_id"]: row for row in closure.claims}
+    selected_evidence = set(closure.stage_evidence_ids)
+    for evidence_ids in team_evidence_ids.values():
+        selected_evidence.update(evidence_ids)
+    for character in characters:
+        selected_evidence.update(_split_ids(character["source_evidence_ids"]))
+    selected_claims = set(closure.stage_claim_ids)
+
+    changed = True
+    while changed:
+        changed = False
+        for evidence_id in sorted(selected_evidence):
+            evidence = evidence_by_id.get(evidence_id)
+            if evidence is None:
+                raise FixtureValidationError(
+                    f"legacy Fire projection is missing evidence {evidence_id}"
+                )
+            declared_claim_id = evidence["claim_id"].strip()
+            if declared_claim_id and declared_claim_id not in selected_claims:
+                if declared_claim_id not in claims_by_id:
+                    raise FixtureValidationError(
+                        f"legacy Fire projection is missing claim {declared_claim_id}"
+                    )
+                selected_claims.add(declared_claim_id)
+                changed = True
+        for claim_id in sorted(selected_claims):
+            claim = claims_by_id.get(claim_id)
+            if claim is None:
+                raise FixtureValidationError(
+                    f"legacy Fire projection is missing claim {claim_id}"
+                )
+            for evidence_id in _split_ids(claim["evidence_ids"]):
+                if evidence_id not in selected_evidence:
+                    if evidence_id not in evidence_by_id:
+                        raise FixtureValidationError(
+                            f"legacy Fire projection is missing evidence {evidence_id}"
+                        )
+                    selected_evidence.add(evidence_id)
+                    changed = True
+
+    timelines = tuple(
+        timeline for timeline in closure.timelines if timeline["team_id"] in team_ids
+    )
+    structured_timeline_ids = {
+        timeline["timeline_id"]
+        for timeline in timelines
+        if timeline["status"] == "STRUCTURED"
+    }
+    timeline_steps = tuple(
+        step
+        for step in closure.timeline_steps
+        if step["timeline_id"] in structured_timeline_ids
+    )
+    return FixtureClosure(
+        fingerprint=closure.fingerprint,
+        guides=(guide,),
+        teams=teams,
+        characters=characters,
+        evidence=tuple(evidence_by_id[key] for key in sorted(selected_evidence)),
+        claims=tuple(claims_by_id[key] for key in sorted(selected_claims)),
+        timelines=timelines,
+        timeline_steps=timeline_steps,
+        stage_evidence_ids_by_guide={
+            TARGET_GUIDE_ID: closure.stage_evidence_ids
+        },
+        stage_claim_ids_by_guide={TARGET_GUIDE_ID: closure.stage_claim_ids},
+        team_evidence_ids=team_evidence_ids,
+        dangling_claim_ids=(),
+        stats=closure.stats,
+        file_hashes=closure.file_hashes,
     )
 
 
@@ -1381,6 +1491,33 @@ def _activation_kind(
     raise MirrorDriftError("distinct revisions share an initial-import chronology position")
 
 
+def _projection_from_manifest(manifest: dict[str, Any]) -> str:
+    """Recover the immutable typed projection selected by an existing run.
+
+    B1 manifests predate the explicit projection field.  Their historical
+    ``target_guide_id`` marker is therefore the only supported compatibility
+    path; every other unknown or missing projection fails closed.
+    """
+
+    projection = manifest.get("projection")
+    if projection in {FULL_PVE_PROJECTION, LEGACY_FIRE_PROJECTION}:
+        return str(projection)
+    if projection is None and manifest.get("target_guide_id") == TARGET_GUIDE_ID:
+        return LEGACY_FIRE_PROJECTION
+    raise MirrorDriftError("import run has an unsupported typed projection")
+
+
+def _closure_for_projection(
+    full_closure: FixtureClosure,
+    projection: str,
+) -> FixtureClosure:
+    if projection == FULL_PVE_PROJECTION:
+        return full_closure
+    if projection == LEGACY_FIRE_PROJECTION:
+        return _legacy_fire_projection(full_closure)
+    raise MirrorDriftError(f"unsupported typed projection: {projection}")
+
+
 def import_pve_projection(
     session: Session,
     research_core: Path,
@@ -1399,7 +1536,7 @@ def import_pve_projection(
 
     # Keep the domain validator first so malformed selected facts retain precise
     # errors; a valid candidate must then also match the independently pinned full tree.
-    closure = load_pve_closure(research_core)
+    full_closure = load_pve_closure(research_core)
     snapshot = load_research_core_snapshot(
         research_core,
         manifest_path,
@@ -1408,14 +1545,13 @@ def import_pve_projection(
     changed_source_files = [
         relative
         for relative in SOURCE_FILES
-        if closure.file_hashes.get(relative) != snapshot.file(relative).sha256
+        if full_closure.file_hashes.get(relative) != snapshot.file(relative).sha256
     ]
     if changed_source_files:
         raise FixtureValidationError(
             "source files changed during import snapshot capture: "
             f"{changed_source_files}"
         )
-    row_counts = _counts(closure)
     imported_at = now or datetime.now(timezone.utc)
 
     with session.begin():
@@ -1424,6 +1560,17 @@ def import_pve_projection(
         previous = session.scalar(
             select(ImportRun).where(ImportRun.fixture_sha256 == snapshot.raw_tree_sha256)
         )
+        projection = (
+            _projection_from_manifest(previous.manifest)
+            if previous is not None
+            else (
+                LEGACY_FIRE_PROJECTION
+                if snapshot.revision_id in LEGACY_FIRE_REVISION_IDS
+                else FULL_PVE_PROJECTION
+            )
+        )
+        closure = _closure_for_projection(full_closure, projection)
+        row_counts = _counts(closure)
         if previous is not None:
             if previous.status != "SUCCEEDED":
                 raise MirrorDriftError("revision fingerprint exists without a successful import")
@@ -1478,8 +1625,13 @@ def import_pve_projection(
                 imported_at=imported_at,
                 status="RUNNING",
                 manifest={
-                    "projection": "pve_18_24_25_26_27_closure",
+                    "projection": projection,
                     "guide_ids": [guide["guide_id"] for guide in closure.guides],
+                    **(
+                        {"target_guide_id": TARGET_GUIDE_ID}
+                        if projection == LEGACY_FIRE_PROJECTION
+                        else {}
+                    ),
                     "selected_fixture_sha256": closure.fingerprint,
                     "selected_input_file_sha256": closure.file_hashes,
                     "core_revision": snapshot.report().as_dict(),

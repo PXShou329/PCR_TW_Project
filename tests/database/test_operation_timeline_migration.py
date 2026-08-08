@@ -39,11 +39,14 @@ def imported_engine():
     return engine
 
 
-def test_v0003_is_the_single_migration_head() -> None:
+def test_v0004_is_the_single_migration_head() -> None:
     config = Config("database/alembic.ini")
     script = ScriptDirectory.from_config(config)
 
-    assert script.get_current_head() == "v0003_core_revision_mirror"
+    assert script.get_current_head() == "v0004_unknown_operation_mode"
+    revision = script.get_revision("v0004_unknown_operation_mode")
+    assert revision is not None
+    assert revision.down_revision == "v0003_core_revision_mirror"
     revision = script.get_revision("v0003_core_revision_mirror")
     assert revision is not None
     assert revision.down_revision == "v0002_operation_timelines"
@@ -68,6 +71,8 @@ def test_v0002_offline_postgres_sql_contains_both_additive_tables(
     assert "source_axis_id VARCHAR(140) NOT NULL" in sql
     assert "timeline_id VARCHAR(140)" in sql
     assert "time_state VARCHAR(20) NOT NULL" in sql
+    assert "ALTER TABLE operation_timelines DROP CONSTRAINT" in sql
+    assert "'UNKNOWN'" in sql
     assert "DROP TABLE" not in sql
 
 
@@ -96,6 +101,15 @@ def test_database_rejects_gap_identity_strengthening() -> None:
                 .values(timeline_id="TL-INVENTED")
             )
             session.commit()
+
+
+def test_database_preserves_unknown_source_operation_mode() -> None:
+    engine = imported_engine()
+    with Session(engine) as session:
+        timeline = session.get(OperationTimeline, "AX-F810-04-EV082")
+        assert timeline is not None
+        assert timeline.status == "SOURCE_GAP"
+        assert timeline.operation_mode == "UNKNOWN"
 
 
 def test_database_rejects_not_stated_step_with_a_clock() -> None:

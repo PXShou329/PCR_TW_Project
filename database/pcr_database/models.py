@@ -475,7 +475,7 @@ class OperationTimeline(Base):
     __table_args__ = (
         UniqueConstraint("team_id", "source_id", name="uq_operation_timelines_team_source"),
         CheckConstraint(
-            "operation_mode IN ('AUTO','SEMI_AUTO','MANUAL_TIMELINE')",
+            "operation_mode IN ('AUTO','SEMI_AUTO','MANUAL_TIMELINE','UNKNOWN')",
             name="operation_timeline_mode",
         ),
         CheckConstraint(

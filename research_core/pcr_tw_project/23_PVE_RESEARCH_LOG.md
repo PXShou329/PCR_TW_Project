@@ -511,3 +511,23 @@ M49（median 改 122.5）／M49b（舊式自我矛盾敘述）／M49c（anchor_c
 - 25 的三隊 `clear_status` 不變；逐來源 operation mode claims 仍由 25 保存，26 必須逐一覆蓋或明示缺口。
 - 25 的 `requirements.timeline_ref` 已由影片 locator 原子切換為各隊完整 `source_axis_id` 集合；精確 locator 改由 26／27 單一保存。
 - 新增 `CLM-PVE-TL-F810-SHIZURU`（SOURCE_FACT／D）只支撐 ev073 操作手順的存在與結構化邊界，不提高隊伍或關卡 Claim 信心。
+
+## 2026-08-08 A3：紅焰 8-10 五隊成熟 closure
+
+### 新增實開通關來源
+
+- `p95ZoBCWuYE`（ev082，TM-F810-04）：影片明示火 8-10；00:01–00:03 可辨識萊拉耶爾（聖誕節）／克蘿茜（航空）／烏爾姆／安＆古蕾婭／優衣（聖誕節），約 02:35 Boss HP 歸零。這組 signature 與 TM-F810-01～03 均不同。
+- ev082 的畫面可見 AUTO／SET 狀態，但來源沒有足夠資訊證明全程 operation mode；25／26 因此誠實保存 `UNKNOWN` 與 `SOURCE_GAP`，沒有把介面狀態推成 AUTO 或 SEMI_AUTO。
+- `Zw31omyYDKI`（ev083，TM-F810-05）：00:00 可辨識火 8-10 完整五人＝克蘿茜（航空）／烏爾姆／未央（NGs）／安＆古蕾婭／優衣（聖誕節），約 01:56 顯示勝利；來源聲明 `SEMI_AUTO`。這組 signature 亦與前四隊不同。
+- ev083 的說明提供五條倒數時間／AUTO 狀態文字。26／27 只保存明載的時間、原始提示與狀態；無法確證的 actor／action 使用 `SOURCE_TEXT_ONLY`／`NO_ACTION`，不將括號樣式解釋為技能或 UB。
+
+### 台服可用性與名稱 closure
+
+- ev078：台服官方 #2246 實開，確立「安＆古蕾婭」官方中文名與 2023/05/04 16:00 實裝；ev079：日服官方 #20815 實開。`CLM-LOC-ANNE-GREA` 以雙官方 host 交叉映射，信心上限 B。
+- ev080：台服官方 #3802 實開，明示復刻活動可讓「未央（NGs）」成為夥伴，足以證明目前 AVAILABLE，但不是初次實裝公告；ev081：日服官方 #20200 實開。兩服版本後綴不同，`CLM-LOC-MIO-NGS` 明列分析映射且上限 B。
+- ev083 的全域養成文字（四角貫通24／魔攻8%、屬性 Lv1000、技能頁6末、MS83、職責 TP5.5／全體5.3，以及優衣「適当」）未提供可逐 slot 驗證的歸屬；25 的五個 slot 欄位因此全數維持 `UNKNOWN`，原文邊界只放在全域 failure conditions／notes。
+
+### 成熟狀態與限制
+
+- Fire 8-10 現有 `VERIFIED` 不同五人 **N=5**；相同五人多來源仍只算一隊。24 與 25 effective signature 對帳後，`team_count=5`、`status=VERIFIED`、`reproducibility=CONFIRMED`。
+- `VERIFIED` 只表示「完整五人、明確關卡、實際通關、Evidence／Claim closure、台服可組成」成立，不保證任意帳號練度可直接重現。TM-F810-03～05 仍為單一玩家來源 D；相關 blocking Warning 不隱藏，也不藉調降 Validator 消除。

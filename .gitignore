@@ -8,6 +8,7 @@ node_modules/
 *.tsbuildinfo
 playwright-report/
 test-results/
+research_core/pcr_tw_project/tools/reports/
 
 __pycache__/
 *.py[cod]

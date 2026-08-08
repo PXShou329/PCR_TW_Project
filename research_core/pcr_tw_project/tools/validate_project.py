@@ -406,7 +406,7 @@ for source_axis_id, boundary in CFG['pve_timeline_source_boundaries'].items():
 ck("ST87：來源邊界、locator 與未載欄位不得推測", not _source_boundary_bad, ','.join(_source_boundary_bad))
 
 def _timeline_claim_coverage_ok(team):
-    if team['operation_mode'] not in {'SEMI_AUTO', 'MANUAL_TIMELINE', 'SOURCE_CONFLICT'}:
+    if team['operation_mode'] not in {'SEMI_AUTO', 'MANUAL_TIMELINE', 'SOURCE_CONFLICT', 'UNKNOWN'}:
         return True
     req = _requirements_by_team.get(team['team_id'])
     if not req or not _pve_mode_claims_match(team, req):
@@ -885,13 +885,16 @@ stats = {"generated_date": TODAY, "release_date": CFG['release_date'], "project_
 
 canonical = (MODE == 'PRE_SUITE' and FAIL_TOTAL == 0) or (MODE == 'ARTIFACT_READY' and gate_c_pass) or (WRITE and FAIL_TOTAL == 0)
 os.makedirs('tools/reports', exist_ok=True)
-json.dump(stats, open(f'tools/reports/{MODE.lower()}.json', 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+with open(f'tools/reports/{MODE.lower()}.json', 'w', encoding='utf-8', newline='\n') as report_file:
+    json.dump(stats, report_file, ensure_ascii=False, indent=1)
 
 def build_reports():
     # 13 AUTO_RESULTS
     s13 = R['13_ACCEPTANCE_RESULTS.md']
     m13 = re.search(r'<!-- AUTO_RESULTS_START -->.*?<!-- AUTO_RESULTS_END -->', s13, re.S)
-    if m13: open('13_ACCEPTANCE_RESULTS.md', 'w', encoding='utf-8').write(s13.replace(m13.group(0), compose_auto()))
+    if m13:
+        with open('13_ACCEPTANCE_RESULTS.md', 'w', encoding='utf-8', newline='\n') as report_file:
+            report_file.write(s13.replace(m13.group(0), compose_auto()))
     # 15 AUTO_STATS
     auto = f"""<!-- AUTO_STATS_START -->
 **程式化統計（validator 生成即核對；生成日 {TODAY}／版本 {CFG['project_version']}／Release {CFG['release_date']}／Mode {MODE}）**
@@ -905,7 +908,9 @@ def build_reports():
 <!-- AUTO_STATS_END -->"""
     s15 = R['15_DATA_QUALITY_REPORT.md']
     m15 = re.search(r'<!-- AUTO_STATS_START -->.*?<!-- AUTO_STATS_END -->', s15, re.S)
-    if m15: open('15_DATA_QUALITY_REPORT.md', 'w', encoding='utf-8').write(s15.replace(m15.group(0), auto))
+    if m15:
+        with open('15_DATA_QUALITY_REPORT.md', 'w', encoding='utf-8', newline='\n') as report_file:
+            report_file.write(s15.replace(m15.group(0), auto))
     lines = "\n".join(f"| {n} | {r} | {d} |" for n, r, d in checks)
     warn_lines = "\n".join(f"| {w['warning_id']} | {w['category']} | {w['severity']} | {'Y' if w['blocks_gate_c'] else 'N'} | {w['affected_module']} | {w['detail']} | {w['next_action']} |" for w in warns) if warns else "| （無） | | | | | | |"
     infos_l = [f"Mode＝{MODE}（PRE_SUITE／OPERATIONAL 增量／ARTIFACT_READY 強制 Gate A/B/C＋blocking_c=0）",
@@ -913,7 +918,8 @@ def build_reports():
                ("目前 PENDING_REVIEW Evidence：" + ("、".join(sorted(pending_ev)) if pending_ev else "無")),
                "回歸攔截由 tools/mutation_test.py 驗證（Active 情境數以其執行輸出為準；歷史／退休 ID 見 Account Archive）",
                f"Canonical 15/16/13/stats 寫入：{'是' if canonical else '否（check-only）'}"]
-    open('16_STATIC_VALIDATION_REPORT.md', 'w', encoding='utf-8').write(f"""# 16 靜態驗證報告（STATIC VALIDATION REPORT）
+    with open('16_STATIC_VALIDATION_REPORT.md', 'w', encoding='utf-8', newline='\n') as report_file:
+        report_file.write(f"""# 16 靜態驗證報告（STATIC VALIDATION REPORT）
 
 > 由 `tools/validate_project.py` 生成（唯一路徑）；回歸驗證：`python3 tools/mutation_test.py`（Active 情境數見其輸出；退休 ID 見 Archive）。
 > 生成日：{TODAY}｜版本：{CFG['project_version']}｜Release：{CFG['release_date']}｜Mode：{MODE}
@@ -956,7 +962,8 @@ def build_reports():
 
 {chr(10).join('- ' + h for h in hist_hits) if hist_hits else '（無）'}
 """)
-    json.dump(stats, open('tools/stats.json', 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+    with open('tools/stats.json', 'w', encoding='utf-8', newline='\n') as report_file:
+        json.dump(stats, report_file, ensure_ascii=False, indent=1)
 
 if canonical: build_reports()
 else: infos.append(f"Mode {MODE} 未達 canonical 寫入條件——僅 tools/reports/{MODE.lower()}.json")

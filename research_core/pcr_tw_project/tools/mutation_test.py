@@ -601,7 +601,7 @@ def m67(d):
     def guide_fn(rows):
         h = rows[0]; team_count = h.index("team_count")
         for r in rows[1:]:
-            if r[0] == "TW_DEEP_FIRE_08_10_20260802": r[team_count] = "2"
+            if r[0] == "TW_DEEP_FIRE_08_10_20260802": r[team_count] = "4"
     def timeline_fn(rows):
         h = rows[0]; team_id = h.index("team_id")
         rows[:] = [rows[0]] + [r for r in rows[1:] if r[team_id] != "TM-F810-01"]
@@ -613,7 +613,10 @@ results.append(mutate("M67 Provisional Timeline Coverage Bypass", m67, "FAIL", m
 # M68: source 未提供 criticality，不得自行標 CRITICAL → ST87 FAIL
 def m68(d):
     def fn(rows):
-        h = rows[0]; rows[1][h.index("criticality")] = "CRITICAL"
+        h = rows[0]; step_id = h.index("timeline_step_id"); criticality = h.index("criticality")
+        for r in rows[1:]:
+            if r[step_id] == "TLS-F810-02-001":
+                r[criticality] = "CRITICAL"; return
     rewrite_csv(P(d, "27_PVE_TIMELINE_STEPS.csv"), fn)
 results.append(mutate("M68 Inferred Timeline Criticality", m68, "FAIL", mode="PRE_SUITE",
                       target_fail="ST87：來源邊界、locator 與未載欄位不得推測"))
@@ -653,5 +656,13 @@ def m69(d):
     rewrite_csv(P(d, "39_ARENA_COUNTER_REGISTRY.csv"), fn)
 results.append(mutate("M69 Arena PASS With Missing 18 Units", m69, "FAIL", mode="PRE_SUITE",
                       target_fail="39：tw_availability_check Enum；PASS 的敵我各五人須不同且均為 18 AVAILABLE"))
+# M70: 操作模式 UNKNOWN 仍須保留逐來源 axis／明示缺口，不得藉 UNKNOWN 略過 provenance。
+def m70(d):
+    def fn(rows):
+        h = rows[0]; team_id = h.index("team_id")
+        rows[:] = [rows[0]] + [r for r in rows[1:] if r[team_id] != "TM-F810-04"]
+    rewrite_csv(P(d, "26_PVE_OPERATION_TIMELINES.csv"), fn)
+results.append(mutate("M70 Unknown Mode Missing Source Axis", m70, "FAIL", mode="PRE_SUITE",
+                      target_fail="25→26：手動／半自動／衝突隊伍每個來源與 timeline_ref 均有結構化軸或明示缺口"))
 print('MUTATION_TESTS', 'ALL_OK' if all(results) else 'FAILED', f'| active_scenarios={len(results)}')
 sys.exit(0 if all(results) else 1)
