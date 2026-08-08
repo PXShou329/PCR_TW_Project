@@ -19,6 +19,15 @@
 9. B8：writable SSOT 原子切換。
 10. B9／B10：效能、安全、備援與 Production Gate G。
 
+## B0 明確保留的非阻斷債務
+
+- B1 將每請求完整重算 closure manifest 改為 revision-aware cache，同時保留
+  fail-closed 語意。
+- 將策略路由的 DB unavailable 例外統一為結構化 503；目前不會洩漏或回傳漂移
+  資料，但連線層錯誤仍由框架形成一般 500。
+- Production Gate 前以 OpenAPI generator 取代手寫 client types，並產生 Python
+  transitive dependency lock／SBOM；B0 先以可執行 schema parity check 守住漂移。
+
 ## 不可突破的停止條件
 
 - research-core blob 或五命令出現未解釋漂移。
@@ -28,4 +37,3 @@
 - Migration／cutover 前沒有可驗 restore。
 - Secret 進入 repository、image 或 log。
 - 未實際取得正文的頁面被準備升為 Evidence。
-

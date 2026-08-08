@@ -1,0 +1,28 @@
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pcr-tw-scheduler"
+version = "0.1.0"
+description = "Shadow-only scheduler walking skeleton for the PCR TW strategy platform"
+requires-python = ">=3.12"
+dependencies = [
+  "psycopg[binary]==3.3.4",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest==9.0.2",
+  "pytest-cov==7.0.0",
+]
+
+[project.scripts]
+pcr-scheduler = "pcr_scheduler.main:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/pcr_scheduler"]
+
+[tool.pytest.ini_options]
+addopts = "-q --strict-markers"
+testpaths = ["tests"]

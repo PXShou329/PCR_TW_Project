@@ -1,14 +1,25 @@
 # Application source uses LF across platforms.
+.gitattributes text eol=lf
 *.py text eol=lf
 *.ts text eol=lf
 *.tsx text eol=lf
 *.js text eol=lf
+*.mjs text eol=lf
 *.json text eol=lf
 *.yml text eol=lf
 *.yaml text eol=lf
 *.md text eol=lf
 *.css text eol=lf
 *.toml text eol=lf
+*.ini text eol=lf
+*.mako text eol=lf
+*.txt text eol=lf
+*.ps1 text eol=lf
+*.sha256 text eol=lf
+*.Dockerfile text eol=lf
+.dockerignore text eol=lf
+.env.example text eol=lf
+.gitignore text eol=lf
 
 # The research core is a signed/checksummed artifact. This rule must remain last
 # so broad application rules cannot override it. Its validator owns canonical

@@ -1,0 +1,23 @@
+# B0 local/private deployment
+
+`compose.yml` is a production-shaped local/private staging stack, not a public
+production manifest. PostgreSQL is pinned to `18.4-bookworm`; every published
+port binds only to `127.0.0.1`, and the database lives on an internal Docker
+network. Alembic is the sole schema migration owner.
+
+The startup dependency chain is:
+
+```text
+db healthy -> migration(owner) -> role-provision -> importer(DML) -> api(SELECT) -> web
+                                          `-------> scheduler(control tables only)
+```
+
+Run it from the repository root after creating a private `.env` from
+`.env.example`:
+
+```powershell
+docker compose --env-file .env -f infra/compose.yml up --build --wait
+```
+
+Do not set `AUTO_PUBLISH=true` or `SHADOW_MODE=false`; the scheduler rejects
+both in B0. See `docs/operations/B0_RUNBOOK.md` for verification and rollback.
