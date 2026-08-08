@@ -486,3 +486,28 @@ M49（median 改 122.5）／M49b（舊式自我矛盾敘述）／M49c（anchor_c
 - `tools/mutation_test.py` 只作直接相關修正：M54 改為遍歷全部 `operation_mode_claims` 並設為 AUTO；Validator 約束未降低。
 - 封版稽核再讓 M53–M56 斷言「唯一命中目標 FAIL」，不再只看 exit code，避免其他守門遮蔽測試目的。
 - 修正後實測：`MUTATION_TESTS ALL_OK | active_scenarios=54`。
+
+## 2026-08-08 A2＋B2：紅焰 8-10 逐來源操作軸
+
+### 實際開頁與採用邊界
+
+- 已實際開啟 ev073 的 GameWith 正文，而非採用搜尋摘要或交接文件轉述；採用位置為「火 8-10 攻略編成例（2025 年 9 月）→ 魔法半自動 → 手順 1–8」。
+- 正文的該段完整對應 TM-F810-02 五人，並提供八組有順序的手順。26 以 `AX-F810-02-EV073` 保存此來源，27 將複合 SET 操作拆為 14 個原子動作；每列 `source_step_no` 保留與原八組手順的對應。
+- 本地繁中指令皆為正文內容的短句轉述，未保存長段日文原文；來源定位記在各 step 的 `source_locator`。
+- 頁面另提醒養成進度／TP 變化會影響時間點；本輪不把該提醒改寫成數值容錯或步驟重要度。因此 `tolerance_ms`、`hp_threshold`、`criticality`、`failure_if_missed` 均維持 `UNKNOWN`。
+- 來源手順 1 只寫「開始」，未明載戰鬥總長；因此 26 的 `battle_duration_ms=UNKNOWN`，開場四個原子步驟均為 `time_state=NOT_STATED` 且時間為 `UNKNOWN`，不以一般遊戲經驗補成 1:30。
+- GameWith 是日服攻略。TM-F810-02 雖有 ev071 台服同隊通關影片，ev071 沒有完整逐步文字軸，不能證明 ev073 的每個操作點已於台服重現；故 ev073 軸固定 `UNVERIFIED_ON_TW`。
+
+### 未結構化來源
+
+- TM-F810-01 的 ev050／ev052／ev069、TM-F810-02 的 ev070／ev071／ev072、TM-F810-03 的 ev051 各自建立 `SOURCE_GAP` source axis。
+- 影片播放區間只作 Evidence locator；「目押三次」、「四次手動」、「半自動」、「可見操作表」均不足以推導 actor／trigger／clock／action，不建立假 step。
+- ev073 對 TM-F810-03 僅作角色圖示／版本旁證，沒有為該隊建立操作軸。
+- TM-F810-02 因一個 STRUCTURED source 加三個 SOURCE_GAP source，應用層整體狀態為 `PARTIAL`；不同來源不得攤平為單一 `steps` 陣列。
+
+### 不變項
+
+- 24 的 `team_count=3`、`status=PROVISIONAL`、`reproducibility=PENDING` 均不變；新增 timeline 不計入 PVE 隊數或 Data Gate。
+- 25 的三隊 `clear_status` 不變；逐來源 operation mode claims 仍由 25 保存，26 必須逐一覆蓋或明示缺口。
+- 25 的 `requirements.timeline_ref` 已由影片 locator 原子切換為各隊完整 `source_axis_id` 集合；精確 locator 改由 26／27 單一保存。
+- 新增 `CLM-PVE-TL-F810-SHIZURU`（SOURCE_FACT／D）只支撐 ev073 操作手順的存在與結構化邊界，不提高隊伍或關卡 Claim 信心。

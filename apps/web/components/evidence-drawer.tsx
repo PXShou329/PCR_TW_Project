@@ -13,12 +13,19 @@ type DrawerState =
 
 export function EvidenceDrawer({
   evidenceIds,
+  buttonLabel,
+  compact = false,
+  contextLocator,
 }: {
   evidenceIds: string[];
+  buttonLabel?: string;
+  compact?: boolean;
+  contextLocator?: string;
 }) {
   const [state, setState] = useState<DrawerState>({ kind: "closed" });
   const [mounted, setMounted] = useState(false);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const dialogRef = useRef<HTMLElement>(null);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const requestTokenRef = useRef(0);
 
@@ -33,7 +40,36 @@ export function EvidenceDrawer({
     closeButtonRef.current?.focus();
 
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") close();
+      if (event.key === "Escape") {
+        event.preventDefault();
+        close();
+        return;
+      }
+      if (event.key !== "Tab") return;
+
+      const dialog = dialogRef.current;
+      if (!dialog) return;
+      const focusable = Array.from(
+        dialog.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ),
+      ).filter((element) => !element.hasAttribute("hidden"));
+      if (focusable.length === 0) {
+        event.preventDefault();
+        dialog.focus();
+        return;
+      }
+
+      const first = focusable[0];
+      const last = focusable.at(-1)!;
+      const active = document.activeElement;
+      if (event.shiftKey && (active === first || !dialog.contains(active))) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && active === last) {
+        event.preventDefault();
+        first.focus();
+      }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => {
@@ -71,7 +107,10 @@ export function EvidenceDrawer({
 
   return (
     <>
-      <div className="evidence-list" aria-label="Evidence 清單">
+      <div
+        className={`evidence-list${compact ? " evidence-list--compact" : ""}`}
+        aria-label="Evidence 清單"
+      >
         {evidenceIds.map((evidenceId) => (
           <button
             className="evidence-button"
@@ -79,7 +118,8 @@ export function EvidenceDrawer({
             onClick={(event) => void open(evidenceId, event.currentTarget)}
             type="button"
           >
-            {evidenceId}
+            <span>{buttonLabel ?? evidenceId}</span>
+            {buttonLabel ? <code>{evidenceId}</code> : null}
             <span aria-hidden="true">→</span>
           </button>
         ))}
@@ -87,8 +127,15 @@ export function EvidenceDrawer({
 
       {mounted && isOpen ? createPortal(
         <div className="drawer-layer">
-          <button className="drawer-backdrop" aria-label="關閉 Evidence" onClick={close} type="button" />
-          <aside className="drawer" role="dialog" aria-modal="true" aria-labelledby="evidence-title">
+          <div className="drawer-backdrop" aria-hidden="true" onClick={close} />
+          <aside
+            className="drawer"
+            ref={dialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="evidence-title"
+            tabIndex={-1}
+          >
             <div className="drawer__header">
               <div>
                 <p className="eyebrow">Evidence Drawer</p>
@@ -109,7 +156,9 @@ export function EvidenceDrawer({
                 <p>API 未回傳 {state.evidenceId}。平台不會以快取印象或搜尋摘要補寫內容。</p>
               </div>
             ) : null}
-            {state.kind === "loaded" ? <EvidenceBody evidence={state.evidence} /> : null}
+            {state.kind === "loaded" ? (
+              <EvidenceBody evidence={state.evidence} contextLocator={contextLocator} />
+            ) : null}
           </aside>
         </div>,
         document.body,
@@ -118,7 +167,13 @@ export function EvidenceDrawer({
   );
 }
 
-function EvidenceBody({ evidence }: { evidence: Evidence }) {
+function EvidenceBody({
+  evidence,
+  contextLocator,
+}: {
+  evidence: Evidence;
+  contextLocator?: string;
+}) {
   return (
     <div className="drawer__body">
       <div className="badge-row">
@@ -132,7 +187,8 @@ function EvidenceBody({ evidence }: { evidence: Evidence }) {
       <section>
         <p className="eyebrow">來源標題</p>
         <h3>{evidence.source_title}</h3>
-        <p className="locator">定位：{evidence.source_locator}</p>
+        <p className="locator">Evidence 登錄定位：{evidence.source_locator}</p>
+        {contextLocator ? <p className="locator">本次核對定位：{contextLocator}</p> : null}
         <a className="text-link" href={evidence.source_url} rel="noreferrer" target="_blank">
           開啟已登錄來源 <span aria-hidden="true">↗</span>
         </a>

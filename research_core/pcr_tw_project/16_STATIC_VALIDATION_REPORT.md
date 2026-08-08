@@ -3,27 +3,29 @@
 > 由 `tools/validate_project.py` 生成（唯一路徑）；回歸驗證：`python3 tools/mutation_test.py`（Active 情境數見其輸出；退休 ID 見 Archive）。
 > 生成日：2026-08-08｜版本：v1.5｜Release：2026-08-02｜Mode：PRE_SUITE
 
-## 檢查結果（113 項）
+## 檢查結果（128 項）
 
 | 檢查 | 結果 | 明細 |
 |---|---|---|
-| 檔案數（非 tools） | PASS | 42 |
-| 編號檔數 | PASS | 41 |
-| Knowledge 檔數 | PASS | 40 |
+| 檔案數（非 tools） | PASS | 44 |
+| 編號檔數 | PASS | 43 |
+| Knowledge 檔數 | PASS | 42 |
 | tools 檔存在 | PASS |  |
 | 跨檔引用完整 | PASS |  |
-| README 權威表與磁碟一致 | PASS | 42／42 |
+| README 權威表與磁碟一致 | PASS | 44／44 |
 | Instructions §1–§12 連續 | PASS |  |
 | ST44：版本 SSOT 精確一致（v1.5） | PASS | 漂移: |
 | ST80：Active 檔無帳號匯入指令（Guide-Only） | PASS |  |
 | 41：欄數 35＋列數 ≥2 | PASS | 3 列 |
 | 92：欄數 16＋列數 ≥36 | PASS | 75 列 |
-| 93：欄數 14＋列數 ≥34 | PASS | 85 列 |
+| 93：欄數 14＋列數 ≥34 | PASS | 86 列 |
 | 17：欄數 21＋列數 ≥0 | PASS | 0 列 |
 | 24：欄數 16＋列數 ≥0 | PASS | 2 列 |
 | 39：欄數 23＋列數 ≥0 | PASS | 0 列 |
 | 18：欄數 15＋列數 ≥1 | PASS | 15 列 |
 | 25：欄數 20＋列數 ≥0 | PASS | 3 列 |
+| 26：欄數 16＋列數 ≥1 | PASS | 8 列 |
+| 27：欄數 20＋列數 ≥0 | PASS | 14 列 |
 | 45：欄數 14＋列數 ≥2 | PASS | 4 列 |
 | 46：欄數 12＋列數 ≥2 | PASS | 5 列 |
 | 47：欄數 20＋列數 ≥0 | PASS | 0 列 |
@@ -55,6 +57,19 @@
 | 25：requirements 為 canonical JSON；必要 key／slot1–5 完整且無空字串 | PASS |  |
 | 25：SOURCE_CONFLICT 至少兩來源＋兩種 mode；非衝突 mode 與來源聲明一致 | PASS |  |
 | 25：同關卡相同五人不得重複列（多來源合併） | PASS |  |
+| 26：欄位標頭符合規格 | PASS |  |
+| 27：欄位標頭符合規格 | PASS |  |
+| 26：team／Evidence FK 與逐來源 operation mode 聲明一致 | PASS |  |
+| 26：source locator 必須等於 Evidence locator 或其 # 子定位 | PASS |  |
+| 26：同隊同來源只保留一條 source axis；結構化 timeline_id 唯一 | PASS |  |
+| 26：STRUCTURED／SOURCE_GAP 狀態不得強化 UNKNOWN | PASS |  |
+| 27：step FK／Enum／時間範圍／角色成員資格完整 | PASS |  |
+| 27：每來源 sequence_no 唯一且連續 | PASS |  |
+| 27：source_step_no 依序且分組連續 | PASS |  |
+| 26／27：STRUCTURED 必有步驟；SOURCE_GAP 必為零步驟 | PASS |  |
+| ST87：來源邊界、locator 與未載欄位不得推測 | PASS |  |
+| 25→26：手動／半自動／衝突隊伍每個來源與 timeline_ref 均有結構化軸或明示缺口 | PASS |  |
+| 26：跨服結構化軸不得冒充台服已重現 | PASS |  |
 | 45：欄位標頭符合規格 | PASS |  |
 | 45：source_type Enum | PASS |  |
 | 45：社群來源信心上限 ≤C（不得標 OFFICIAL／A／B） | PASS |  |
@@ -131,8 +146,8 @@
 
 ## 統計（程式化）
 
-- 檔案 42（編號 41＋README）＋tools×4；Knowledge 40
-- 92：75 列｜Tier {'OFFICIAL': 47, 'MAJOR_GUIDE': 10, 'SINGLE_PLAYER_REPORT': 9, 'MULTI_PLAYER_REPORT': 5, 'STRUCTURED_DB': 1, 'UNKNOWN': 3}｜93：85 列｜claim_type {'SOURCE_FACT': 57, 'DERIVED_CALCULATION': 6, 'ANALYTICAL_JUDGMENT': 22}
+- 檔案 44（編號 43＋README）＋tools×4；Knowledge 42
+- 92：75 列｜Tier {'OFFICIAL': 47, 'MAJOR_GUIDE': 10, 'SINGLE_PLAYER_REPORT': 9, 'MULTI_PLAYER_REPORT': 5, 'STRUCTURED_DB': 1, 'UNKNOWN': 3}｜93：86 列｜claim_type {'SOURCE_FACT': 58, 'DERIVED_CALCULATION': 6, 'ANALYTICAL_JUDGMENT': 22}
 - 數學重驗：canonical anchors 8 筆｜LIMITED n=5 median=123｜PERMANENT n=2 median=122.5｜ALL_NEW n=7 median=123｜SYSTEM n=1 median=75｜T41=120、三情境、缺口式——全部由 anchors 即時重算
 
 ## FAIL：0｜WARN：16（阻擋 Gate C：7）

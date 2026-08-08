@@ -26,10 +26,15 @@ SUPERSEDED＋新建 CURRENT-0802；next_review_due=2026-08-09（含 08/08 日服
 `SOURCE_CONFLICT`＋canonical requirements JSON 正規化；紅焰 8-10 實開候選來源後取得 3 支不同五人的
 VERIFIED effective teams（詳見 22／23／25）。相同五人多來源只計一隊；因仍少於 5 支，24 不升 `VERIFIED`。
 
+**A2（2026/08/08）**：新增 26／27 逐來源操作軸 SSOT。TM-F810-02 的 GameWith
+2025 年 9 月半自動正文已拆為 14 個原子步驟；其餘已登錄來源均明列 `SOURCE_GAP`，不把影片區間、
+操作次數或多來源摘要冒充逐步操作。該軸來源為日服，雖同隊另有台服通關影片，仍標
+`UNVERIFIED_ON_TW`，Gate 與關卡 lifecycle 均未提高。
+
 ## 檔案清單（唯一權威清單）
 
-> ZIP 內 46 檔＝編號 41＋README＋tools×4（validate_project.py／validation_config.json／stats.json／
-> mutation_test.py）；**40 檔**上傳 Knowledge（00 貼設定欄；README 與 `tools/` 皆不上傳）。
+> ZIP 內 48 檔＝編號 43＋README＋tools×4（validate_project.py／validation_config.json／stats.json／
+> mutation_test.py）；**42 檔**上傳 Knowledge（00 貼設定欄；README 與 `tools/` 皆不上傳）。
 > 本地驗證：`python3 tools/validate_project.py`（生成 15 AUTO 區＋16＋stats.json）；
 > 回歸攔截驗證：`python3 tools/mutation_test.py`（檢查數以 16 為準，README 不重述）。
 > v1.4 交付規則：**單一權威 ZIP**，不外包 ZIP、不附鬆散副本。
@@ -53,6 +58,8 @@ VERIFIED effective teams（詳見 22／23／25）。相同五人多來源只計�
 | 22_DEEP_ZONE_GUIDE_INDEX.md | 深域人讀索引（隊數／全自動／手動；Gate SSOT 為 24） | 是 |
 | 24_PVE_GUIDE_REGISTRY.csv | PVE 關卡層 Registry（Gate SSOT，16 欄；team_count↔25） | 是 |
 | 25_PVE_TEAM_REGISTRY.csv | PVE 隊伍層 Registry（20 欄；五 slot＋requirements canonical JSON＋來源模式聲明＋台服可用性＋去重） | 是 |
+| 26_PVE_OPERATION_TIMELINES.csv | PVE 逐來源操作軸（16 欄；STRUCTURED／SOURCE_GAP 不跨來源合併） | 是 |
+| 27_PVE_TIMELINE_STEPS.csv | PVE 原子操作步驟（20 欄；time_state／時間／觸發／角色／動作／locator） | 是 |
 | 23_PVE_RESEARCH_LOG.md | PVE 研究日誌（P1 前置已登錄） | 是 |
 | 30_ARENA_RESEARCH_WORKFLOW.md | 競技場研究流程 | 是 |
 | 31_ARENA_COUNTER_SCHEMA.md | 反制 Schema（雙軌制＋evidence_ids） | 是 |
@@ -113,6 +120,7 @@ VERIFIED effective teams（詳見 22／23／25）。相同五人多來源只計�
 | 37 | Gate C 納入 blocking_gate_c_warnings=0＋新鮮度；warnings 於 Gate 計算前產生 | v1.4.1.4 稽核 §5：Gate C 未檢查阻擋警告 |
 | 38 | 13 由 validator 依 17 current result 自動覆寫 AUTO_RESULTS 區；retest chain 語意守門 | v1.4.1.4 稽核 §8–§15 |
 | 39 | **Guide-Only Scope Reset**：帳號層 REMOVED_FROM_ACTIVE_SCOPE（封存 archive ZIP）；18 為台服可用性唯一來源；25 隊伍層＋同五人去重＋24 team_count 一致；45／46 來源 Registry（社群 cap≤C）；Gate 重定義（B：PVE 2 關×5 隊＋Arena 5 防守×2 反制＋P-Arena 3＋Timeline 6＋社群來源 2；C：PVE 5 關＋Arena 10＋P-Arena 5） | 20260802 Guide-Only 稽核 §3–§12 |
+| 40 | **逐來源操作軸**：26 以 `source_axis_id` 同時保存 STRUCTURED 與 SOURCE_GAP；只有 STRUCTURED 可擁有 `timeline_id` 與 27 steps。相同隊伍的不同來源不得合併或平均；跨服軸未在台服逐步重現時固定標 `UNVERIFIED_ON_TW` | v3.0 A2＋B2 信任邊界 |
 
 ## 已知債務（v1.4）
 

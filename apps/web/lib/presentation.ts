@@ -16,7 +16,7 @@ export function operationLabel(mode: OperationMode | string): string {
   const labels: Record<string, string> = {
     AUTO: "全自動",
     SEMI_AUTO: "半自動",
-    MANUAL: "手動",
+    MANUAL_TIMELINE: "手動操作軸",
     SOURCE_CONFLICT: "來源操作聲明衝突",
   };
   return labels[mode] ?? mode;

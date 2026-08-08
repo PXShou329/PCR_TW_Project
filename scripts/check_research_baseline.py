@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the immutable RP-I0 research-core baseline in a disposable copy."""
+"""Run the immutable RP-A2 research-core baseline in a disposable copy."""
 
 from __future__ import annotations
 
@@ -15,8 +15,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
-EXPECTED_MANIFEST_SHA256 = "80e6be16fbfbbef1c676def920348aa006d6608a0900f2e62ba4d5cac2d62bcb"
-MANIFEST_PATH = Path(__file__).with_name("research_core_rp_i0_manifest.sha256")
+EXPECTED_MANIFEST_SHA256 = "3a242b521d830af12ce8559d88b733068fb1b6cb503219395d2986b89e5dc352"
+MANIFEST_PATH = Path(__file__).with_name("research_core_rp_a2_manifest.sha256")
 MANIFEST_LINE = re.compile(r"^([0-9a-f]{64})  ([^\\]+(?:/[^\\]+)*)$")
 
 
@@ -34,7 +34,7 @@ VALIDATOR_RUNS = (
         ("tools/validate_project.py", "--mode", "PRE_SUITE", "--write"),
         0,
         (
-            "MODE=PRE_SUITE CHECKS=113 FAIL=0 WARN=16",
+            "MODE=PRE_SUITE CHECKS=128 FAIL=0 WARN=16",
             "GateA=False GateB=False GateC=False blk=7",
             "canonical=Y",
         ),
@@ -44,7 +44,7 @@ VALIDATOR_RUNS = (
         ("tools/validate_project.py", "--mode", "PRE_SUITE"),
         0,
         (
-            "MODE=PRE_SUITE CHECKS=113 FAIL=0 WARN=16",
+            "MODE=PRE_SUITE CHECKS=128 FAIL=0 WARN=16",
             "GateA=False GateB=False GateC=False blk=7",
             "canonical=Y",
         ),
@@ -54,7 +54,7 @@ VALIDATOR_RUNS = (
         ("tools/validate_project.py", "--mode", "OPERATIONAL"),
         0,
         (
-            "MODE=OPERATIONAL CHECKS=112 FAIL=0 WARN=15",
+            "MODE=OPERATIONAL CHECKS=127 FAIL=0 WARN=15",
             "GateA=False GateB=False GateC=False blk=7",
             "canonical=N",
         ),
@@ -64,7 +64,7 @@ VALIDATOR_RUNS = (
         ("tools/validate_project.py", "--mode", "ARTIFACT_READY"),
         1,
         (
-            "MODE=ARTIFACT_READY CHECKS=115 FAIL=3 WARN=15",
+            "MODE=ARTIFACT_READY CHECKS=130 FAIL=3 WARN=15",
             "GateA=False GateB=False GateC=False blk=7",
             "canonical=N",
             "ARTIFACT_READY 需 Gate A",
@@ -88,13 +88,13 @@ def source_files(root: Path) -> list[Path]:
 def load_manifest() -> tuple[dict[str, str], list[str]]:
     errors: list[str] = []
     if not MANIFEST_PATH.is_file():
-        return {}, [f"missing RP-I0 manifest: {MANIFEST_PATH}"]
+        return {}, [f"missing RP-A2 manifest: {MANIFEST_PATH}"]
     lines = MANIFEST_PATH.read_text(encoding="utf-8").splitlines()
     canonical = ("\n".join(lines) + "\n").encode("utf-8")
     manifest_sha256 = hashlib.sha256(canonical).hexdigest()
     if manifest_sha256 != EXPECTED_MANIFEST_SHA256:
         errors.append(
-            "RP-I0 manifest digest mismatch "
+            "RP-A2 manifest digest mismatch "
             f"(expected {EXPECTED_MANIFEST_SHA256}, got {manifest_sha256})"
         )
     entries: dict[str, str] = {}
@@ -107,8 +107,8 @@ def load_manifest() -> tuple[dict[str, str], list[str]]:
         if relative in entries:
             errors.append(f"duplicate manifest path: {relative}")
         entries[relative] = digest
-    if len(entries) != 46:
-        errors.append(f"expected 46 manifest entries, found {len(entries)}")
+    if len(entries) != 48:
+        errors.append(f"expected 48 manifest entries, found {len(entries)}")
     return entries, errors
 
 
@@ -120,14 +120,14 @@ def verify_tree(root: Path) -> list[str]:
     expected_names = set(manifest)
     actual_names = set(actual_paths)
     for missing in sorted(expected_names - actual_names):
-        errors.append(f"RP-I0 file missing: {missing}")
+        errors.append(f"RP-A2 file missing: {missing}")
     for unexpected in sorted(actual_names - expected_names):
         errors.append(f"unexpected research-core file: {unexpected}")
     for relative in sorted(expected_names & actual_names):
         actual_digest = hashlib.sha256(actual_paths[relative].read_bytes()).hexdigest()
         if actual_digest != manifest[relative]:
             errors.append(
-                f"RP-I0 SHA mismatch: {relative} "
+                f"RP-A2 SHA mismatch: {relative} "
                 f"(expected {manifest[relative]}, got {actual_digest})"
             )
     return errors
@@ -176,8 +176,8 @@ def main() -> int:
 
     initial_files = source_files(original)
     errors = verify_tree(original)
-    if len(initial_files) != 46:
-        errors.append(f"expected 46 research-core files, found {len(initial_files)}")
+    if len(initial_files) != 48:
+        errors.append(f"expected 48 research-core files, found {len(initial_files)}")
     for required in ("tools/validate_project.py", "tools/mutation_test.py"):
         if not (original / required).is_file():
             errors.append(f"missing required file: {required}")
@@ -186,7 +186,7 @@ def main() -> int:
             print(f"ERROR: {error}", file=sys.stderr)
         return 1
 
-    with tempfile.TemporaryDirectory(prefix="pcr-r3i-baseline-") as temporary:
+    with tempfile.TemporaryDirectory(prefix="pcr-a2-baseline-") as temporary:
         project = Path(temporary) / "pcr_tw_project"
         shutil.copytree(original, project)
         for expected in VALIDATOR_RUNS:
@@ -196,7 +196,7 @@ def main() -> int:
             "MUTATION",
             ("tools/mutation_test.py",),
             0,
-            ("MUTATION_TESTS ALL_OK", "active_scenarios=55"),
+            ("MUTATION_TESTS ALL_OK", "active_scenarios=66"),
         )
         errors.extend(run(project, mutation))
 
@@ -206,7 +206,7 @@ def main() -> int:
             print(f"- {error}", file=sys.stderr)
         return 1
     print(
-        "\nRESEARCH_BASELINE_OK | files=46 | mutation_scenarios=55 "
+        "\nRESEARCH_BASELINE_OK | files=48 | mutation_scenarios=66 "
         f"| manifest_sha256={EXPECTED_MANIFEST_SHA256}"
     )
     return 0

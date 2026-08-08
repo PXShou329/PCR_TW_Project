@@ -6,12 +6,12 @@
 <!-- AUTO_STATS_START -->
 **程式化統計（validator 生成即核對；生成日 2026-08-08／版本 v1.5／Release 2026-08-02／Mode PRE_SUITE）**
 
-- 檔案 42（編號 41＋README）＋tools×4｜Knowledge 40｜Fixture 37
+- 檔案 44（編號 43＋README）＋tools×4｜Knowledge 42｜Fixture 37
 - Gate 成熟資料：PVE VERIFIED 0（24）｜Arena VERIFIED 0（39）｜P-Arena 0（47）｜Timeline MATURE 2（41）
 - 92 Evidence 75 列｜Tier {'OFFICIAL': 47, 'MAJOR_GUIDE': 10, 'SINGLE_PLAYER_REPORT': 9, 'MULTI_PLAYER_REPORT': 5, 'STRUCTURED_DB': 1, 'UNKNOWN': 3}｜evidence_confidence {'A': 47, 'D': 28}｜PENDING_REVIEW 1
-- 93 Claim 85 列｜claim_confidence {'A': 50, 'D': 18, 'C': 2, 'B': 15}｜claim_type {'SOURCE_FACT': 57, 'DERIVED_CALCULATION': 6, 'ANALYTICAL_JUDGMENT': 22}
+- 93 Claim 86 列｜claim_confidence {'A': 50, 'D': 19, 'C': 2, 'B': 15}｜claim_type {'SOURCE_FACT': 58, 'DERIVED_CALCULATION': 6, 'ANALYTICAL_JUDGMENT': 22}
 - Gate A=FAIL｜B=FAIL｜C=FAIL｜阻擋 Gate C 警告 7
-- 靜態檢查 113 項｜FAIL 0｜WARN 16
+- 靜態檢查 128 項｜FAIL 0｜WARN 16
 <!-- AUTO_STATS_END -->
 
 ## 帳號層狀態

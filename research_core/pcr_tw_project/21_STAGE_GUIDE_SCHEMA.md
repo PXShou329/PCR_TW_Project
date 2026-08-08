@@ -87,6 +87,20 @@
 - 未知條件一律明寫 `UNKNOWN`；空字串不得冒充已知，也不得將泛化練度或記憶推定填入逐 slot 欄位。
 - 來源 claim 只保存「該來源聲明了什麼」，不等於來源已實開或通關已驗證；證據層級與 `clear_status` 仍依 20、92、93 的規則獨立判定。
 
+### 2.2 26／27 逐來源操作軸契約（A2）
+
+- `26_PVE_OPERATION_TIMELINES.csv` 每列是一個 `source_axis_id`；同隊不同來源必須分列，不得合併、平均或生成「綜合操作軸」。
+- 25 的 legacy 欄名 `requirements.timeline_ref` 自 A2 起保存該隊以分號分隔的完整 `source_axis_id` 精確集合；Evidence locator 僅保存在 26／27，不再混用於此欄。
+- `status=STRUCTURED` 才能有非 `UNKNOWN` 的 `timeline_id`，且必須在 27 至少有一個步驟；`status=SOURCE_GAP` 必須 `timeline_id=UNKNOWN`、零步驟並填入非 `NONE` 的 `gap_reason`。
+- 26 的 `source_id` 必須對應 25 同隊 `requirements.operation_mode_claims` 的來源與 mode；`source_evidence_id` 必須存在於 92 且已列於該隊 `evidence_ids`。
+- `27_PVE_TIMELINE_STEPS.csv` 把來源的複合手順拆成原子動作；`sequence_no` 在各 timeline 內須為連續的 `1..N`，`source_step_no` 保留原來源分組。`time_state=STATED` 才能填數字時間；`NOT_STATED` 的時間必須明寫 `UNKNOWN`。
+- trigger 合法值：`CLOCK`、`UB_READY`、`ANIMATION_CUE`、`HP_THRESHOLD`、`WAVE_START`、`BOSS_ACTION`、`SOURCE_TEXT_ONLY`。
+- action 合法值：`USE_UB`、`WAIT`、`AUTO_ON`、`AUTO_OFF`、`SET_ON`、`SET_OFF`、`PAUSE`、`RESUME`、`TARGET`、`NO_ACTION`。`SET_ON／SET_OFF` 是遊戲實際操作所需，補足 v3.0 初稿未列出的 SET 語意。
+- 角色型動作的 `actor_unit_key` 必須是該隊五名成員；trigger actor／target 若不是 `NONE` 也必須是隊員。已載明的時間不得為負；只有來源已載明 `battle_duration_ms` 時才檢查其上界，不得以遊戲常識替來源補總長。
+- 未知的 HP、容錯與漏按結果一律明寫 `UNKNOWN`；不得由影片長度、操作次數、搜尋摘要或其他來源推測。
+- 同隊已有台服通關證據不代表某條日服來源軸已在台服逐步重現；此情況固定標 `UNVERIFIED_ON_TW`。
+- Timeline 的結構化狀態與 25 `clear_status`、24 `team_count/status/reproducibility` 分開計算；新增操作軸不得自行提高 Data Gate。
+
 ## 失敗排查
 - 坦克過早倒下：
 - 輸出不足：

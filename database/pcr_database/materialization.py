@@ -13,16 +13,18 @@ from .models import (
     Claim,
     ClaimEvidence,
     Evidence,
+    OperationTimeline,
     Stage,
     StageClaim,
     StageEvidence,
     Team,
     TeamEvidence,
     TeamMember,
+    TimelineStep,
 )
 
 
-MATERIALIZATION_MANIFEST_VERSION = 1
+MATERIALIZATION_MANIFEST_VERSION = 2
 
 # Every table that can affect a public B0 response belongs to the serving
 # closure.  Scheduler state and ImportRun are intentionally excluded: the
@@ -38,6 +40,8 @@ SERVING_MODELS = (
     StageClaim,
     TeamEvidence,
     ClaimEvidence,
+    OperationTimeline,
+    TimelineStep,
 )
 
 

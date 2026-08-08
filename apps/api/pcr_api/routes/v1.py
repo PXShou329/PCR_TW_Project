@@ -17,6 +17,8 @@ from ..repository import (
     stage_detail,
     stage_summary,
     team_detail,
+    timeline_data,
+    timeline_warnings,
 )
 from ..schemas import (
     BaselineData,
@@ -26,6 +28,7 @@ from ..schemas import (
     StageDetail,
     StageSummary,
     TeamDetail,
+    TimelineData,
 )
 
 
@@ -88,12 +91,26 @@ def get_team(team_id: str, session: Session = Depends(get_session)) -> Envelope[
     team = session.get(Team, team_id)
     if team is None:
         raise _not_found("team", team_id)
-    timeline_warning = []
-    if team.requirements.get("timeline_ref"):
-        timeline_warning.append("STRUCTURED_TIMELINE_SOURCE_GAP")
+    detail = team_detail(session, team)
     return Envelope(
-        data=team_detail(session, team),
-        meta=response_meta(run, extra_warnings=timeline_warning),
+        data=detail,
+        meta=response_meta(run, extra_warnings=timeline_warnings(detail["timeline"])),
+    )
+
+
+@router.get("/teams/{team_id}/timelines", response_model=Envelope[TimelineData])
+def get_team_timelines(
+    team_id: str,
+    session: Session = Depends(get_session),
+) -> Envelope[TimelineData]:
+    run = _run_or_503(session)
+    team = session.get(Team, team_id)
+    if team is None:
+        raise _not_found("team", team_id)
+    timeline = timeline_data(session, team)
+    return Envelope(
+        data=timeline,
+        meta=response_meta(run, extra_warnings=timeline_warnings(timeline)),
     )
 
 

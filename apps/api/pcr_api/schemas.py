@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime
-from typing import Any, Generic, TypeVar
+from typing import Annotated, Any, Generic, Literal, TypeAlias, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -104,12 +104,99 @@ class TimelineReference(BaseModel):
     raw: str
 
 
+class TimelineStepData(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    timeline_step_id: str
+    timeline_id: str
+    sequence_no: int = Field(ge=1)
+    source_step_no: int = Field(ge=1)
+    trigger_type: Literal[
+        "CLOCK",
+        "UB_READY",
+        "ANIMATION_CUE",
+        "HP_THRESHOLD",
+        "WAVE_START",
+        "BOSS_ACTION",
+        "SOURCE_TEXT_ONLY",
+    ]
+    trigger_actor_unit_key: str
+    time_state: Literal["STATED", "NOT_STATED"]
+    clock_from_ms: int | None = Field(ge=0)
+    clock_to_ms: int | None = Field(ge=0)
+    actor_unit_key: str
+    action_type: Literal[
+        "USE_UB",
+        "WAIT",
+        "AUTO_ON",
+        "AUTO_OFF",
+        "SET_ON",
+        "SET_OFF",
+        "PAUSE",
+        "RESUME",
+        "TARGET",
+        "NO_ACTION",
+    ]
+    target_unit_key: str
+    auto_state_after: Literal["ON", "OFF", "UNKNOWN"]
+    animation_cue: str
+    hp_threshold: str
+    tolerance_ms: int | None = Field(ge=0)
+    criticality: Literal["NORMAL", "CRITICAL", "UNKNOWN"]
+    instruction_zh_tw: str
+    failure_if_missed: str
+    source_locator: str
+
+
+class TimelineSourceBase(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    source_axis_id: str
+    source_id: str
+    source_evidence_id: str
+    source_locator: str
+    timeline_variant_name: str
+    operation_mode: Literal["AUTO", "SEMI_AUTO", "MANUAL_TIMELINE"]
+    reproducibility: Literal["UNVERIFIED_ON_TW", "TW_REPRODUCED", "UNKNOWN"]
+    last_verified_at: date
+    notes: str
+
+
+class StructuredTimelineSource(TimelineSourceBase):
+    status: Literal["STRUCTURED"]
+    timeline_id: str
+    clock_mode: Literal["COUNTDOWN", "ELAPSED"]
+    battle_duration_ms: int | None = Field(ge=1)
+    initial_auto_state: Literal["ON", "OFF"]
+    gap_reason: None
+    steps: list[TimelineStepData]
+
+
+class GapTimelineSource(TimelineSourceBase):
+    status: Literal["SOURCE_GAP"]
+    timeline_id: None
+    clock_mode: None
+    battle_duration_ms: None
+    initial_auto_state: None
+    gap_reason: Literal["INSUFFICIENT_SOURCE_DETAIL", "PENDING_EXTRACTION"]
+    steps: list[TimelineStepData] = Field(..., max_length=0)
+
+
+TimelineSourceData: TypeAlias = Annotated[
+    StructuredTimelineSource | GapTimelineSource,
+    Field(discriminator="status"),
+]
+
+
 class TimelineData(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    status: str
+    status: Literal["STRUCTURED", "PARTIAL", "SOURCE_GAP", "MISSING"]
+    structured_sources: int = Field(ge=0)
+    registered_sources: int = Field(ge=0)
+    sources: list[TimelineSourceData]
     references: list[TimelineReference]
-    steps: list[dict[str, Any]]
+    steps: list[dict[str, Any]] = Field(..., max_length=0)
 
 
 class TeamDetail(TeamSummary):
@@ -175,6 +262,8 @@ class BaselineCounts(BaseModel):
     characters: int
     evidence: int
     claims: int
+    operation_timelines: int
+    timeline_steps: int
 
 
 class BaselineData(BaseModel):

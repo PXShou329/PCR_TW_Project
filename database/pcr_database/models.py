@@ -10,6 +10,7 @@ from sqlalchemy import (
     Date,
     DateTime,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     Integer,
     MetaData,
@@ -203,6 +204,181 @@ class TeamMember(Base):
     __table_args__ = (
         CheckConstraint("slot BETWEEN 1 AND 5", name="team_member_slot_range"),
         UniqueConstraint("team_id", "unit_key", name="uq_team_members_team_unit"),
+    )
+
+
+class OperationTimeline(Base):
+    __tablename__ = "operation_timelines"
+
+    source_axis_id: Mapped[str] = mapped_column(String(140), primary_key=True)
+    timeline_id: Mapped[str | None] = mapped_column(String(140), nullable=True, unique=True)
+    team_id: Mapped[str] = mapped_column(
+        ForeignKey("teams.team_id", ondelete="CASCADE"), nullable=False
+    )
+    source_id: Mapped[str] = mapped_column(String(160), nullable=False)
+    source_evidence_id: Mapped[str] = mapped_column(
+        ForeignKey("evidence.evidence_id", ondelete="RESTRICT"), nullable=False
+    )
+    source_locator: Mapped[str] = mapped_column(Text, nullable=False)
+    timeline_variant_name: Mapped[str] = mapped_column(Text, nullable=False)
+    operation_mode: Mapped[str] = mapped_column(String(32), nullable=False)
+    clock_mode: Mapped[str] = mapped_column(String(20), nullable=False)
+    battle_duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    initial_auto_state: Mapped[str] = mapped_column(String(16), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    reproducibility: Mapped[str] = mapped_column(String(32), nullable=False)
+    gap_reason: Mapped[str] = mapped_column(String(48), nullable=False)
+    last_verified_at: Mapped[date] = mapped_column(Date, nullable=False)
+    notes: Mapped[str] = mapped_column(Text, nullable=False)
+    source_payload: Mapped[dict[str, Any]] = mapped_column(json_type, nullable=False)
+    import_run_id: Mapped[str] = mapped_column(
+        ForeignKey("import_runs.id", ondelete="RESTRICT"), nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint("team_id", "source_id", name="uq_operation_timelines_team_source"),
+        CheckConstraint(
+            "operation_mode IN ('AUTO','SEMI_AUTO','MANUAL_TIMELINE')",
+            name="operation_timeline_mode",
+        ),
+        CheckConstraint(
+            "clock_mode IN ('COUNTDOWN','ELAPSED','UNKNOWN')",
+            name="operation_timeline_clock_mode",
+        ),
+        CheckConstraint(
+            "initial_auto_state IN ('ON','OFF','UNKNOWN')",
+            name="operation_timeline_initial_auto_state",
+        ),
+        CheckConstraint(
+            "reproducibility IN ('UNVERIFIED_ON_TW','TW_REPRODUCED','UNKNOWN')",
+            name="operation_timeline_reproducibility",
+        ),
+        CheckConstraint(
+            "gap_reason IN ('NONE','INSUFFICIENT_SOURCE_DETAIL','PENDING_EXTRACTION')",
+            name="operation_timeline_gap_reason",
+        ),
+        CheckConstraint(
+            "battle_duration_ms IS NULL OR battle_duration_ms > 0",
+            name="operation_timeline_duration_positive",
+        ),
+        CheckConstraint(
+            "(status = 'STRUCTURED' AND timeline_id IS NOT NULL "
+            "AND clock_mode IN ('COUNTDOWN','ELAPSED') "
+            "AND initial_auto_state IN ('ON','OFF') AND gap_reason = 'NONE') "
+            "OR (status = 'SOURCE_GAP' AND timeline_id IS NULL "
+            "AND clock_mode = 'UNKNOWN' AND battle_duration_ms IS NULL "
+            "AND initial_auto_state = 'UNKNOWN' AND reproducibility = 'UNKNOWN' "
+            "AND gap_reason IN ('INSUFFICIENT_SOURCE_DETAIL','PENDING_EXTRACTION'))",
+            name="operation_timeline_status_shape",
+        ),
+        Index("ix_operation_timelines_team_status", "team_id", "status"),
+    )
+
+
+class TimelineStep(Base):
+    __tablename__ = "timeline_steps"
+
+    timeline_step_id: Mapped[str] = mapped_column(String(140), primary_key=True)
+    timeline_id: Mapped[str] = mapped_column(
+        ForeignKey("operation_timelines.timeline_id", ondelete="CASCADE"), nullable=False
+    )
+    team_id: Mapped[str] = mapped_column(
+        ForeignKey("teams.team_id", ondelete="CASCADE"), nullable=False
+    )
+    sequence_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    source_step_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    trigger_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    trigger_actor_unit_key: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    time_state: Mapped[str] = mapped_column(String(20), nullable=False)
+    clock_from_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    clock_to_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    actor_unit_key: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    action_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    target_unit_key: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    auto_state_after: Mapped[str] = mapped_column(String(16), nullable=False)
+    animation_cue: Mapped[str] = mapped_column(Text, nullable=False)
+    hp_threshold: Mapped[str] = mapped_column(String(80), nullable=False)
+    tolerance_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    criticality: Mapped[str] = mapped_column(String(20), nullable=False)
+    instruction_zh_tw: Mapped[str] = mapped_column(Text, nullable=False)
+    failure_if_missed: Mapped[str] = mapped_column(Text, nullable=False)
+    source_locator: Mapped[str] = mapped_column(Text, nullable=False)
+    source_payload: Mapped[dict[str, Any]] = mapped_column(json_type, nullable=False)
+    import_run_id: Mapped[str] = mapped_column(
+        ForeignKey("import_runs.id", ondelete="RESTRICT"), nullable=False
+    )
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["team_id", "trigger_actor_unit_key"],
+            ["team_members.team_id", "team_members.unit_key"],
+            name="fk_timeline_steps_trigger_actor_team_member",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["team_id", "actor_unit_key"],
+            ["team_members.team_id", "team_members.unit_key"],
+            name="fk_timeline_steps_actor_team_member",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["team_id", "target_unit_key"],
+            ["team_members.team_id", "team_members.unit_key"],
+            name="fk_timeline_steps_target_team_member",
+            ondelete="RESTRICT",
+        ),
+        UniqueConstraint("timeline_id", "sequence_no", name="uq_timeline_steps_timeline_sequence"),
+        CheckConstraint("sequence_no >= 1", name="timeline_step_sequence_positive"),
+        CheckConstraint("source_step_no >= 1", name="timeline_step_source_sequence_positive"),
+        CheckConstraint(
+            "trigger_type IN ('CLOCK','UB_READY','ANIMATION_CUE','HP_THRESHOLD',"
+            "'WAVE_START','BOSS_ACTION','SOURCE_TEXT_ONLY')",
+            name="timeline_step_trigger_type",
+        ),
+        CheckConstraint(
+            "time_state IN ('STATED','NOT_STATED')",
+            name="timeline_step_time_state",
+        ),
+        CheckConstraint(
+            "(time_state = 'STATED' AND clock_from_ms IS NOT NULL AND clock_to_ms IS NOT NULL) "
+            "OR (time_state = 'NOT_STATED' AND clock_from_ms IS NULL AND clock_to_ms IS NULL)",
+            name="timeline_step_time_shape",
+        ),
+        CheckConstraint(
+            "clock_from_ms IS NULL OR clock_from_ms >= 0",
+            name="timeline_step_clock_from_nonnegative",
+        ),
+        CheckConstraint(
+            "clock_to_ms IS NULL OR clock_to_ms >= 0",
+            name="timeline_step_clock_to_nonnegative",
+        ),
+        CheckConstraint(
+            "tolerance_ms IS NULL OR tolerance_ms >= 0",
+            name="timeline_step_tolerance_nonnegative",
+        ),
+        CheckConstraint(
+            "action_type IN ('USE_UB','WAIT','AUTO_ON','AUTO_OFF','SET_ON','SET_OFF',"
+            "'PAUSE','RESUME','TARGET','NO_ACTION')",
+            name="timeline_step_action_type",
+        ),
+        CheckConstraint(
+            "auto_state_after IN ('ON','OFF','UNKNOWN')",
+            name="timeline_step_auto_state",
+        ),
+        CheckConstraint(
+            "criticality IN ('NORMAL','CRITICAL','UNKNOWN')",
+            name="timeline_step_criticality",
+        ),
+        CheckConstraint(
+            "action_type NOT IN ('USE_UB','SET_ON','SET_OFF','TARGET') "
+            "OR actor_unit_key IS NOT NULL",
+            name="timeline_step_actor_required",
+        ),
+        CheckConstraint(
+            "action_type != 'TARGET' OR target_unit_key IS NOT NULL",
+            name="timeline_step_target_required",
+        ),
+        Index("ix_timeline_steps_timeline_sequence", "timeline_id", "sequence_no"),
     )
 
 

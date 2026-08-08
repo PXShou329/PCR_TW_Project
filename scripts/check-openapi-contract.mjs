@@ -66,6 +66,11 @@ const schemaToInterface = {
   TeamDetail: "TeamDetail",
   TeamMemberData: "TeamMember",
   TeamSummary: "TeamSummary",
+  TimelineData: "TeamTimeline",
+  TimelineReference: "TimelineReference",
+  TimelineStepData: "TimelineStep",
+  StructuredTimelineSource: "StructuredTimelineSource",
+  GapTimelineSource: "GapTimelineSource",
 };
 
 function collectInterfaceProperties(interfaceName, seen = new Set()) {

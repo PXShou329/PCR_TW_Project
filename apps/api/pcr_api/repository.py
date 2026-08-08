@@ -16,12 +16,14 @@ from pcr_database.models import (
     ClaimEvidence,
     Evidence,
     ImportRun,
+    OperationTimeline,
     Stage,
     StageClaim,
     StageEvidence,
     Team,
     TeamEvidence,
     TeamMember,
+    TimelineStep,
 )
 
 from .schemas import ResponseMeta, SourceMeta
@@ -35,6 +37,8 @@ B0_EXPECTED_COUNTS = {
     "characters": 8,
     "evidence": 18,
     "claims": 13,
+    "operation_timelines": 8,
+    "timeline_steps": 14,
 }
 
 
@@ -67,6 +71,10 @@ def mirror_readiness(session: Session, run: ImportRun) -> tuple[bool, str]:
         "characters": session.scalar(select(func.count()).select_from(Character)) or 0,
         "evidence": session.scalar(select(func.count()).select_from(Evidence)) or 0,
         "claims": session.scalar(select(func.count()).select_from(Claim)) or 0,
+        "operation_timelines": session.scalar(
+            select(func.count()).select_from(OperationTimeline)
+        ) or 0,
+        "timeline_steps": session.scalar(select(func.count()).select_from(TimelineStep)) or 0,
     }
     if actual_counts != B0_EXPECTED_COUNTS:
         return False, "row_count_drift"
@@ -105,7 +113,7 @@ def mirror_readiness(session: Session, run: ImportRun) -> tuple[bool, str]:
     if len(effective_team_signatures(session, B0_TARGET_GUIDE_ID)) != 3:
         return False, "effective_team_drift"
 
-    for model in (Character, Evidence, Claim):
+    for model in (Character, Evidence, Claim, OperationTimeline, TimelineStep):
         foreign_rows = session.scalar(
             select(func.count()).select_from(model).where(model.import_run_id != run.id)
         )
@@ -218,6 +226,10 @@ def baseline_data(session: Session, run: ImportRun) -> dict[str, Any]:
         "characters": session.scalar(select(func.count()).select_from(Character)) or 0,
         "evidence": session.scalar(select(func.count()).select_from(Evidence)) or 0,
         "claims": session.scalar(select(func.count()).select_from(Claim)) or 0,
+        "operation_timelines": session.scalar(
+            select(func.count()).select_from(OperationTimeline)
+        ) or 0,
+        "timeline_steps": session.scalar(select(func.count()).select_from(TimelineStep)) or 0,
     }
     featured = session.scalar(select(Stage).order_by(Stage.guide_id).limit(1))
     return {
@@ -304,25 +316,136 @@ def stage_detail(session: Session, stage: Stage) -> dict[str, Any]:
     }
 
 
-def _timeline(requirements: dict[str, Any]) -> dict[str, Any]:
-    raw = requirements.get("timeline_ref")
-    if not isinstance(raw, str) or not raw.strip():
-        return {"status": "MISSING", "references": [], "steps": []}
-    references: list[dict[str, str]] = []
-    for value in raw.split(";"):
-        source, separator, locator = value.partition("@")
-        references.append(
+def _step_data(step: TimelineStep) -> dict[str, Any]:
+    return {
+        "timeline_step_id": step.timeline_step_id,
+        "timeline_id": step.timeline_id,
+        "sequence_no": step.sequence_no,
+        "source_step_no": step.source_step_no,
+        "trigger_type": step.trigger_type,
+        "trigger_actor_unit_key": step.trigger_actor_unit_key or "NONE",
+        "time_state": step.time_state,
+        "clock_from_ms": step.clock_from_ms,
+        "clock_to_ms": step.clock_to_ms,
+        "actor_unit_key": step.actor_unit_key or "NONE",
+        "action_type": step.action_type,
+        "target_unit_key": step.target_unit_key or "NONE",
+        "auto_state_after": step.auto_state_after,
+        "animation_cue": step.animation_cue,
+        "hp_threshold": step.hp_threshold,
+        "tolerance_ms": step.tolerance_ms,
+        "criticality": step.criticality,
+        "instruction_zh_tw": step.instruction_zh_tw,
+        "failure_if_missed": step.failure_if_missed,
+        "source_locator": step.source_locator,
+    }
+
+
+def timeline_data(session: Session, team: Team) -> dict[str, Any]:
+    """Serialize source axes independently; never merge or reorder their steps."""
+
+    axes = session.scalars(
+        select(OperationTimeline)
+        .where(OperationTimeline.team_id == team.team_id)
+        .order_by(OperationTimeline.source_axis_id)
+    ).all()
+    structured_ids = [axis.timeline_id for axis in axes if axis.timeline_id is not None]
+    steps_by_timeline: dict[str, list[TimelineStep]] = {
+        timeline_id: [] for timeline_id in structured_ids
+    }
+    if structured_ids:
+        steps = session.scalars(
+            select(TimelineStep)
+            .where(TimelineStep.timeline_id.in_(structured_ids))
+            .order_by(TimelineStep.timeline_id, TimelineStep.sequence_no)
+        ).all()
+        for step in steps:
+            steps_by_timeline[step.timeline_id].append(step)
+
+    sources: list[dict[str, Any]] = []
+    for axis in axes:
+        common = {
+            "source_axis_id": axis.source_axis_id,
+            "source_id": axis.source_id,
+            "source_evidence_id": axis.source_evidence_id,
+            "source_locator": axis.source_locator,
+            "timeline_variant_name": axis.timeline_variant_name,
+            "operation_mode": axis.operation_mode,
+            "reproducibility": axis.reproducibility,
+            "last_verified_at": axis.last_verified_at,
+            "notes": axis.notes,
+        }
+        if axis.status == "STRUCTURED":
+            assert axis.timeline_id is not None
+            sources.append(
+                {
+                    **common,
+                    "status": "STRUCTURED",
+                    "timeline_id": axis.timeline_id,
+                    "clock_mode": axis.clock_mode,
+                    "battle_duration_ms": axis.battle_duration_ms,
+                    "initial_auto_state": axis.initial_auto_state,
+                    "gap_reason": None,
+                    "steps": [
+                        _step_data(step) for step in steps_by_timeline[axis.timeline_id]
+                    ],
+                }
+            )
+        else:
+            sources.append(
+                {
+                    **common,
+                    "status": "SOURCE_GAP",
+                    "timeline_id": None,
+                    "clock_mode": None,
+                    "battle_duration_ms": None,
+                    "initial_auto_state": None,
+                    "gap_reason": axis.gap_reason,
+                    "steps": [],
+                }
+            )
+
+    structured_sources = sum(source["status"] == "STRUCTURED" for source in sources)
+    registered_sources = len(sources)
+    if registered_sources == 0:
+        status = "MISSING"
+    elif structured_sources == registered_sources:
+        status = "STRUCTURED"
+    elif structured_sources == 0:
+        status = "SOURCE_GAP"
+    else:
+        status = "PARTIAL"
+    return {
+        "status": status,
+        "structured_sources": structured_sources,
+        "registered_sources": registered_sources,
+        "sources": sources,
+        # Compatibility projection only. ``timeline_ref`` now stores source
+        # axis ids, but the deprecated B0 parser shape remains unchanged.
+        "references": [
             {
-                "source_id": source,
-                "locator": locator if separator else "UNKNOWN",
+                "source_id": value.partition("@")[0],
+                "locator": value.partition("@")[2] or "UNKNOWN",
                 "raw": value,
             }
-        )
-    return {
-        "status": "SOURCE_GAP",
-        "references": references,
+            for value in str(team.requirements.get("timeline_ref", "")).split(";")
+            if value
+        ],
+        # Deprecated: flattening source-specific steps would destroy evidence
+        # provenance and execution order.
         "steps": [],
     }
+
+
+def timeline_warnings(timeline: dict[str, Any]) -> list[str]:
+    status = timeline["status"]
+    if status == "SOURCE_GAP":
+        return ["STRUCTURED_TIMELINE_SOURCE_GAP"]
+    if status == "PARTIAL":
+        return ["STRUCTURED_TIMELINE_PARTIAL"]
+    if status == "MISSING":
+        return ["STRUCTURED_TIMELINE_MISSING"]
+    return []
 
 
 def team_detail(session: Session, team: Team) -> dict[str, Any]:
@@ -339,7 +462,7 @@ def team_detail(session: Session, team: Team) -> dict[str, Any]:
             "stage": team.stage_label,
             "support_slot": team.support_slot,
             "requirements": team.requirements,
-            "timeline": _timeline(team.requirements),
+            "timeline": timeline_data(session, team),
             "source_ids": list(team.source_ids),
             "evidence_ids": list(evidence_ids),
             "tw_availability_check": team.tw_availability_check,

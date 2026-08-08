@@ -3,9 +3,9 @@
  "release_date": "2026-08-02",
  "project_version": "v1.5",
  "mode": "PRE_SUITE",
- "files": 42,
- "numbered": 41,
- "knowledge": 40,
+ "files": 44,
+ "numbered": 43,
+ "knowledge": 42,
  "tools": 4,
  "tools_files": [
   "mutation_test.py",
@@ -27,16 +27,16 @@
  },
  "cc": {
   "A": 50,
-  "D": 18,
+  "D": 19,
   "C": 2,
   "B": 15
  },
  "ct": {
-  "SOURCE_FACT": 57,
+  "SOURCE_FACT": 58,
   "DERIVED_CALCULATION": 6,
   "ANALYTICAL_JUDGMENT": 22
  },
- "claims": 85,
+ "claims": 86,
  "evidence": 75,
  "fixtures": 37,
  "public_covered": 41,
@@ -95,7 +95,7 @@
   }
  },
  "timeline_rows": 2,
- "checks": 113,
+ "checks": 128,
  "fail": 0,
  "warn": 16,
  "exec_rows": 0,

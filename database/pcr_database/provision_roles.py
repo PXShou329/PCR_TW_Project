@@ -28,6 +28,8 @@ SERVING_TABLES = (
     "stage_claims",
     "team_evidence",
     "claim_evidence",
+    "operation_timelines",
+    "timeline_steps",
 )
 SCHEDULER_TABLES = ("scheduler_leases", "scheduler_runs")
 

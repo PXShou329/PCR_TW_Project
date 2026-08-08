@@ -509,5 +509,113 @@ def m57(d):
     rewrite_csv(P(d, "92_EVIDENCE_LEDGER.csv"), fn)
 results.append(mutate("M57 Evidence Declares Missing Claim", m57, "FAIL", mode="PRE_SUITE",
                       target_fail="ST86：92→93 declared Claim FK 完整"))
+# M58: timeline step 的角色不得脫離該隊五人 → FAIL
+def m58(d):
+    def fn(rows):
+        h = rows[0]
+        rows[1][h.index("actor_unit_key")] = "missing_a2_unit"
+    rewrite_csv(P(d, "27_PVE_TIMELINE_STEPS.csv"), fn)
+results.append(mutate("M58 Timeline Actor Outside Team", m58, "FAIL", mode="PRE_SUITE",
+                      target_fail="27：step FK／Enum／時間範圍／角色成員資格完整"))
+# M59: 同來源 sequence_no 不得重複或跳號 → FAIL
+def m59(d):
+    def fn(rows):
+        h = rows[0]
+        rows[2][h.index("sequence_no")] = rows[1][h.index("sequence_no")]
+    rewrite_csv(P(d, "27_PVE_TIMELINE_STEPS.csv"), fn)
+results.append(mutate("M59 Duplicate Timeline Sequence", m59, "FAIL", mode="PRE_SUITE",
+                      target_fail="27：每來源 sequence_no 唯一且連續"))
+# M60: VERIFIED 半自動／衝突隊伍的來源不可無聲消失 → FAIL
+def m60(d):
+    def fn(rows):
+        h = rows[0]; source_id = h.index("source_id")
+        rows[:] = [rows[0]] + [r for r in rows[1:] if r[source_id] != "yt_jkPXr3aUZZQ"]
+    rewrite_csv(P(d, "26_PVE_OPERATION_TIMELINES.csv"), fn)
+results.append(mutate("M60 Missing Declared Source Axis", m60, "FAIL", mode="PRE_SUITE",
+                      target_fail="25→26：手動／半自動／衝突隊伍每個來源與 timeline_ref 均有結構化軸或明示缺口"))
+# M61: JP 來源的結構化軸不得偽裝成台服已逐步重現 → FAIL
+def m61(d):
+    def fn(rows):
+        h = rows[0]; status = h.index("status"); repro = h.index("reproducibility")
+        for r in rows[1:]:
+            if r[status] == "STRUCTURED":
+                r[repro] = "TW_REPRODUCED"; return
+    rewrite_csv(P(d, "26_PVE_OPERATION_TIMELINES.csv"), fn)
+results.append(mutate("M61 Cross-Server Timeline Falsely Reproduced", m61, "FAIL", mode="PRE_SUITE",
+                      target_fail="26：跨服結構化軸不得冒充台服已重現"))
+# M62: SOURCE_GAP 的 UNKNOWN 不得改成空白冒充已知 → FAIL
+def m62(d):
+    def fn(rows):
+        h = rows[0]; status = h.index("status"); duration = h.index("battle_duration_ms")
+        for r in rows[1:]:
+            if r[status] == "SOURCE_GAP":
+                r[duration] = ""; return
+    rewrite_csv(P(d, "26_PVE_OPERATION_TIMELINES.csv"), fn)
+results.append(mutate("M62 Blank Timeline Gap Unknown", m62, "FAIL", mode="PRE_SUITE",
+                      target_fail="26：STRUCTURED／SOURCE_GAP 狀態不得強化 UNKNOWN"))
+# M63: 來源未明載總長時，不得用遊戲常識補成 90 秒 → ST87 FAIL
+def m63(d):
+    def fn(rows):
+        h = rows[0]; source_axis = h.index("source_axis_id"); duration = h.index("battle_duration_ms")
+        for r in rows[1:]:
+            if r[source_axis] == "AX-F810-02-EV073":
+                r[duration] = "90000"; return
+    rewrite_csv(P(d, "26_PVE_OPERATION_TIMELINES.csv"), fn)
+results.append(mutate("M63 Inferred Unstated Battle Duration", m63, "FAIL", mode="PRE_SUITE",
+                      target_fail="ST87：來源邊界、locator 與未載欄位不得推測"))
+# M64: source step 分組與 locator 不得漂移後仍通過 → FAIL
+def m64(d):
+    def fn(rows):
+        h = rows[0]
+        rows[1][h.index("source_step_no")] = "99"
+        rows[1][h.index("source_locator")] = "x"
+    rewrite_csv(P(d, "27_PVE_TIMELINE_STEPS.csv"), fn)
+results.append(mutate("M64 Source Step And Locator Drift", m64, "FAIL", mode="PRE_SUITE"))
+# M65: source axis 不得改綁同隊其他 Evidence → FAIL
+def m65(d):
+    def fn(rows):
+        h = rows[0]; source_axis = h.index("source_axis_id"); evidence_id = h.index("source_evidence_id")
+        for r in rows[1:]:
+            if r[source_axis] == "AX-F810-02-EV073":
+                r[evidence_id] = "ev070"; return
+    rewrite_csv(P(d, "26_PVE_OPERATION_TIMELINES.csv"), fn)
+results.append(mutate("M65 Timeline Bound To Wrong Evidence", m65, "FAIL", mode="PRE_SUITE",
+                      target_fail="26：source locator 必須等於 Evidence locator 或其 # 子定位"))
+# M66: 25 timeline_ref 必須是該隊 source_axis_id 的精確集合 → FAIL
+def m66(d):
+    def fn(rows):
+        h = rows[0]; req = h.index("requirements")
+        for r in rows[1:]:
+            if r[0] == "TM-F810-02":
+                obj = json.loads(r[req]); obj["timeline_ref"] = "BROKEN-NONEXISTENT-TIMELINE"
+                r[req] = json.dumps(obj, ensure_ascii=False, sort_keys=True, separators=(",", ":")); return
+    rewrite_csv(P(d, "25_PVE_TEAM_REGISTRY.csv"), fn)
+results.append(mutate("M66 Broken Team Timeline Reference", m66, "FAIL", mode="PRE_SUITE",
+                      target_fail="25→26：手動／半自動／衝突隊伍每個來源與 timeline_ref 均有結構化軸或明示缺口"))
+# M67: PROVISIONAL 手動隊仍必須逐來源明示 axis／gap → FAIL
+def m67(d):
+    def team_fn(rows):
+        h = rows[0]; clear_status = h.index("clear_status")
+        for r in rows[1:]:
+            if r[0] == "TM-F810-01": r[clear_status] = "PROVISIONAL"
+    def guide_fn(rows):
+        h = rows[0]; team_count = h.index("team_count")
+        for r in rows[1:]:
+            if r[0] == "TW_DEEP_FIRE_08_10_20260802": r[team_count] = "2"
+    def timeline_fn(rows):
+        h = rows[0]; team_id = h.index("team_id")
+        rows[:] = [rows[0]] + [r for r in rows[1:] if r[team_id] != "TM-F810-01"]
+    rewrite_csv(P(d, "25_PVE_TEAM_REGISTRY.csv"), team_fn)
+    rewrite_csv(P(d, "24_PVE_GUIDE_REGISTRY.csv"), guide_fn)
+    rewrite_csv(P(d, "26_PVE_OPERATION_TIMELINES.csv"), timeline_fn)
+results.append(mutate("M67 Provisional Timeline Coverage Bypass", m67, "FAIL", mode="PRE_SUITE",
+                      target_fail="25→26：手動／半自動／衝突隊伍每個來源與 timeline_ref 均有結構化軸或明示缺口"))
+# M68: source 未提供 criticality，不得自行標 CRITICAL → ST87 FAIL
+def m68(d):
+    def fn(rows):
+        h = rows[0]; rows[1][h.index("criticality")] = "CRITICAL"
+    rewrite_csv(P(d, "27_PVE_TIMELINE_STEPS.csv"), fn)
+results.append(mutate("M68 Inferred Timeline Criticality", m68, "FAIL", mode="PRE_SUITE",
+                      target_fail="ST87：來源邊界、locator 與未載欄位不得推測"))
 print('MUTATION_TESTS', 'ALL_OK' if all(results) else 'FAILED', f'| active_scenarios={len(results)}')
 sys.exit(0 if all(results) else 1)

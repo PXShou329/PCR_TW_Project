@@ -1,4 +1,4 @@
-# API v1 contract (B0)
+# API v1 contract (B2 operation-timeline slice)
 
 All public strategy endpoints are read-only `GET` endpoints and return:
 
@@ -28,14 +28,43 @@ Endpoints:
 - `GET /api/v1/stages`
 - `GET /api/v1/stages/{guide_id}`
 - `GET /api/v1/teams/{team_id}`
+- `GET /api/v1/teams/{team_id}/timelines`
 - `GET /api/v1/evidence/{evidence_id}`
 - `GET /api/v1/claims/{claim_id}`
 - `GET /api/v1/pvp/counters?defense_signature=...`
 
 The PVP endpoint intentionally returns an empty `data` array and the warning
-`NO_VERIFIED_COUNTER` until a formal registry case exists. A team with only a
-source locator exposes `timeline.status=SOURCE_GAP`, `references`, and an empty
-`steps` list; a locator is never represented as an operation step.
+`NO_VERIFIED_COUNTER` until a formal registry case exists.
+
+`TeamDetail.timeline` and the dedicated timeline endpoint expose a
+source-separated aggregate:
+
+```json
+{
+  "status": "STRUCTURED|PARTIAL|SOURCE_GAP|MISSING",
+  "structured_sources": 1,
+  "registered_sources": 4,
+  "sources": [],
+  "references": [],
+  "steps": []
+}
+```
+
+Each `sources[]` item is exactly one `source_axis_id` and is either
+`STRUCTURED` with only that source's ordered steps, or `SOURCE_GAP` with zero
+steps and a non-null `gap_reason`. Sources and steps are never merged across
+evidence. The top-level `steps` field is deprecated and permanently empty;
+`references` is the unchanged legacy parser projection; after the canonical
+`timeline_ref` normalization its `raw` and `source_id` values are source-axis
+ids and its locator is `UNKNOWN`.
+
+CSV sentinels that represent absent structure or numbers are normalized at the
+serving boundary: gap `timeline_id`, gap clock/auto fields, unknown battle
+duration, unknown step clocks, and unknown tolerance serialize as `null`.
+Textual source statements such as `UNKNOWN` criticality remain unchanged.
+`time_state=NOT_STATED` requires null clocks; clients must not infer a standard
+battle duration. Cross-server reproducibility such as `UNVERIFIED_ON_TW` is
+passed through unchanged.
 
 Unknown resources return `404` with:
 
