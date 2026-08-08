@@ -21,11 +21,12 @@
 4. ✅ A2＋B2：file-SSOT 結構化操作軸與真實深域垂直切片。
 5. ✅ B1：完整 importer／exporter／round-trip parity；資料邊界見
    [`ADR-0004`](ADR-0004-full-core-round-trip.md)。
-6. A3–A6 與 B3–B5 配對完成 PVE、Gacha、Arena、P-Arena。
-7. B6 Shadow → B7 Review／Audit／Rollback。
-8. A7：Data Gate A／B／C PASS。
-9. B8：writable SSOT 原子切換。
-10. B9／B10：效能、安全、備援與 Production Gate G。
+6. ✅ A3＋B3：紅焰 8-10 五隊成熟切片；✅ A4：蒼波 8-10 五隊與來源操作軸切片。
+7. A5–A6 與 B4–B5 繼續完成 PVE、Gacha、Arena、P-Arena。
+8. B6 Shadow → B7 Review／Audit／Rollback。
+9. A7：Data Gate A／B／C PASS。
+10. B8：writable SSOT 原子切換。
+11. B9／B10：效能、安全、備援與 Production Gate G。
 
 ## B1 明確保留的非阻斷債務
 
@@ -43,9 +44,12 @@
   TM-F810-03 為 `SOURCE_GAP 0/1`；局部來源軸不會被合併成虛構共識軸。
 - PostgreSQL read mirror 新增 8 條 timeline、14 個 atomic steps；import replay、
   完整 fixture fingerprint 與 serving-boundary drift 均 fail-closed。
-- 下一固定里程碑為 A3＋B3；Data Gate A／B／C 與 Gates D–G 仍未宣稱通過。
+- A3 與 A4 已完成；下一固定里程碑為 A5 的下一個真實 PVE 垂直切片。Data Gate
+  A／B／C 與 Gates D–G 仍未宣稱通過。
 - 回滾點：A2 research core 使用 `rp-a2-2`；A2＋B2 通過 Compose CI 的完整切片使用
-  `rp-a2-b2-2`。`rp-a2-b2-1` 僅保留作 CI parity 修正前的稽核 checkpoint。
+  `rp-a2-b2-2`；A3 使用 `rp-a3-1`；本次 A4 通過完整驗證後使用 `rp-a4-1`。
+  `rp-a2-b2-1` 僅保留作 CI parity 修正前的稽核 checkpoint。任何已有較新 schema
+  的資料庫都不得只 checkout 舊 tag，必須同時依版本回滾手冊處理 DB。
 
 ## 不可突破的停止條件
 

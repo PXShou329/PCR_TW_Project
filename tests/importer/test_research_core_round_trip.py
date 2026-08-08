@@ -43,8 +43,8 @@ from pcr_pipeline.verify_round_trip import run_round_trip_smoke
 
 ROOT = Path(__file__).resolve().parents[2]
 RESEARCH_CORE = ROOT / "research_core" / "pcr_tw_project"
-MANIFEST = ROOT / "scripts" / "research_core_rp_a3_manifest.sha256"
-RAW_TREE_SHA256 = "46d4fea8c1c5cd92e2fd5cb71a7a3ca232d872b1c6d56ce6cd100971250bde45"
+MANIFEST = ROOT / "scripts" / "research_core_rp_a4_manifest.sha256"
+RAW_TREE_SHA256 = "c5a5f13e0efaf96c1a266c1016d3a1a54740859952ce21f9db3cf89d779d57b9"
 
 
 def sqlite_engine():
@@ -85,9 +85,9 @@ def add_import_run(session: Session, run_id: str, fixture_sha256: str) -> None:
     run = ImportRun(
         id=run_id,
         fixture_sha256=fixture_sha256,
-        canonical_source="research_core_rp_a3",
+        canonical_source="research_core_rp_a4",
         research_core_version="1.5",
-        application_version="3.0.0-a3",
+        application_version="3.0.0-a4",
         imported_at=datetime.now(timezone.utc),
         status="RUNNING",
         manifest={"materialization": {"sha256": "a" * 64}},
@@ -107,21 +107,21 @@ def test_manifest_pinned_loader_preserves_exact_rows_and_directed_edges() -> Non
     assert snapshot.raw_tree_sha256 == RAW_TREE_SHA256
     assert report.file_count == 48
     assert report.csv_file_count == 13
-    assert report.csv_row_count == 239
+    assert report.csv_row_count == 325
     assert report.csv_row_counts == {
         "17_TEST_EXECUTION_LOG.csv": 0,
-        "18_TW_CHARACTER_AVAILABILITY.csv": 17,
-        "24_PVE_GUIDE_REGISTRY.csv": 2,
-        "25_PVE_TEAM_REGISTRY.csv": 5,
-        "26_PVE_OPERATION_TIMELINES.csv": 10,
-        "27_PVE_TIMELINE_STEPS.csv": 19,
+        "18_TW_CHARACTER_AVAILABILITY.csv": 25,
+        "24_PVE_GUIDE_REGISTRY.csv": 3,
+        "25_PVE_TEAM_REGISTRY.csv": 10,
+        "26_PVE_OPERATION_TIMELINES.csv": 15,
+        "27_PVE_TIMELINE_STEPS.csv": 37,
         "39_ARENA_COUNTER_REGISTRY.csv": 0,
         "41_GACHA_TIMELINE.csv": 3,
         "45_GACHA_COMMUNITY_SOURCE_INDEX.csv": 4,
         "46_ARENA_SOURCE_REGISTRY.csv": 5,
         "47_PRINCESS_ARENA_CASE_REGISTRY.csv": 0,
-        "92_EVIDENCE_LEDGER.csv": 81,
-        "93_CLAIM_REGISTER.csv": 93,
+        "92_EVIDENCE_LEDGER.csv": 104,
+        "93_CLAIM_REGISTER.csv": 119,
     }
     guide = snapshot.csv_file("24_PVE_GUIDE_REGISTRY.csv").row_by_key(
         "TW_DEEP_FIRE_08_10_20260802"
@@ -132,8 +132,8 @@ def test_manifest_pinned_loader_preserves_exact_rows_and_directed_edges() -> Non
     ] == "5"
     assert all(isinstance(value, str) for value in guide.values)
 
-    assert report.evidence_to_claim_count == 81
-    assert report.claim_to_evidence_count == 184
+    assert report.evidence_to_claim_count == 102
+    assert report.claim_to_evidence_count == 268
     assert ("ev053", "CLM-PVE-F810-STD") in snapshot.evidence_to_claim_edges
     assert ("CLM-PVE-F810-STD", "ev053") not in snapshot.claim_to_evidence_edges
     assert report.ev053_asymmetry_preserved is True

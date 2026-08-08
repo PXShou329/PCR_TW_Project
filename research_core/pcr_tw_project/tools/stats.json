@@ -14,30 +14,30 @@
   "validation_config.json"
  ],
  "tier": {
-  "OFFICIAL": 51,
+  "OFFICIAL": 67,
   "MAJOR_GUIDE": 10,
-  "SINGLE_PLAYER_REPORT": 11,
+  "SINGLE_PLAYER_REPORT": 18,
   "MULTI_PLAYER_REPORT": 5,
   "STRUCTURED_DB": 1,
   "UNKNOWN": 3
  },
  "evc": {
-  "A": 51,
-  "D": 30
+  "A": 67,
+  "D": 37
  },
  "cc": {
-  "A": 52,
-  "D": 22,
+  "A": 60,
+  "D": 32,
   "C": 2,
-  "B": 17
+  "B": 25
  },
  "ct": {
-  "SOURCE_FACT": 61,
+  "SOURCE_FACT": 74,
   "DERIVED_CALCULATION": 6,
-  "ANALYTICAL_JUDGMENT": 26
+  "ANALYTICAL_JUDGMENT": 39
  },
- "claims": 93,
- "evidence": 81,
+ "claims": 119,
+ "evidence": 104,
  "fixtures": 37,
  "public_covered": 41,
  "anchors_n": 8,
@@ -95,19 +95,19 @@
   }
  },
  "timeline_rows": 2,
- "checks": 129,
+ "checks": 133,
  "fail": 0,
- "warn": 18,
+ "warn": 23,
  "exec_rows": 0,
  "gate": {
-  "pve_verified": 1,
+  "pve_verified": 2,
   "arena_formal": 0,
   "parena": 0,
   "timeline": 2,
   "gate_a": false,
   "gate_b": false,
   "gate_c": false,
-  "blocking_c": 10
+  "blocking_c": 15
  },
- "blocking_gate_c_warnings": 10
+ "blocking_gate_c_warnings": 15
 }

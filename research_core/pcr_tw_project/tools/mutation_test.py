@@ -28,9 +28,15 @@ def mutate(name, fn, expect, mode=None, check_repair=False, write=False, target_
         ok = code == (1 if expect == 'FAIL' else 0); v = f"exit {code}（預期 {'1' if expect=='FAIL' else '0'}）"
         if target_fail:
             fail_lines = [line.strip() for line in proc.stdout.splitlines() if line.startswith(' FAIL -')]
-            target_ok = len(fail_lines) == 1 and target_fail in fail_lines[0]
+            expected_fails = [target_fail] if isinstance(target_fail, str) else list(target_fail)
+            target_ok = (
+                len(fail_lines) == len(expected_fails)
+                and all(any(expected in line for line in fail_lines) for expected in expected_fails)
+            )
             ok = ok and target_ok
             v += f"＋目標守門{'命中' if target_ok else '未唯一命中'}"
+            if not target_ok:
+                v += f"；實際={' | '.join(fail_lines)}"
     shutil.rmtree(tmp)
     print(f"{'PASS' if ok else 'FAIL'}  {name}: {v}")
     return ok
@@ -513,7 +519,10 @@ results.append(mutate("M57 Evidence Declares Missing Claim", m57, "FAIL", mode="
 def m58(d):
     def fn(rows):
         h = rows[0]
-        rows[1][h.index("actor_unit_key")] = "missing_a2_unit"
+        for r in rows[1:]:
+            if r[h.index("timeline_step_id")] == "TLS-F810-05-002":
+                r[h.index("trigger_actor_unit_key")] = "pecorine_ny"
+                r[h.index("actor_unit_key")] = "pecorine_ny"; return
     rewrite_csv(P(d, "27_PVE_TIMELINE_STEPS.csv"), fn)
 results.append(mutate("M58 Timeline Actor Outside Team", m58, "FAIL", mode="PRE_SUITE",
                       target_fail="27：step FK／Enum／時間範圍／角色成員資格完整"))
@@ -521,7 +530,9 @@ results.append(mutate("M58 Timeline Actor Outside Team", m58, "FAIL", mode="PRE_
 def m59(d):
     def fn(rows):
         h = rows[0]
-        rows[2][h.index("sequence_no")] = rows[1][h.index("sequence_no")]
+        for r in rows[1:]:
+            if r[h.index("timeline_step_id")] == "TLS-F810-05-002":
+                r[h.index("sequence_no")] = "1"; return
     rewrite_csv(P(d, "27_PVE_TIMELINE_STEPS.csv"), fn)
 results.append(mutate("M59 Duplicate Timeline Sequence", m59, "FAIL", mode="PRE_SUITE",
                       target_fail="27：每來源 sequence_no 唯一且連續"))
@@ -536,9 +547,9 @@ results.append(mutate("M60 Missing Declared Source Axis", m60, "FAIL", mode="PRE
 # M61: JP 來源的結構化軸不得偽裝成台服已逐步重現 → FAIL
 def m61(d):
     def fn(rows):
-        h = rows[0]; status = h.index("status"); repro = h.index("reproducibility")
+        h = rows[0]; source_axis = h.index("source_axis_id"); repro = h.index("reproducibility")
         for r in rows[1:]:
-            if r[status] == "STRUCTURED":
+            if r[source_axis] == "AX-F810-02-EV073":
                 r[repro] = "TW_REPRODUCED"; return
     rewrite_csv(P(d, "26_PVE_OPERATION_TIMELINES.csv"), fn)
 results.append(mutate("M61 Cross-Server Timeline Falsely Reproduced", m61, "FAIL", mode="PRE_SUITE",
@@ -664,5 +675,105 @@ def m70(d):
     rewrite_csv(P(d, "26_PVE_OPERATION_TIMELINES.csv"), fn)
 results.append(mutate("M70 Unknown Mode Missing Source Axis", m70, "FAIL", mode="PRE_SUITE",
                       target_fail="25→26：手動／半自動／衝突隊伍每個來源與 timeline_ref 均有結構化軸或明示缺口"))
+# M71 reproduction: VERIFIED/PASS 五人隊引用的 Evidence 若已 REJECTED，不得仍計入有效隊伍。
+def m71(d):
+    def fn(rows):
+        h = rows[0]; status = h.index("status")
+        for r in rows[1:]:
+            if r[0] == "ev057":
+                r[status] = "REJECTED"; return
+    rewrite_csv(P(d, "92_EVIDENCE_LEDGER.csv"), fn)
+results.append(mutate("M71 Rejected PVE Team Evidence Still Counts", m71, "FAIL", mode="PRE_SUITE",
+                      target_fail=("24／25：VERIFIED PVE closure 僅引用 ACTIVE Evidence／Claim",
+                                   "25 與 24：所有 guide 的 team_count＝25 有效隊伍數")))
+# M72: 成熟 PVE 隊伍的通關 Claim 失效後不得留在 ACTIVE closure 或 Gate 計數。
+def m72(d):
+    def claim_fn(rows):
+        h = rows[0]; status = h.index("status")
+        for r in rows[1:]:
+            if r[0] == "CLM-PVE-W810-MISORA-NANAKA":
+                r[status] = "SUPERSEDED"; return
+    def guide_fn(rows):
+        h = rows[0]; team_count = h.index("team_count")
+        for r in rows[1:]:
+            if r[0] == "TW_DEEP_WATER_08_10_20260808":
+                r[team_count] = "4"; return
+    rewrite_csv(P(d, "93_CLAIM_REGISTER.csv"), claim_fn)
+    rewrite_csv(P(d, "24_PVE_GUIDE_REGISTRY.csv"), guide_fn)
+results.append(mutate("M72 Superseded PVE Team Claim Still Counts", m72, "FAIL", mode="PRE_SUITE",
+                      target_fail="24／25：VERIFIED PVE closure 僅引用 ACTIVE Evidence／Claim"))
+# M73: 實開 Water 軸的精確時間、locator 與語意不得在合法範圍內悄悄漂移。
+def m73(d):
+    def fn(rows):
+        h = rows[0]; step_id = h.index("timeline_step_id")
+        for r in rows[1:]:
+            if r[step_id] == "TLS-W810-02-002":
+                r[h.index("clock_from_ms")] = "70000"
+                r[h.index("clock_to_ms")] = "70000"; return
+    rewrite_csv(P(d, "27_PVE_TIMELINE_STEPS.csv"), fn)
+results.append(mutate("M73 Water Exact Timeline Drift", m73, "FAIL", mode="PRE_SUITE",
+                      target_fail="ST87：來源邊界、locator 與未載欄位不得推測"))
+# M74: 五欄非空不等於五名不同角色；隊內重複不得計入有效隊伍。
+def m74(d):
+    def team_fn(rows):
+        h = rows[0]; team_id = h.index("team_id")
+        for r in rows[1:]:
+            if r[team_id] == "TM-W810-03":
+                r[h.index("slot3")] = r[h.index("slot4")]; return
+    def guide_fn(rows):
+        h = rows[0]; team_count = h.index("team_count")
+        for r in rows[1:]:
+            if r[0] == "TW_DEEP_WATER_08_10_20260808":
+                r[team_count] = "4"; return
+    rewrite_csv(P(d, "25_PVE_TEAM_REGISTRY.csv"), team_fn)
+    rewrite_csv(P(d, "24_PVE_GUIDE_REGISTRY.csv"), guide_fn)
+results.append(mutate("M74 Duplicate Unit Inside PVE Team", m74, "FAIL", mode="PRE_SUITE",
+                      target_fail="25：每隊五名角色互異"))
+# M75: team 的 server/stage 必須仍屬於其 guide，不能只靠 guide_id 掛錯關卡。
+def m75(d):
+    def team_fn(rows):
+        h = rows[0]; team_id = h.index("team_id")
+        for r in rows[1:]:
+            if r[team_id] == "TM-W810-05":
+                r[h.index("stage")] = "10-10"; return
+    def guide_fn(rows):
+        h = rows[0]; team_count = h.index("team_count")
+        for r in rows[1:]:
+            if r[0] == "TW_DEEP_WATER_08_10_20260808":
+                r[team_count] = "4"; return
+    rewrite_csv(P(d, "25_PVE_TEAM_REGISTRY.csv"), team_fn)
+    rewrite_csv(P(d, "24_PVE_GUIDE_REGISTRY.csv"), guide_fn)
+results.append(mutate("M75 PVE Team Bound To Wrong Stage", m75, "FAIL", mode="PRE_SUITE",
+                      target_fail="24→25：team server／stage 與 guide 關聯一致"))
+# M76: 具名借角若沒有明確 slot，不得把 UNKNOWN 偷換成確定事實。
+def m76(d):
+    def fn(rows):
+        h = rows[0]; req = h.index("requirements")
+        for r in rows[1:]:
+            if r[0] == "TM-W810-05":
+                obj = json.loads(r[req]); obj["support"]["unit"] = "yukino_orig"
+                r[req] = json.dumps(obj, ensure_ascii=False, sort_keys=True, separators=(",", ":")); return
+    rewrite_csv(P(d, "25_PVE_TEAM_REGISTRY.csv"), fn)
+results.append(mutate("M76 Named Support Without Slot", m76, "FAIL", mode="PRE_SUITE",
+                      target_fail="25：借角 unit／support_slot 三態關聯一致"))
+# M77: normalized/display stage aliases 都屬同一 guide，不得繞過相同五人合併。
+def m77(d):
+    def team_fn(rows):
+        h = rows[0]; team_id = h.index("team_id")
+        water4 = next(r for r in rows[1:] if r[team_id] == "TM-W810-04")
+        water5 = next(r for r in rows[1:] if r[team_id] == "TM-W810-05")
+        for slot in range(1, 6):
+            water5[h.index(f"slot{slot}")] = water4[h.index(f"slot{slot}")]
+        water4[h.index("stage")] = "8-10"
+        water5[h.index("stage")] = "蒼波8-10"
+    def guide_fn(rows):
+        h = rows[0]; team_count = h.index("team_count")
+        for r in rows[1:]:
+            if r[0] == "TW_DEEP_WATER_08_10_20260808":
+                r[team_count] = "4"; return
+    rewrite_csv(P(d, "25_PVE_TEAM_REGISTRY.csv"), team_fn)
+    rewrite_csv(P(d, "24_PVE_GUIDE_REGISTRY.csv"), guide_fn)
+results.append(mutate("M77 Stage Alias Duplicate Same-Five Team", m77, "FAIL", mode="PRE_SUITE",
+                      target_fail="25：同關卡相同五人不得重複列（多來源合併）"))
 print('MUTATION_TESTS', 'ALL_OK' if all(results) else 'FAILED', f'| active_scenarios={len(results)}')
 sys.exit(0 if all(results) else 1)

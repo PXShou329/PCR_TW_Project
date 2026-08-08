@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 from pcr_database.materialization import MATERIALIZATION_MANIFEST_VERSION, SERVING_MODELS
-from pcr_database.models import Base, OperationTimeline, TimelineStep
+from pcr_database.models import Base, OperationTimeline, TeamMember, TimelineStep
 from pcr_pipeline.pve_fixture import import_fire_8_10
 
 
@@ -39,11 +39,14 @@ def imported_engine():
     return engine
 
 
-def test_v0004_is_the_single_migration_head() -> None:
+def test_v0005_is_the_single_migration_head() -> None:
     config = Config("database/alembic.ini")
     script = ScriptDirectory.from_config(config)
 
-    assert script.get_current_head() == "v0004_unknown_operation_mode"
+    assert script.get_current_head() == "v0005_borrowed_tristate"
+    revision = script.get_revision("v0005_borrowed_tristate")
+    assert revision is not None
+    assert revision.down_revision == "v0004_unknown_operation_mode"
     revision = script.get_revision("v0004_unknown_operation_mode")
     assert revision is not None
     assert revision.down_revision == "v0003_core_revision_mirror"
@@ -73,17 +76,61 @@ def test_v0002_offline_postgres_sql_contains_both_additive_tables(
     assert "time_state VARCHAR(20) NOT NULL" in sql
     assert "ALTER TABLE operation_timelines DROP CONSTRAINT" in sql
     assert "'UNKNOWN'" in sql
+    assert "ALTER TABLE team_members ALTER COLUMN is_borrowed DROP NOT NULL" in sql
     assert "DROP TABLE" not in sql
+
+
+def test_v0005_offline_downgrade_fails_closed_without_coercing_borrowed_state(
+    monkeypatch,
+    capsys,
+) -> None:
+    monkeypatch.setenv(
+        "PCR_DATABASE_URL",
+        "postgresql+psycopg://migration_test:unused@localhost:5432/pcr_tw",
+    )
+    command.downgrade(
+        Config("database/alembic.ini"),
+        "v0005_borrowed_tristate:v0004_unknown_operation_mode",
+        sql=True,
+    )
+    sql = capsys.readouterr().out
+
+    assert "ALTER TABLE team_members ALTER COLUMN is_borrowed SET NOT NULL" in sql
+    assert "UPDATE team_members" not in sql
+    assert "DELETE FROM team_members" not in sql
+
+
+def test_v0004_offline_downgrade_preserves_unknown_as_a_validated_blocker(
+    monkeypatch,
+    capsys,
+) -> None:
+    monkeypatch.setenv(
+        "PCR_DATABASE_URL",
+        "postgresql+psycopg://migration_test:unused@localhost:5432/pcr_tw",
+    )
+    command.downgrade(
+        Config("database/alembic.ini"),
+        "v0004_unknown_operation_mode:v0003_core_revision_mirror",
+        sql=True,
+    )
+    sql = capsys.readouterr().out
+
+    assert "operation_mode IN ('AUTO','SEMI_AUTO','MANUAL_TIMELINE')" in sql
+    assert "'UNKNOWN'" not in sql
+    assert "UPDATE operation_timelines" not in sql
+    assert "DELETE FROM operation_timelines" not in sql
 
 
 def test_orm_and_materialization_cover_the_source_axis_tables() -> None:
     timeline = OperationTimeline.__table__
     step = TimelineStep.__table__
+    member = TeamMember.__table__
 
     assert [column.name for column in timeline.primary_key.columns] == ["source_axis_id"]
     assert timeline.c.timeline_id.nullable is True
     assert step.c.timeline_id.nullable is False
     assert step.c.time_state.nullable is False
+    assert member.c.is_borrowed.nullable is True
     assert MATERIALIZATION_MANIFEST_VERSION == 2
     assert {model.__tablename__ for model in SERVING_MODELS} >= {
         "operation_timelines",

@@ -3,7 +3,7 @@
 > 由 `tools/validate_project.py` 生成（唯一路徑）；回歸驗證：`python3 tools/mutation_test.py`（Active 情境數見其輸出；退休 ID 見 Archive）。
 > 生成日：2026-08-08｜版本：v1.5｜Release：2026-08-02｜Mode：PRE_SUITE
 
-## 檢查結果（129 項）
+## 檢查結果（133 項）
 
 | 檢查 | 結果 | 明細 |
 |---|---|---|
@@ -17,15 +17,15 @@
 | ST44：版本 SSOT 精確一致（v1.5） | PASS | 漂移: |
 | ST80：Active 檔無帳號匯入指令（Guide-Only） | PASS |  |
 | 41：欄數 35＋列數 ≥2 | PASS | 3 列 |
-| 92：欄數 16＋列數 ≥36 | PASS | 81 列 |
-| 93：欄數 14＋列數 ≥34 | PASS | 93 列 |
+| 92：欄數 16＋列數 ≥36 | PASS | 104 列 |
+| 93：欄數 14＋列數 ≥34 | PASS | 119 列 |
 | 17：欄數 21＋列數 ≥0 | PASS | 0 列 |
-| 24：欄數 16＋列數 ≥0 | PASS | 2 列 |
+| 24：欄數 16＋列數 ≥0 | PASS | 3 列 |
 | 39：欄數 23＋列數 ≥0 | PASS | 0 列 |
-| 18：欄數 15＋列數 ≥1 | PASS | 17 列 |
-| 25：欄數 20＋列數 ≥0 | PASS | 5 列 |
-| 26：欄數 16＋列數 ≥1 | PASS | 10 列 |
-| 27：欄數 20＋列數 ≥0 | PASS | 19 列 |
+| 18：欄數 15＋列數 ≥1 | PASS | 25 列 |
+| 25：欄數 20＋列數 ≥0 | PASS | 10 列 |
+| 26：欄數 16＋列數 ≥1 | PASS | 15 列 |
+| 27：欄數 20＋列數 ≥0 | PASS | 37 列 |
 | 45：欄數 14＋列數 ≥2 | PASS | 4 列 |
 | 46：欄數 12＋列數 ≥2 | PASS | 5 列 |
 | 47：欄數 20＋列數 ≥0 | PASS | 0 列 |
@@ -37,10 +37,10 @@
 | 93：claim_type／confidence Enum | PASS |  |
 | 93→92 FK 完整 | PASS |  |
 | ST86：92→93 declared Claim FK 完整 | PASS |  |
-| ST49：B／C 證據唯一＋來源獨立（19 筆） | PASS |  |
+| ST49：B／C 證據唯一＋來源獨立（27 筆） | PASS |  |
 | ST50：A Claim 與 A Evidence 相容 | PASS |  |
 | DERIVED_CALCULATION 附推導註記 | PASS |  |
-| ST82：CLM-LOC 跨服映射邊界（13 筆） | PASS |  |
+| ST82：CLM-LOC 跨服映射邊界（21 筆） | PASS |  |
 | ST74：所有 Evidence status 與 limitations 一致（PENDING⟺回驗註記；ACTIVE⟺無解鎖級殘留） | PASS |  |
 | 18：欄位標頭符合規格 | PASS |  |
 | 18：availability Enum | PASS |  |
@@ -52,10 +52,13 @@
 | 25：guide_id FK→24 | PASS |  |
 | 25：五 slot 完整 | PASS |  |
 | 25：clear_status Enum | PASS |  |
+| 25：每隊五名角色互異 | PASS |  |
+| 24→25：team server／stage 與 guide 關聯一致 | PASS |  |
 | 25：tw_availability_check Enum；PASS 的五 slot 均須為 18 AVAILABLE | PASS |  |
 | 25：Evidence FK | PASS |  |
 | 25：operation_mode Enum | PASS |  |
 | 25：requirements 為 canonical JSON；必要 key／slot1–5 完整且無空字串 | PASS |  |
+| 25：借角 unit／support_slot 三態關聯一致 | PASS |  |
 | 25：SOURCE_CONFLICT 至少兩來源＋兩種 mode；非衝突 mode 與來源聲明一致 | PASS |  |
 | 25：同關卡相同五人不得重複列（多來源合併） | PASS |  |
 | 26：欄位標頭符合規格 | PASS |  |
@@ -71,6 +74,7 @@
 | ST87：來源邊界、locator 與未載欄位不得推測 | PASS |  |
 | 25→26：手動／半自動／衝突隊伍每個來源與 timeline_ref 均有結構化軸或明示缺口 | PASS |  |
 | 26：跨服結構化軸不得冒充台服已重現 | PASS |  |
+| 24／25：VERIFIED PVE closure 僅引用 ACTIVE Evidence／Claim | PASS |  |
 | 45：欄位標頭符合規格 | PASS |  |
 | 45：source_type Enum | PASS |  |
 | 45：社群來源信心上限 ≤C（不得標 OFFICIAL／A／B） | PASS |  |
@@ -114,7 +118,7 @@
 | 25 與 24：所有 guide 的 team_count＝25 有效隊伍數 | PASS |  |
 | 47：欄位標頭符合規格 | PASS |  |
 | ST81：P-Arena Gate 由 47 成熟列計算（THEORY 模板不計） | PASS | 0 成熟 |
-| ST68：PVE Gate Row 完整性（24 registry 成熟列） | PASS | 1 成熟 |
+| ST68：PVE Gate Row 完整性（24 registry 成熟列） | PASS | 2 成熟 |
 | ST69：Arena Gate Row 完整性（39 registry 5v5） | PASS | 0 成熟 |
 | ST70：Timeline Maturity Row 完整性（41） | PASS | 2 MATURE |
 | 13：AUTO_RESULTS 列出全部 41 測試（由 validator 生成） | PASS | 缺[] |
@@ -142,16 +146,16 @@
 | Gate | 狀態 | 依據 |
 |---|---|---|
 | A Guide Behavior | 未通過 | Guide-Only 41 項 current result 全 PASS＋Static FAIL=0＋無帳號指令（ST80） |
-| B 最低可用攻略 | 未通過 | PVE 關卡 1/≥2（每關≥5隊）｜Arena 防守 0/≥5（各≥2反制）｜P-Arena 0/≥3｜Timeline 2/≥6｜社群來源 0/≥2 |
-| C 攻略整合可發布 | 未通過 | Gate A＋B＋PVE≥5／Arena≥10／P-Arena≥5＋阻擋警告 10＝0＋新鮮度 |
+| B 最低可用攻略 | 未通過 | PVE 關卡 2/≥2（每關≥5隊）｜Arena 防守 0/≥5（各≥2反制）｜P-Arena 0/≥3｜Timeline 2/≥6｜社群來源 0/≥2 |
+| C 攻略整合可發布 | 未通過 | Gate A＋B＋PVE≥5／Arena≥10／P-Arena≥5＋阻擋警告 15＝0＋新鮮度 |
 
 ## 統計（程式化）
 
 - 檔案 44（編號 43＋README）＋tools×4；Knowledge 42
-- 92：81 列｜Tier {'OFFICIAL': 51, 'MAJOR_GUIDE': 10, 'SINGLE_PLAYER_REPORT': 11, 'MULTI_PLAYER_REPORT': 5, 'STRUCTURED_DB': 1, 'UNKNOWN': 3}｜93：93 列｜claim_type {'SOURCE_FACT': 61, 'DERIVED_CALCULATION': 6, 'ANALYTICAL_JUDGMENT': 26}
+- 92：104 列｜Tier {'OFFICIAL': 67, 'MAJOR_GUIDE': 10, 'SINGLE_PLAYER_REPORT': 18, 'MULTI_PLAYER_REPORT': 5, 'STRUCTURED_DB': 1, 'UNKNOWN': 3}｜93：119 列｜claim_type {'SOURCE_FACT': 74, 'DERIVED_CALCULATION': 6, 'ANALYTICAL_JUDGMENT': 39}
 - 數學重驗：canonical anchors 8 筆｜LIMITED n=5 median=123｜PERMANENT n=2 median=122.5｜ALL_NEW n=7 median=123｜SYSTEM n=1 median=75｜T41=120、三情境、缺口式——全部由 anchors 即時重算
 
-## FAIL：0｜WARN：18（阻擋 Gate C：10）
+## FAIL：0｜WARN：23（阻擋 Gate C：15）
 
 （無 FAIL）
 
@@ -171,7 +175,12 @@
 | CLM-CLM-PVE-F810-NOLUISE | confidence_low | warn | Y | 93 | CLM-PVE-F810-NOLUISE＝D（成熟資料引用） | 補第二獨立來源或維持研究層 |
 | CLM-CLM-PVE-F810-ANNEGREA | confidence_low | warn | Y | 93 | CLM-PVE-F810-ANNEGREA＝D（成熟資料引用） | 補第二獨立來源或維持研究層 |
 | CLM-CLM-PVE-F810-MIO | confidence_low | warn | Y | 93 | CLM-PVE-F810-MIO＝D（成熟資料引用） | 補第二獨立來源或維持研究層 |
-| GATE-PVE | gate_c_data | warn | Y | 24 | PVE 成熟關卡 1<5（每關≥5隊） | Checkpoint B PVE Wave |
+| CLM-CLM-PVE-W810-MISORA-NANAKA | confidence_low | warn | Y | 93 | CLM-PVE-W810-MISORA-NANAKA＝D（成熟資料引用） | 補第二獨立來源或維持研究層 |
+| CLM-CLM-PVE-W810-SONO-NINON | confidence_low | warn | Y | 93 | CLM-PVE-W810-SONO-NINON＝D（成熟資料引用） | 補第二獨立來源或維持研究層 |
+| CLM-CLM-PVE-W810-LABYRISTA-SONO | confidence_low | warn | Y | 93 | CLM-PVE-W810-LABYRISTA-SONO＝D（成熟資料引用） | 補第二獨立來源或維持研究層 |
+| CLM-CLM-PVE-W810-SONO-NANAKA | confidence_low | warn | Y | 93 | CLM-PVE-W810-SONO-NANAKA＝D（成熟資料引用） | 補第二獨立來源或維持研究層 |
+| CLM-CLM-PVE-W810-MISORA-SONO | confidence_low | warn | Y | 93 | CLM-PVE-W810-MISORA-SONO＝D（成熟資料引用） | 補第二獨立來源或維持研究層 |
+| GATE-PVE | gate_c_data | warn | Y | 24 | PVE 成熟關卡 2<5（每關≥5隊） | Checkpoint B PVE Wave |
 | GATE-ARENA | gate_c_data | warn | Y | 39 | Arena 防守案例 0<10（各≥2 TW_AVAILABLE 反制） | Checkpoint D Arena Ingestion |
 | GATE-TIMELINE | gate_c_data | warn | Y | 41 | Timeline MATURE 2<6 | Checkpoint C Gacha Integration |
 | GATE-COMMUNITY | gate_c_data | warn | Y | 45 | 社群未來視已核來源 0<2 | Checkpoint C 抓取現行版本 |

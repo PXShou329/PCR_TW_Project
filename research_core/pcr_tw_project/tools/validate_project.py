@@ -92,7 +92,7 @@ def prec_ok(prec, d):
     if prec == 'UNKNOWN': return d == '' or d.upper() == 'UNKNOWN'
     return False
 ck("ST47：92 日期精度與格式一致", not [r[0] for r in r92[1:] if r[pi] not in CFG['enums']['precision'] or not prec_ok(r[pi], r[pdi])])
-ti = h93.index('claim_type'); ci = h93.index('claim_confidence'); ei = h93.index('evidence_ids'); ii = h93.index('independence_check')
+ti = h93.index('claim_type'); ci = h93.index('claim_confidence'); ei = h93.index('evidence_ids'); ii = h93.index('independence_check'); si93 = h93.index('status')
 ck("93：claim_type／confidence Enum", all(r[ti] in CFG['enums']['claim_type'] and r[ci] in CFG['enums']['confidence'] for r in r93[1:]))
 ck("93→92 FK 完整", all(all(e in set(ids92) for e in r[ei].split(';')) for r in r93[1:]))
 claim_i92 = h92.index('claim_id')
@@ -104,6 +104,7 @@ dangling_evidence_claims = [
 ck("ST86：92→93 declared Claim FK 完整", not dangling_evidence_claims,
    ",".join(dangling_evidence_claims))
 ev = {r[0]: r for r in r92[1:]}
+claim_status_by_id = {r[0]: r[si93] for r in r93[1:]}
 def host(u):
     try: return urlparse(u).netloc.lower().replace('www.', '')
     except Exception: return ''
@@ -179,12 +180,20 @@ ck("39：tw_availability_check Enum；PASS 的敵我各五人須不同且均為 
 h25 = r25[0]
 ck("25：欄位標頭符合規格", h25 == CFG['t25_header'])
 t25 = [dict(zip(h25, r)) for r in r25[1:]]
-_g24 = {r[0] for r in r24[1:]}
+_guide_rows = {r[0]: dict(zip(r24[0], r)) for r in r24[1:]}
+_g24 = set(_guide_rows)
 ck("25：guide_id FK→24", all(t['guide_id'] in _g24 for t in t25))
 ck("25：五 slot 完整", all(all(t[f'slot{i}'] for i in range(1, 6)) for t in t25))
 ck("25：clear_status Enum", all(t['clear_status'] in CFG['enums']['team_clear_status'] for t in t25))
 def _pve_slots(t):
     return [t[f'slot{i}'] for i in range(1, 6)]
+ck("25：每隊五名角色互異", all(len(set(_pve_slots(t))) == 5 for t in t25))
+def _pve_guide_relation_ok(t):
+    guide = _guide_rows.get(t['guide_id'])
+    return bool(guide and t['server'] == guide['server'] and t['stage'] in {
+        guide['stage'], guide['area'] + guide['stage']
+    })
+ck("24→25：team server／stage 與 guide 關聯一致", all(_pve_guide_relation_ok(t) for t in t25))
 ck("25：tw_availability_check Enum；PASS 的五 slot 均須為 18 AVAILABLE", all(
     t['tw_availability_check'] in CFG['enums']['tw_check']
     and (t['tw_availability_check'] != 'PASS' or all(u in TW_UNITS for u in _pve_slots(t)))
@@ -233,6 +242,17 @@ def _parse_pve_requirements(t):
     return obj
 _pve_requirement_objects = [_parse_pve_requirements(t) for t in t25]
 ck("25：requirements 為 canonical JSON；必要 key／slot1–5 完整且無空字串", all(obj is not None for obj in _pve_requirement_objects))
+def _pve_support_state_ok(t, obj):
+    if obj is None:
+        return True  # requirements schema guard owns this failure.
+    support_slot = t['support_slot']
+    support_unit = obj['support']['unit']
+    if support_slot:
+        return support_slot in {f'slot{i}' for i in range(1, 6)} and t[support_slot] == support_unit
+    return support_unit in {'NONE', 'UNKNOWN', 'SOURCE_CONFLICT'}
+ck("25：借角 unit／support_slot 三態關聯一致", all(
+    _pve_support_state_ok(t, obj) for t, obj in zip(t25, _pve_requirement_objects)
+))
 def _pve_mode_claims_match(t, obj):
     if obj is None:
         return True  # JSON/schema check owns this failure; avoid masking its mutation oracle.
@@ -248,7 +268,7 @@ def _pve_mode_claims_match(t, obj):
 ck("25：SOURCE_CONFLICT 至少兩來源＋兩種 mode；非衝突 mode 與來源聲明一致", all(
     _pve_mode_claims_match(t, obj) for t, obj in zip(t25, _pve_requirement_objects)
 ))
-_combo = [(t['server'], t['stage'], tuple(sorted(_pve_slots(t)))) for t in t25]
+_combo = [(t['guide_id'], tuple(sorted(_pve_slots(t)))) for t in t25]
 ck("25：同關卡相同五人不得重複列（多來源合併）", len(_combo) == len(set(_combo)))
 
 # ========== A2 source-separated operation timelines (26/27) ==========
@@ -388,10 +408,21 @@ for source_axis_id, boundary in CFG['pve_timeline_source_boundaries'].items():
     if not timeline or timeline['battle_duration_ms'] != boundary['battle_duration_ms']:
         _source_boundary_bad.append(source_axis_id)
         continue
+    source_steps = _steps_by_timeline.get(timeline['timeline_id'], [])
+    if 'step_assertions' in boundary:
+        fields = CFG['pve_timeline_exact_step_fields']
+        expected = boundary['step_assertions']
+        actual = {step['timeline_step_id']: step for step in source_steps}
+        if (set(actual) != set(expected)
+            or any(actual[step_id]['sequence_no'] != str(index)
+                   for index, step_id in enumerate(expected, start=1) if step_id in actual)
+            or any([actual[step_id][field] for field in fields] != values
+                   for step_id, values in expected.items() if step_id in actual)):
+            _source_boundary_bad.append(source_axis_id)
+        continue
     unstated = set(boundary['not_stated_source_steps'])
     expected_source_steps = set(boundary['source_step_numbers'])
     locator_prefix = boundary['source_locator_prefix']
-    source_steps = _steps_by_timeline.get(timeline['timeline_id'], [])
     if ({step['source_step_no'] for step in source_steps} != expected_source_steps
         or any(step['source_locator'] != locator_prefix + step['source_step_no'] for step in source_steps)
         or any(step['criticality'] != boundary['criticality'] for step in source_steps)
@@ -433,18 +464,41 @@ def _cross_server_repro_ok(tl):
 ck("26：跨服結構化軸不得冒充台服已重現", all(_cross_server_repro_ok(tl) for tl in t26))
 _valid_team_signatures_by_guide = defaultdict(set)
 _evidence_ids = set(ids92)
+_active_evidence_ids = {r[0] for r in r92[1:] if r[si92] == 'ACTIVE'}
+def _active_evidence_claim(evidence_id):
+    row = ev.get(evidence_id)
+    return bool(row and row[si92] == 'ACTIVE' and row[claim_i92]
+                and claim_status_by_id.get(row[claim_i92]) == 'ACTIVE')
 for t in t25:
     slots = _pve_slots(t)
     evidence_ids = [e for e in t['evidence_ids'].split(';') if e]
     if (all(slots)
         and t['clear_status'] == 'VERIFIED'
         and t['tw_availability_check'] == 'PASS'
+        and _pve_guide_relation_ok(t)
+        and len(set(slots)) == 5
         and all(u in TW_UNITS for u in slots)
         and evidence_ids
         and all(e in _evidence_ids for e in evidence_ids)
+        and all(e in _active_evidence_ids for e in evidence_ids)
+        and all(_active_evidence_claim(e) for e in evidence_ids)
         and date_ok(t['verified_date'])):
         _valid_team_signatures_by_guide[t['guide_id']].add(tuple(sorted(slots)))
 valid_teams_by_guide = Counter({g: len(signatures) for g, signatures in _valid_team_signatures_by_guide.items()})
+def _verified_pve_closure_is_active(guide):
+    if guide['status'] != 'VERIFIED':
+        return True
+    evidence_ids = [e for e in guide['evidence_ids'].split(';') if e]
+    claim_ids = [c for c in guide['claim_ids'].split(';') if c]
+    teams = [t for t in t25 if t['guide_id'] == guide['guide_id'] and t['clear_status'] == 'VERIFIED']
+    return (bool(evidence_ids) and bool(claim_ids)
+            and all(_active_evidence_claim(e) for e in evidence_ids)
+            and all(claim_status_by_id.get(c) == 'ACTIVE' for c in claim_ids)
+            and all(all(_active_evidence_claim(e) for e in t['evidence_ids'].split(';') if e)
+                    for t in teams))
+ck("24／25：VERIFIED PVE closure 僅引用 ACTIVE Evidence／Claim", all(
+    _verified_pve_closure_is_active(guide) for guide in _guide_rows.values()
+))
 h45 = r45[0]
 ck("45：欄位標頭符合規格", h45 == CFG['t45_header'])
 _st45 = h45.index('source_type'); _cc45 = h45.index('confidence_cap'); _us45 = h45.index('update_status')
@@ -592,7 +646,7 @@ for r in r24[1:]:
     except: tc = 0
     eids = [e for e in r[c24['evidence_ids']].split(';') if e]; cids = [c for c in r[c24['claim_ids']].split(';') if c]
     fresh = (not r[c24['last_review_due']]) or r[c24['last_review_due']] >= TODAY
-    if tc >= 1 and date_ok(r[c24['verified_date']]) and all(e in set(ids92) for e in eids) and all(c in set(ids93) for c in cids) and r[c24['reproducibility']] == 'CONFIRMED' and fresh and eids and cids:
+    if tc >= 1 and date_ok(r[c24['verified_date']]) and all(_active_evidence_claim(e) for e in eids) and all(claim_status_by_id.get(c) == 'ACTIVE' for c in cids) and r[c24['reproducibility']] == 'CONFIRMED' and fresh and eids and cids:
         pve_ok.append(r[c24['guide_id']])
 def _pve_team_count_matches(r):
     try:

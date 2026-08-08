@@ -19,7 +19,7 @@ SUPERSEDED＋新建 CURRENT-0802；next_review_due=2026-08-09（含 08/08 日服
 - 新增：18 公共角色可用性（PVE／Arena／P-Arena 可用性唯一來源）、25 PVE 隊伍層、45 Gacha 社群來源索引、46 Arena 來源 Registry。
 - 測試集＝Guide-Only 41（A1–A3、T1、T2、T13、T14、T16–T18、T22–T52）；17 為 21 欄公共 Schema。
 
-**Phase 狀態**：Baseline Current through 2026/08/02｜PVE Registry 5 VERIFIED（紅焰 8-10＝VERIFIED／CONFIRMED，5 隊成熟結構門檻已達；紅焰 10-10 仍 IN_RESEARCH）｜Arena Registry 0（Checkpoint D）
+**Phase 狀態**：Baseline Current through 2026/08/08｜PVE Registry 10 VERIFIED（紅焰／蒼波 8-10 均為 VERIFIED／CONFIRMED，各 5 隊成熟結構門檻已達；紅焰 10-10 仍 IN_RESEARCH）｜Arena Registry 0（Checkpoint D）
 ｜P-Arena 理論模型 3（Checkpoint E 組合求解）｜Gacha MATURE 2＋RESEARCH 1（Checkpoint C 社群整合）｜Suite 全 NOT_RUN（部署後）。
 
 **R3i（2026/08/08）**：PVE Gate 已封住 PROVISIONAL／缺失 unit_key 灌水路徑；TM-F810-01 已以
@@ -36,6 +36,11 @@ VERIFIED effective teams（詳見 22／23／25）。相同五人多來源只計�
 `VERIFIED／CONFIRMED`。第四隊未取得足以判定全程操作模式的來源聲明，故保留 `UNKNOWN`＋`SOURCE_GAP`；
 第五隊只將來源明載的五條時間／AUTO 狀態保存為 `SOURCE_TEXT_ONLY／NO_ACTION`，未把括號圖樣或全域養成條件
 臆測成逐 slot／玩家操作事實。
+
+**A4（2026/08/08）**：完成蒼波 8-10 五支不同五人的台服實戰 closure；五章均實際播放核對完整五人、
+關卡與 Boss HP 歸零，模式依序為 `MANUAL_TIMELINE／SEMI_AUTO／AUTO／AUTO／AUTO`。五隊仍只有同一玩家來源，
+所以 Claim 固定 D 並保留 Gate C blocking warnings；另將一支未清場及一支 `TIME UP` 影片明列為 `REJECTED`，
+不得進有效隊伍。有效隊 predicate 同步要求所有 Team Evidence 均為 `ACTIVE`，並由 Mutation M71 鎖定。
 
 ## 檔案清單（唯一權威清單）
 
@@ -131,14 +136,14 @@ VERIFIED effective teams（詳見 22／23／25）。相同五人多來源只計�
 ## 已知債務（v1.4）
 
 ev045-047／ev049／#3943 直頁例行回驗＋候選 #4 JP 側官方化＋08/02 後例行檢查（91 §1）
-｜Checkpoint B：紅焰 8-10 現 3/5（至少再補 2 支不同五人）／10-10 現 0/5（24／25）｜Checkpoint C：45 來源抓取＋41 社群共識欄
+｜Checkpoint B：紅焰／蒼波 8-10 均為 5/5，紅焰 10-10 現 0/5；Gate C 尚需至少 3 個成熟 PVE 關卡及解除 D 級單一來源 blocking warnings｜Checkpoint C：45 來源抓取＋41 社群共識欄
 ｜Checkpoint D：46 來源實測＋逐防守解陣（39）｜Checkpoint E：P-Arena 組合求解（成熟案例入 47）
 ｜18 On-Demand Registry 依需求擴充（採需求驅動，不建全角色 roster；筆數以 AUTO 統計為準）｜SYNC-004/005 官方確認｜Timeline 補至 6+｜台服官方譯名回填。
 
 ## Removed from Active Scope（封存於 archive ZIP；重啟條件見 ADR）
 
 - 帳號資料匯入與個人化（含多帳號）：REMOVED_FROM_ACTIVE_SCOPE，非 Deferred
-- Web App／Artifact：BLOCKED_BY_RELEASE_GATE（Gate C 通過後）
+- 公開 Production Web／Artifact 發佈：BLOCKED_BY_RELEASE_GATE（私人 staging walking skeleton 已存在；Gate C 與應用 Gates 通過後才可公開）
 
 ## 維運
 

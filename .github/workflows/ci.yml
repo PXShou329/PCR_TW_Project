@@ -1,4 +1,4 @@
-name: A3 full-core parity validation
+name: A4 full-core parity validation
 
 on:
   push:
@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: a3-${{ github.workflow }}-${{ github.ref }}
+  group: a4-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:

@@ -33,7 +33,8 @@ from .conftest import make_factory
 
 
 GUIDE_ID = "TW_DEEP_FIRE_08_10_20260802"
-APPLICATION_VERSION = "3.0.0-a3"
+WATER_GUIDE_ID = "TW_DEEP_WATER_08_10_20260808"
+APPLICATION_VERSION = "3.0.0-a4"
 
 
 def test_postgresql_engine_uses_repeatable_read_for_route_snapshot(
@@ -607,16 +608,16 @@ def test_baseline_reports_real_counts_and_research_gates(client: TestClient) -> 
     assert_meta(payload)
     data = payload["data"]
     assert data["research_core_version"] == "v1.5"
-    assert data["application_version"] == "3.0.0-a3"
+    assert data["application_version"] == "3.0.0-a4"
     assert data["counts"] == {
-        "stages": 2,
-        "teams": 5,
-        "team_members": 25,
-        "characters": 17,
-        "evidence": 34,
-        "claims": 27,
-        "operation_timelines": 10,
-        "timeline_steps": 19,
+        "stages": 3,
+        "teams": 10,
+        "team_members": 50,
+        "characters": 25,
+        "evidence": 55,
+        "claims": 53,
+        "operation_timelines": 15,
+        "timeline_steps": 37,
     }
     assert data["gates"]["gate_a"] is False
     assert data["gates"]["gate_b"] is False
@@ -628,6 +629,8 @@ def test_stage_exposes_all_five_teams_and_mature_coverage(client: TestClient) ->
     response = client.get(f"/api/v1/stages/{GUIDE_ID}")
     assert response.status_code == 200
     data = response.json()["data"]
+    assert data["area"] == "紅焰"
+    assert data["stage"] == "8-10"
     assert data["status"] == "VERIFIED"
     assert data["reproducibility"] == "CONFIRMED"
     assert data["team_count"] == 5
@@ -646,12 +649,122 @@ def test_stage_exposes_all_five_teams_and_mature_coverage(client: TestClient) ->
     }
 
 
+def test_water_stage_exposes_five_verified_distinct_teams(client: TestClient) -> None:
+    stages = client.get("/api/v1/stages")
+    assert stages.status_code == 200
+    assert [stage["guide_id"] for stage in stages.json()["data"]] == [
+        GUIDE_ID,
+        "TW_DEEP_FIRE_10_10_20260802",
+        WATER_GUIDE_ID,
+    ]
+
+    response = client.get(f"/api/v1/stages/{WATER_GUIDE_ID}")
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["area"] == "蒼波"
+    assert data["stage"] == "8-10"
+    assert data["status"] == "VERIFIED"
+    assert data["reproducibility"] == "CONFIRMED"
+    assert data["team_count"] == 5
+    assert [team["team_id"] for team in data["teams"]] == [
+        "TM-W810-01",
+        "TM-W810-02",
+        "TM-W810-03",
+        "TM-W810-04",
+        "TM-W810-05",
+    ]
+    assert [team["operation_mode"] for team in data["teams"]] == [
+        "MANUAL_TIMELINE",
+        "SEMI_AUTO",
+        "AUTO",
+        "AUTO",
+        "AUTO",
+    ]
+    assert data["coverage"] == {
+        "verified_distinct_teams": 5,
+        "maturity_target": 5,
+        "remaining": 0,
+        "is_mature": True,
+    }
+
+
+@pytest.mark.parametrize(
+    ("team_id", "mode", "timeline_id", "step_count"),
+    [
+        ("TM-W810-01", "MANUAL_TIMELINE", "TL-W810-01-EV084", 9),
+        ("TM-W810-02", "SEMI_AUTO", "TL-W810-02-EV085", 6),
+        ("TM-W810-03", "AUTO", "TL-W810-03-EV086", 1),
+        ("TM-W810-04", "AUTO", "TL-W810-04-EV087", 1),
+        ("TM-W810-05", "AUTO", "TL-W810-05-EV088", 1),
+    ],
+)
+def test_water_team_timelines_preserve_source_modes_and_unknown_requirements(
+    client: TestClient,
+    team_id: str,
+    mode: str,
+    timeline_id: str,
+    step_count: int,
+) -> None:
+    response = client.get(f"/api/v1/teams/{team_id}")
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["clear_status"] == "VERIFIED"
+    assert data["operation_mode"] == mode
+    assert data["stage"] == "蒼波8-10"
+    assert all(member["is_borrowed"] is None for member in data["members"])
+    assert data["requirements"]["support"] == {
+        "requirements": "UNKNOWN",
+        "unit": "UNKNOWN",
+    }
+    assert all(
+        value == "UNKNOWN"
+        for slot in data["requirements"]["slots"].values()
+        for value in slot.values()
+    )
+
+    timeline = data["timeline"]
+    assert timeline["status"] == "STRUCTURED"
+    assert timeline["registered_sources"] == 1
+    assert timeline["structured_sources"] == 1
+    source = timeline["sources"][0]
+    assert source["timeline_id"] == timeline_id
+    assert source["operation_mode"] == mode
+    assert source["battle_duration_ms"] == 90000
+    assert source["reproducibility"] == "TW_REPRODUCED"
+    assert len(source["steps"]) == step_count
+    if team_id in {"TM-W810-03", "TM-W810-04", "TM-W810-05"}:
+        assert source["steps"][0]["trigger_type"] == "WAVE_START"
+        assert source["steps"][0]["action_type"] == "NO_ACTION"
+
+    nested = client.get(f"/api/v1/teams/{team_id}/timelines")
+    assert nested.status_code == 200
+    assert nested.json()["data"] == timeline
+
+
+def test_water_evidence_drawer_excludes_rejected_non_clears(client: TestClient) -> None:
+    active = client.get("/api/v1/evidence/ev084")
+    assert active.status_code == 200
+    assert active.json()["data"]["source_url"] == (
+        "https://www.youtube.com/watch?v=w3My0QHcoTA"
+    )
+
+    for evidence_id in ("ev089", "ev090"):
+        rejected = client.get(f"/api/v1/evidence/{evidence_id}")
+        assert rejected.status_code == 404
+        assert rejected.json()["detail"] == {
+            "code": "NOT_FOUND",
+            "resource": "evidence",
+            "id": evidence_id,
+        }
+
+
 def test_source_conflict_unknowns_and_timeline_gap_are_not_strengthened(client: TestClient) -> None:
     response = client.get("/api/v1/teams/TM-F810-01")
     assert response.status_code == 200
     payload = response.json()
     data = payload["data"]
     assert data["operation_mode"] == "SOURCE_CONFLICT"
+    assert all(member["is_borrowed"] is None for member in data["members"])
     assert {claim["mode"] for claim in data["requirements"]["operation_mode_claims"]} == {
         "AUTO",
         "SEMI_AUTO",
@@ -727,6 +840,7 @@ def test_unknown_operation_mode_and_source_gap_are_preserved(client: TestClient)
     data = payload["data"]
 
     assert data["operation_mode"] == "UNKNOWN"
+    assert all(member["is_borrowed"] is None for member in data["members"])
     assert data["requirements"]["operation_mode_claims"] == [
         {"mode": "UNKNOWN", "source_id": "yt_p95ZoBCWuYE"}
     ]

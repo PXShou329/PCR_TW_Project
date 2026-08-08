@@ -1,6 +1,6 @@
 # Database
 
-PostgreSQL is an immutable multi-revision read mirror in B1. The research-core files remain the only
+PostgreSQL is an immutable multi-revision read mirror. The research-core files remain the only
 writable canonical source.
 
 Apply the migration chain with:
@@ -46,3 +46,12 @@ transactionally: the database remains at V0004 and the row is retained intact.
 Never coerce the value merely to make rollback succeed. Before a real downgrade,
 either restore a verified pre-V0004/B1 backup or resolve every `UNKNOWN` from
 admissible evidence, then repeat validation and the backup/restore smoke test.
+
+`V0005` makes `team_members.is_borrowed` tri-state: `true` and `false` are used
+only when the source establishes the fact, while `NULL` preserves
+`UNKNOWN`/`SOURCE_CONFLICT`. A downgrade to V0004 applies `SET NOT NULL` and is
+therefore allowed only when no honest `NULL` remains. PostgreSQL rejects the
+downgrade transaction without updating or deleting rows, so the database stays
+at V0005. Never turn an unknown into `false` merely to cross the migration
+boundary; restore a verified pre-V0005 backup or resolve the fact from
+admissible evidence and re-run the full validation and restore drill.

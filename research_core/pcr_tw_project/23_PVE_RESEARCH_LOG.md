@@ -531,3 +531,41 @@ M49（median 改 122.5）／M49b（舊式自我矛盾敘述）／M49c（anchor_c
 
 - Fire 8-10 現有 `VERIFIED` 不同五人 **N=5**；相同五人多來源仍只算一隊。24 與 25 effective signature 對帳後，`team_count=5`、`status=VERIFIED`、`reproducibility=CONFIRMED`。
 - `VERIFIED` 只表示「完整五人、明確關卡、實際通關、Evidence／Claim closure、台服可組成」成立，不保證任意帳號練度可直接重現。TM-F810-03～05 仍為單一玩家來源 D；相關 blocking Warning 不隱藏，也不藉調降 Validator 消除。
+
+## 2026-08-08 A4：蒼波 8-10 五隊單一來源 closure
+
+### 採用來源與逐隊實播結果
+
+- 唯一採用的通關來源為台服玩家影片 `w3My0QHcoTA`（2026-06-01）。已實際開啟影片正文與完整說明，並逐隊播放核對；搜尋摘要與交接文件未被當作 Evidence。
+- TM-W810-01（ev084，00:13–02:13）：雪野／愛梅斯（夏日）／美空（聖誕節）／七七香（夏日）／薇歐莉特（黃泉鯨命）。最終攻擊後開啟退出選單時底層 Boss HP bar 已空，緊接返回蒼波地圖且 8-10 顯示 `CLEAR`；來源標示剩 13 秒、2 目押。
+- TM-W810-02（ev085，02:14–03:48）：雪野／愛梅斯（夏日）／苑／妮諾（夏日）／薇歐莉特（黃泉鯨命）。畫面顯示 Boss HP=`0/270000000`、剩 `0:22`；來源聲明半 A。
+- TM-W810-03（ev086，03:49–05:27）：雪野／愛梅斯（夏日）／拉比林斯達（始源）／苑／薇歐莉特（黃泉鯨命）。畫面顯示 Boss HP=`0/270000000`、剩 `0:03`；來源聲明全自動 `OXOOX`。
+- TM-W810-04（ev087，05:28–06:51）：雪野／愛梅斯（夏日）／苑／七七香（夏日）／薇歐莉特（黃泉鯨命）。畫面顯示 Boss HP=`0/270000000`、剩 `0:05`，隨後進入 `Now Loading`；來源聲明全自動 `OOOXO`。
+- TM-W810-05（ev088，06:52–07:58）：雪野／愛梅斯（夏日）／美空（聖誕節）／苑／薇歐莉特（黃泉鯨命）。畫面顯示 Boss HP=`0/270000000`、剩 `0:17`；來源聲明全 SET 全自動，另稱 `OXOOO` 亦可。
+- 五隊 signature 皆不同；同一影片的不同章節不作來源獨立性膨脹。五個通關 Claim 均維持 `ANALYTICAL_JUDGMENT/D`、`independence_check=N_A`。
+
+### Rejected/non-clear 更正
+
+- `_jmHoggmlNY` 苑隊（ev089，00:30–02:47）：實播在遊戲倒數 0:04 時 Boss 仍存活後轉場，不能作通關 Evidence。
+- `_jmHoggmlNY` 七七香隊（ev090，02:48–04:42）：實播明確顯示 `TIME UP`，不能作通關 Evidence。
+- 兩筆只在 92 與本研究日誌保存，`status=REJECTED`、無 Claim，不進 24／25／26 或 Gate。先前僅依標題／章節推定可通關的候選結論全部撤銷。
+
+### 名稱與台服可用性 closure
+
+- 新增八個 18 unit：`yukino_orig`、`ames_sum`、`sono_orig`、`ninon_sum`、`nanaka_sum`、`misora_xmas`、`violet_isanami`、`labyrista_alpha`。八角均由台服官方正文證明 `AVAILABLE`；強化與元素未逐項查證者維持 `UNVERIFIED`／`待查證`。
+- 「水堇」只作社群俗稱，正式名為台服「薇歐莉特（黃泉鯨命）」／日服「ヴァイオレット（イサナミ）」；ev103＋ev104 建立 `CLM-LOC-VIOLET-ISANAMI`，映射上限 B。
+- 「阿法晶」只作社群俗稱，正式名為台服「拉比林斯達（始源）」／日服「ラビリスタ（アルファ）」，**不是克莉絲提娜**；ev105＋ev106 以同一活動第 2 話與終幕／エピローグ等 discriminator 建立 `CLM-LOC-LABYRISTA-ALPHA`，映射上限 B。
+- 七七香（夏日）的台服 ev099 只證明目前可取得與官方名，不是首次實裝公告，因此 `tw_release_date` 留空。
+
+### Operation axis 與 UNKNOWN 邊界
+
+- 26 新增五條同來源 axis；TM-W810-01=`MANUAL_TIMELINE`、02=`SEMI_AUTO`、03～05=`AUTO`。五條均有台服來源實播，故 axis 標 `TW_REPRODUCED`；此值只描述來源影片的該次台服執行，不代表多玩家或本專案重現。
+- 27 共新增 18 步：第 1 隊 9 步、第 2 隊 6 步、第 3～5 隊各 1 步。只把來源明示的時間、AUTO 切換、Boss UB 與兩個標☆愛梅斯目押結構化；第 3～5 隊的 1:30 開場聲明以 `WAVE_START`／`NO_ACTION` 加 `raw_set_pattern` 保存，其餘無法確證的 O／X 與角色箭頭才用 `SOURCE_TEXT_ONLY`／`NO_ACTION` 或原始圖樣，不猜 UB／SET 語意。
+- 來源全域養成為全屬性 Lv1000、屬性技能第 6 頁第 8 分流 MAX、大師技能 118、職階全 5.5；第 2 隊另稱 TP5.0+。上述資訊未提供逐 slot 歸屬，只放 `failure_conditions`／notes，25 的五個 slot 養成欄及 support 全維持 `UNKNOWN`。
+- 第 1 隊只結構化本影片世界線 B；世界線 A 留在風險備註。第 2 隊同理，世界線 A 與 TP4.0–4.4 版本不建立同來源第二條 axis。
+
+### 成熟狀態與 Gate 語意
+
+- Water 8-10 現有 `VERIFIED` 不同五人 N=5；24 與 25 signature 對帳後為 `team_count=5`、`status=VERIFIED`、`reproducibility=CONFIRMED`。
+- `CONFIRMED` 只表示完整五人、明確關卡、實際清場、台服可用性與 Evidence／Claim closure 成立，不代表穩定重現。五隊均來自同一玩家／同一 host，通關 Claim 上限 D。
+- 此關可計入結構性的 PVE 成熟 stage；五個 D 級 `ANALYTICAL_JUDGMENT` 被成熟 24 引用後仍產生 blocking warnings，未取得第二個獨立 host 的通關佐證前不得宣稱 Gate C PASS。
