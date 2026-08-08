@@ -99,7 +99,7 @@ services:
       - --research-core
       - research_core/pcr_tw_project
       - --manifest
-      - scripts/research_core_rp_a3_manifest.sha256
+      - scripts/research_core_rp_a4_manifest.sha256
       - --run-baseline
     environment:
       PCR_DATABASE_URL: postgresql+psycopg://pcr_api:${PCR_API_DB_PASSWORD:?Set a distinct PCR_API_DB_PASSWORD in .env}@db:5432/${POSTGRES_DB:-pcr_tw}
@@ -203,7 +203,7 @@ services:
     restart: unless-stopped
     environment:
       PCR_DATABASE_URL: postgresql+psycopg://pcr_api:${PCR_API_DB_PASSWORD:?Set a distinct PCR_API_DB_PASSWORD in .env}@db:5432/${POSTGRES_DB:-pcr_tw}
-      PCR_APPLICATION_VERSION: 3.0.0-a3
+      PCR_APPLICATION_VERSION: 3.0.0-a4
       PCR_RESEARCH_CORE_VERSION: "1.5"
       PYTHONDONTWRITEBYTECODE: "1"
       PYTHONUNBUFFERED: "1"

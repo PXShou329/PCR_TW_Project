@@ -1,17 +1,17 @@
 # 公主連結台服 AI 攻略研究所
 
-Guide-Only Strategy Platform v3.0 的 A3 Fire 成熟切片，建立在已封存的 B1
+Guide-Only Strategy Platform v3.0 的 A4 Water 成熟切片，建立在已封存的 B1
 full-core round-trip 里程碑之上。這是一個可部署的
 **本機／私人 staging**，不是公開正式版，也尚未宣稱 Gates D–G 通過。
 
-目前端到端垂直切片以「紅焰深域 8-10」為例，提供五支不同五人的實際通關隊伍、逐 Slot
+目前端到端垂直切片包含「紅焰深域 8-10」與「蒼波深域 8-10」，各提供五支不同五人的實際通關隊伍、逐 Slot
 條件、來源分離的操作軸、逐步 Evidence Drawer，以及誠實的 `UNKNOWN`／結構化操作軸缺口。競技場在
 尚無 exact verified counter 時只回傳空結果，不建立示意隊。
 
 ## 真相與安全邊界
 
-- `research_core/pcr_tw_project/` 是唯一 canonical source；目前 RP-A3 的 48 個檔案
-  由 `scripts/research_core_rp_a3_manifest.sha256` 逐檔 SHA-256 鎖定；RP-A2 manifest 保留供 immutable rollback 相容驗證。
+- `research_core/pcr_tw_project/` 是唯一 canonical source；目前 RP-A4 的 48 個檔案
+  由 `scripts/research_core_rp_a4_manifest.sha256` 逐檔 SHA-256 鎖定；RP-A2／RP-A3 manifests 保留供 immutable rollback 相容驗證。
 - PostgreSQL 是可重建的 immutable multi-revision read mirror，不會回寫 research core。
 - 台服是攻略主體；日服只作未來視與可轉用研究。中國服／B 服資料不作核心、
   替代或補洞依據。
@@ -23,7 +23,7 @@ full-core round-trip 里程碑之上。這是一個可部署的
 
 ```mermaid
 flowchart LR
-  RC["R3i research core\nFile SSOT"] --> IM["Fail-closed importer"]
+  RC["A4 research core\nFile SSOT"] --> IM["Fail-closed importer"]
   IM --> DB["PostgreSQL\nimmutable revision mirror"]
   DB --> API["FastAPI read API"]
   API --> WEB["Next.js Web UI"]
@@ -56,7 +56,10 @@ python tools/mutation_test.py
 目前預期 ARTIFACT_READY 仍以 exit 1 誠實揭露 Gate A／B／C 三項缺口；本里程碑不會為了
 讓測試變綠而降低研究 Gate。
 
-B1 的實際五命令、round-trip、PostgreSQL、瀏覽器、E2E 與 restore 輸出見
+A4 的實際五命令、round-trip、PostgreSQL、瀏覽器、E2E、restore 與 A4→A3
+rollback drill 輸出見
+[`docs/operations/A4_VERIFICATION_REPORT.md`](docs/operations/A4_VERIFICATION_REPORT.md)；
+B1 的歷史基線仍保留於
 [`docs/operations/B1_VERIFICATION_REPORT.md`](docs/operations/B1_VERIFICATION_REPORT.md)。
 
 ## 啟動本機私人堆疊
@@ -76,6 +79,9 @@ docker compose --env-file .env -f infra/compose.yml up --build --wait
 - API readiness：<http://127.0.0.1:8000/health/ready>
 - Scheduler health：<http://127.0.0.1:8081/health>
 
-完整的權限實測、scheduler smoke、備份還原與原子回滾流程請依
-[`docs/operations/B1_RUNBOOK.md`](docs/operations/B1_RUNBOOK.md)；架構決策與後續
-依賴順序見 [`docs/architecture/INTEGRATED_ROADMAP.md`](docs/architecture/INTEGRATED_ROADMAP.md)。
+完整的權限實測、scheduler smoke 與備份還原流程請依
+[`docs/operations/B1_RUNBOOK.md`](docs/operations/B1_RUNBOOK.md)；A4→A3 的版本回退與
+重新前進請依
+[`docs/operations/A4_ROLLBACK_RUNBOOK.md`](docs/operations/A4_ROLLBACK_RUNBOOK.md)。
+架構決策與後續依賴順序見
+[`docs/architecture/INTEGRATED_ROADMAP.md`](docs/architecture/INTEGRATED_ROADMAP.md)。

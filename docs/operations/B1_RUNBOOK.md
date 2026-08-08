@@ -136,12 +136,14 @@ CI／全新 disposable DB 才可加入：
    canonical SHA-256，而不是只比 row count。
 5. 在 restore DB 重跑 240 項 role matrix 與實際 denial probes。
 6. 用 `pcr_api` role 做 round-trip，再啟動 disposable API／Web 驗 critical path。
-7. 在 clone 上實跑 V0003→V0002 downgrade，確認 legacy latest 仍指向降版前 active run。
+7. 在 clone 上實跑 V0005→V0004 downgrade，確認 honest borrowed-state `NULL` 使降版
+   transactionally fail closed，revision 與資料均維持 V0005；V0004→V0003 的
+   `UNKNOWN` 邊界由 offline migration regression 鎖定。
 8. 即使主流程失敗，也逐一嘗試清理 Web、API、restore DB 與 dump，再彙整 cleanup error。
 
 `BACKUP_DIR` 依 process env／EnvFile 解析，relative path 以 `infra/compose.yml` 所在目錄為
 基準。`-KeepBackup` 會保留 dump。`-KeepRestoredDatabase` 只用於除錯，成功時留下的是
-最後 rollback probe 的 V0002 database，不是 B1 clone。
+最後 fail-closed probe 後仍位於 V0005 的 database。
 
 ## 回滾至 A2＋B2
 
@@ -161,15 +163,26 @@ CI／全新 disposable DB 才可加入：
 
 1. Quiesce 所有 readers／writers。
 2. 先建立並驗證當前 B1 backup；記錄 active revision/run。
-3. 以 migration owner 執行：
+3. 先檢查兩個不可臆測的降版 blocker：
+
+```sql
+SELECT COUNT(*) FROM team_members WHERE is_borrowed IS NULL;
+SELECT COUNT(*) FROM operation_timelines WHERE operation_mode = 'UNKNOWN';
+```
+
+   V0005 的 borrowed-state `NULL` 必須先由 admissible evidence 解決，或改用 verified
+   pre-V0005 backup；進入 V0004 後，operation-mode `UNKNOWN` 也必須先由 admissible
+   evidence 解決，或改用 verified pre-V0004 backup。不得用 `false`／任一 operation mode
+   強填未知事實來通過 migration。
+4. 只有兩項 blocker 都為 0 時，才以 migration owner 執行：
 
 ```powershell
 alembic -c database/alembic.ini downgrade v0002_operation_timelines
 ```
 
-4. V0003 downgrade 會在移除 state 前，確認 active run 為 `SUCCEEDED`，並只在 downgrade
+5. V0003 downgrade 會在移除 state 前，確認 active run 為 `SUCCEEDED`，並只在 downgrade
    transaction 中把其 `imported_at` 提升到 legacy latest；正常 B1 terminal guard不放寬。
-5. 查詢舊排序必須等於原 active run：
+6. 查詢舊排序必須等於原 active run：
 
 ```sql
 SELECT id
@@ -179,7 +192,7 @@ ORDER BY imported_at DESC, id DESC
 LIMIT 1;
 ```
 
-6. 確認 Alembic 為 `v0002_operation_timelines` 且五個 B1 tables 已移除，再部署
+7. 確認 Alembic 為 `v0002_operation_timelines` 且五個 B1 tables 已移除，再部署
    `rp-a2-b2-2`。
 
 降版會失去 B1 artifact/history tables，且 reconciliation 會刻意改寫 active run 的 legacy

@@ -436,7 +436,9 @@ class TeamMember(Base):
     unit_key: Mapped[str] = mapped_column(
         ForeignKey("characters.unit_key", ondelete="RESTRICT"), nullable=False
     )
-    is_borrowed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # True/False are explicit source facts; None preserves an unstated or
+    # source-conflicting support slot without strengthening it to "not borrowed".
+    is_borrowed: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
 
     __table_args__ = (
         CheckConstraint("slot BETWEEN 1 AND 5", name="team_member_slot_range"),

@@ -107,7 +107,8 @@ export interface TeamMember {
   slot: number;
   unit_key: string;
   tw_name: string;
-  is_borrowed: boolean;
+  /** true/false only when the source states it; null means unknown/conflicting. */
+  is_borrowed: boolean | null;
 }
 
 export interface SlotRequirement {

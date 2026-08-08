@@ -29,16 +29,17 @@ class SnapshotContract:
     claim_to_evidence_count: int
 
 
-# RP-A3 是 A3 read-mirror 的輸入契約；歷史 RP-A2 pin 與 manifest
-# 保留供 version-aware rollback 測試，不覆寫其 immutable checkpoint。
-EXPECTED_MANIFEST_SHA256 = "ab62e07483dfea07c992b950b9c05c74fa0e3767fa0b3bce64b20193a1860333"
+# RP-A4 是 Water read-mirror 的輸入契約；歷史 RP-A2／RP-A3 pins 與
+# manifests 保留供 version-aware rollback 測試，不覆寫 immutable checkpoints。
+EXPECTED_MANIFEST_SHA256 = "3daf2ab7c212b4f11c58883980d0ada3862400923c81a9bdedcc0500e59b1a9e"
 EXPECTED_FILE_COUNT = 48
 EXPECTED_CSV_FILE_COUNT = 13
-EXPECTED_CSV_ROW_COUNT = 239
-EXPECTED_EVIDENCE_TO_CLAIM_COUNT = 81
-EXPECTED_CLAIM_TO_EVIDENCE_COUNT = 184
+EXPECTED_CSV_ROW_COUNT = 325
+EXPECTED_EVIDENCE_TO_CLAIM_COUNT = 102
+EXPECTED_CLAIM_TO_EVIDENCE_COUNT = 268
 TREE_SERIALIZATION_VERSION = 1
 
+RP_A3_MANIFEST_SHA256 = "ab62e07483dfea07c992b950b9c05c74fa0e3767fa0b3bce64b20193a1860333"
 RP_A2_MANIFEST_SHA256 = "3a242b521d830af12ce8559d88b733068fb1b6cb503219395d2986b89e5dc352"
 CURRENT_SNAPSHOT_CONTRACT = SnapshotContract(
     file_count=EXPECTED_FILE_COUNT,
@@ -46,6 +47,13 @@ CURRENT_SNAPSHOT_CONTRACT = SnapshotContract(
     csv_row_count=EXPECTED_CSV_ROW_COUNT,
     evidence_to_claim_count=EXPECTED_EVIDENCE_TO_CLAIM_COUNT,
     claim_to_evidence_count=EXPECTED_CLAIM_TO_EVIDENCE_COUNT,
+)
+RP_A3_SNAPSHOT_CONTRACT = SnapshotContract(
+    file_count=48,
+    csv_file_count=13,
+    csv_row_count=239,
+    evidence_to_claim_count=81,
+    claim_to_evidence_count=184,
 )
 RP_A2_SNAPSHOT_CONTRACT = SnapshotContract(
     file_count=48,
@@ -56,12 +64,13 @@ RP_A2_SNAPSHOT_CONTRACT = SnapshotContract(
 )
 PINNED_SNAPSHOT_CONTRACTS: Mapping[str, SnapshotContract] = {
     EXPECTED_MANIFEST_SHA256: CURRENT_SNAPSHOT_CONTRACT,
+    RP_A3_MANIFEST_SHA256: RP_A3_SNAPSHOT_CONTRACT,
     RP_A2_MANIFEST_SHA256: RP_A2_SNAPSHOT_CONTRACT,
 }
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_RESEARCH_CORE = REPOSITORY_ROOT / "research_core" / "pcr_tw_project"
-DEFAULT_MANIFEST = REPOSITORY_ROOT / "scripts" / "research_core_rp_a3_manifest.sha256"
+DEFAULT_MANIFEST = REPOSITORY_ROOT / "scripts" / "research_core_rp_a4_manifest.sha256"
 
 CSV_NATURAL_KEYS: Mapping[str, str] = {
     "17_TEST_EXECUTION_LOG.csv": "run_id",

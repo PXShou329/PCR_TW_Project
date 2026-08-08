@@ -25,6 +25,9 @@
 
 區域／屬性代碼（如 FIRE／WATER 等）同樣於首筆建檔時以官方名稱定案。
 
+2026-08-08 首筆蒼波攻略建檔定案：`WATER＝蒼波`（台服官方名稱）；首筆
+`guide_id＝TW_DEEP_WATER_08_10_20260808`，官方命名依據為 ev029（OFFICIAL／A）。
+
 ## 2. 標準資料模板
 
 ```markdown
@@ -84,6 +87,8 @@
 - `operation_mode_claims` 每項必須有 `source_id` 與 `mode`；`source_id` 須存在於同列 `source_ids`。`SOURCE_CONFLICT` 至少兩個不同來源且至少兩種 mode；非衝突模式的 claims 必須與列級 mode 相同。
 - `slots` 必須精確含 `slot1`～`slot5`；每格必須含 `star`、`rank`、`ue1`、`ue2`、`six_star`、`connect_rank`、`element_boost`。
 - `support` 必須含 `unit` 與 `requirements`；無支援角時 `unit=NONE`。`failure_conditions` 必須是非空陣列。
+- 24 的 `area`＋`stage` 是關卡關聯 SSOT；25 的 `server` 必須與 24 相同，`stage` 只允許精確的正規化值（如 `8-10`）或既有相容 display label（如 `紅焰8-10`）。Serving API 一律由 24 組成官方 display label（如 `蒼波8-10`），不得信任任意自由文字。
+- 借角狀態是三態事實：`support.unit=UNKNOWN／SOURCE_CONFLICT` 且 `support_slot` 空白時，投影必須為 `null`（未知），不得強化成 `false`；`unit=NONE` 才可投影全隊 `false`；具名 `unit` 必須與明確 `support_slot` 的角色一致，該格為 `true`、其餘為 `false`。
 - 未知條件一律明寫 `UNKNOWN`；空字串不得冒充已知，也不得將泛化練度或記憶推定填入逐 slot 欄位。
 - 來源 claim 只保存「該來源聲明了什麼」，不等於來源已實開或通關已驗證；證據層級與 `clear_status` 仍依 20、92、93 的規則獨立判定。
 

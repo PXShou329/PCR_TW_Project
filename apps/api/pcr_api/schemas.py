@@ -84,7 +84,7 @@ class TeamMemberData(BaseModel):
     slot: int
     unit_key: str
     tw_name: str
-    is_borrowed: bool
+    is_borrowed: bool | None
 
 
 class TeamSummary(BaseModel):

@@ -39,6 +39,8 @@ from pcr_database.materialization import (
 from pcr_pipeline.research_core_snapshot import (
     DEFAULT_MANIFEST,
     EXPECTED_MANIFEST_SHA256,
+    RP_A2_MANIFEST_SHA256,
+    RP_A3_MANIFEST_SHA256,
     ResearchCoreSnapshot,
     assert_materialized_snapshot,
     finalize_materialized_snapshot,
@@ -50,11 +52,20 @@ from pcr_pipeline.research_core_snapshot import (
 # Compatibility identifier for the original B0 vertical-slice API.  The typed
 # projection itself is no longer restricted to this guide.
 TARGET_GUIDE_ID = "TW_DEEP_FIRE_08_10_20260802"
-APPLICATION_VERSION = "3.0.0-a3"
+APPLICATION_VERSION = "3.0.0-a4"
 CANONICAL_SOURCE = "research_core_file_ssot"
 IMPORT_LOCK_KEY = 0x5043524231
 FULL_PVE_PROJECTION = "pve_18_24_25_26_27_closure_v2"
 LEGACY_FIRE_PROJECTION = "fire_8_10_18_24_25_26_27_closure_v1"
+BORROWED_STATE_SEMANTICS_FIELD = "borrowed_state_semantics"
+BORROWED_STATE_TRISTATE_V1 = "source_truth_tristate_v1"
+BORROWED_STATE_LEGACY_FALSE_V1 = "legacy_blank_false_v1"
+BORROWED_STATE_SEMANTICS = frozenset(
+    {BORROWED_STATE_TRISTATE_V1, BORROWED_STATE_LEGACY_FALSE_V1}
+)
+LEGACY_BORROWED_MANIFESTS = frozenset(
+    {RP_A2_MANIFEST_SHA256, RP_A3_MANIFEST_SHA256}
+)
 # rp-b1-1 / rp-a2 raw tree.  Its historical ImportRun materialized only the
 # Fire 8-10 vertical slice.  Keeping this identity code-owned makes a clean
 # restore deterministic even when no historical database row is present yet.
@@ -67,6 +78,7 @@ LEGACY_FIRE_REVISION_IDS = frozenset(
 # become a public href merely by editing the ledger.
 B0_AUDITED_EVIDENCE_HOSTS = frozenset(
     {
+        "dmg.priconne-redive.jp",
         "games.appmatch.jp",
         "gamewith.jp",
         "priconne-redive.jp",
@@ -132,6 +144,32 @@ PVE_OPERATION_MODES = frozenset(
 # This audited boundary records what the actually opened source states.  It is
 # deliberately code-owned: editing a CSV cannot turn an unstated time into a
 # canonical value or invent a battle duration.
+_EXACT_STEP_FIELDS = (
+    "source_step_no",
+    "trigger_type",
+    "trigger_actor_unit_key",
+    "time_state",
+    "clock_from_ms",
+    "clock_to_ms",
+    "actor_unit_key",
+    "action_type",
+    "target_unit_key",
+    "auto_state_after",
+    "animation_cue",
+    "criticality",
+    "source_locator",
+)
+
+
+def _exact_step_assertions(
+    *rows: tuple[str, ...],
+) -> dict[str, tuple[str, ...] | dict[str, tuple[str, ...]]]:
+    return {
+        "fields": _EXACT_STEP_FIELDS,
+        "rows": {row[0]: row[1:] for row in rows},
+    }
+
+
 AUDITED_TIMELINE_TIME_BOUNDARIES = {
     "AX-F810-02-EV073": {
         "battle_duration_ms": "UNKNOWN",
@@ -139,7 +177,50 @@ AUDITED_TIMELINE_TIME_BOUNDARIES = {
         "source_locator_prefix": "2025年9月魔法半自動／手順",
         "source_step_numbers": frozenset(range(1, 9)),
         "not_stated_source_steps": frozenset({1}),
-    }
+    },
+    "AX-W810-01-EV084": {
+        "battle_duration_ms": "90000",
+        "step_assertions": _exact_step_assertions(
+            ("TLS-W810-01-001", "1", "WAVE_START", "NONE", "STATED", "90000", "90000", "NONE", "NO_ACTION", "NONE", "ON", "raw_set_pattern=OOXOO", "UNKNOWN", "yt_w3My0QHcoTA@00:13-02:13#step-1"),
+            ("TLS-W810-01-002", "2", "CLOCK", "nanaka_sum", "STATED", "67000", "67000", "nanaka_sum", "NO_ACTION", "NONE", "ON", "raw_set_pattern=OXOOO", "UNKNOWN", "yt_w3My0QHcoTA@00:13-02:13#step-2"),
+            ("TLS-W810-01-003", "3", "ANIMATION_CUE", "ames_sum", "STATED", "59000", "59000", "ames_sum", "USE_UB", "NONE", "ON", "愛梅斯1技為美空充TP後最速／開眼後", "CRITICAL", "yt_w3My0QHcoTA@00:13-02:13#step-3"),
+            ("TLS-W810-01-004", "4", "SOURCE_TEXT_ONLY", "misora_xmas", "STATED", "53000", "53000", "NONE", "NO_ACTION", "NONE", "ON", "美空UB後接雪野UB", "UNKNOWN", "yt_w3My0QHcoTA@00:13-02:13#step-4"),
+            ("TLS-W810-01-005", "5", "ANIMATION_CUE", "ames_sum", "STATED", "48000", "48000", "ames_sum", "USE_UB", "NONE", "ON", "愛梅斯1技為薇歐莉特充TP後最速", "CRITICAL", "yt_w3My0QHcoTA@00:13-02:13#step-5a"),
+            ("TLS-W810-01-006", "5", "CLOCK", "NONE", "STATED", "48000", "48000", "NONE", "AUTO_OFF", "NONE", "OFF", "raw_set_pattern=OOXOO", "UNKNOWN", "yt_w3My0QHcoTA@00:13-02:13#step-5b"),
+            ("TLS-W810-01-007", "6", "BOSS_ACTION", "NONE", "STATED", "41000", "41000", "NONE", "NO_ACTION", "NONE", "OFF", "Boss UB", "UNKNOWN", "yt_w3My0QHcoTA@00:13-02:13#step-6"),
+            ("TLS-W810-01-008", "7", "CLOCK", "yukino_orig", "STATED", "38000", "38000", "NONE", "AUTO_ON", "NONE", "ON", "raw_set_pattern=OOOOX", "UNKNOWN", "yt_w3My0QHcoTA@00:13-02:13#step-7"),
+            ("TLS-W810-01-009", "8", "CLOCK", "violet_isanami", "STATED", "17000", "17000", "violet_isanami", "NO_ACTION", "NONE", "ON", "raw_set_pattern=OXOOO", "UNKNOWN", "yt_w3My0QHcoTA@00:13-02:13#step-8"),
+        ),
+    },
+    "AX-W810-02-EV085": {
+        "battle_duration_ms": "90000",
+        "step_assertions": _exact_step_assertions(
+            ("TLS-W810-02-001", "1", "WAVE_START", "NONE", "STATED", "90000", "90000", "NONE", "NO_ACTION", "NONE", "ON", "raw_set_pattern=OXOOO", "UNKNOWN", "yt_w3My0QHcoTA@02:14-03:48#step-1"),
+            ("TLS-W810-02-002", "2", "CLOCK", "ames_sum", "STATED", "71000", "71000", "NONE", "AUTO_OFF", "NONE", "OFF", "愛梅斯marker後關閉AUTO", "UNKNOWN", "yt_w3My0QHcoTA@02:14-03:48#step-2"),
+            ("TLS-W810-02-003", "3", "BOSS_ACTION", "NONE", "STATED", "56000", "56000", "NONE", "NO_ACTION", "NONE", "OFF", "Boss UB", "UNKNOWN", "yt_w3My0QHcoTA@02:14-03:48#step-3"),
+            ("TLS-W810-02-004", "4", "CLOCK", "yukino_orig", "STATED", "50000", "50000", "NONE", "AUTO_ON", "NONE", "ON", "雪野marker後開啟AUTO", "UNKNOWN", "yt_w3My0QHcoTA@02:14-03:48#step-4"),
+            ("TLS-W810-02-005", "5", "BOSS_ACTION", "NONE", "STATED", "39000", "39000", "NONE", "NO_ACTION", "NONE", "ON", "Boss UB", "UNKNOWN", "yt_w3My0QHcoTA@02:14-03:48#step-5"),
+            ("TLS-W810-02-006", "6", "CLOCK", "ames_sum", "STATED", "24000", "24000", "ames_sum", "NO_ACTION", "NONE", "ON", "raw_set_pattern=OOOOX", "UNKNOWN", "yt_w3My0QHcoTA@02:14-03:48#step-6"),
+        ),
+    },
+    "AX-W810-03-EV086": {
+        "battle_duration_ms": "90000",
+        "step_assertions": _exact_step_assertions(
+            ("TLS-W810-03-001", "1", "WAVE_START", "NONE", "STATED", "90000", "90000", "NONE", "NO_ACTION", "NONE", "ON", "raw_set_pattern=OXOOX", "UNKNOWN", "yt_w3My0QHcoTA@03:49-05:27#step-1"),
+        ),
+    },
+    "AX-W810-04-EV087": {
+        "battle_duration_ms": "90000",
+        "step_assertions": _exact_step_assertions(
+            ("TLS-W810-04-001", "1", "WAVE_START", "NONE", "STATED", "90000", "90000", "NONE", "NO_ACTION", "NONE", "ON", "raw_set_pattern=OOOXO", "UNKNOWN", "yt_w3My0QHcoTA@05:28-06:51#step-1"),
+        ),
+    },
+    "AX-W810-05-EV088": {
+        "battle_duration_ms": "90000",
+        "step_assertions": _exact_step_assertions(
+            ("TLS-W810-05-001", "1", "WAVE_START", "NONE", "STATED", "90000", "90000", "NONE", "NO_ACTION", "NONE", "ON", "raw_set_pattern=全SET", "UNKNOWN", "yt_w3My0QHcoTA@06:52-07:58#step-1"),
+        ),
+    },
 }
 
 
@@ -458,6 +539,38 @@ def _validate_requirements(team: dict[str, str]) -> dict[str, Any]:
     return requirements
 
 
+def _borrowed_states(
+    team: dict[str, str],
+    requirements: dict[str, Any],
+    *,
+    semantics: str = BORROWED_STATE_TRISTATE_V1,
+) -> tuple[bool | None, ...]:
+    """Project the source's support fact without turning UNKNOWN into False."""
+
+    if semantics not in BORROWED_STATE_SEMANTICS:
+        raise FixtureValidationError(f"unsupported borrowed-state semantics: {semantics}")
+
+    support_slot = team["support_slot"].strip()
+    support_unit = requirements["support"]["unit"]
+    if support_slot:
+        if support_slot not in {f"slot{slot}" for slot in range(1, 6)}:
+            raise FixtureValidationError(f"{team['team_id']} support_slot is invalid")
+        if support_unit != team[support_slot]:
+            raise FixtureValidationError(
+                f"{team['team_id']} support unit differs from support_slot"
+            )
+        return tuple(support_slot == f"slot{slot}" for slot in range(1, 6))
+    if support_unit == "NONE":
+        return (False,) * 5
+    if support_unit in {"UNKNOWN", "SOURCE_CONFLICT"}:
+        if semantics == BORROWED_STATE_LEGACY_FALSE_V1:
+            return (False,) * 5
+        return (None,) * 5
+    raise FixtureValidationError(
+        f"{team['team_id']} named support unit requires an explicit support_slot"
+    )
+
+
 def _validate_timeline_closure(
     *,
     teams: tuple[dict[str, str], ...],
@@ -706,6 +819,7 @@ def _validate_timeline_closure(
         boundary = AUDITED_TIMELINE_TIME_BOUNDARIES.get(timeline["source_axis_id"])
         if (
             boundary
+            and "step_assertions" not in boundary
             and source_step_no in boundary["not_stated_source_steps"]
             and step["time_state"] != "NOT_STATED"
         ):
@@ -730,18 +844,39 @@ def _validate_timeline_closure(
 
         timeline = timeline_by_id[timeline_id]
         boundary = AUDITED_TIMELINE_TIME_BOUNDARIES.get(timeline["source_axis_id"])
-        if boundary and (
-            set(source_sequence) != boundary["source_step_numbers"]
-            or any(
-                step["source_locator"]
-                != f"{boundary['source_locator_prefix']}{step['source_step_no']}"
-                for step in ordered_steps
+        boundary_violation = False
+        if boundary and "step_assertions" in boundary:
+            assertions = boundary["step_assertions"]
+            fields = assertions["fields"]
+            expected_rows = assertions["rows"]
+            actual_rows = {step["timeline_step_id"]: step for step in ordered_steps}
+            boundary_violation = (
+                set(actual_rows) != set(expected_rows)
+                or any(
+                    actual_rows[step_id]["sequence_no"] != str(index)
+                    for index, step_id in enumerate(expected_rows, start=1)
+                    if step_id in actual_rows
+                )
+                or any(
+                    tuple(actual_rows[step_id][field] for field in fields) != expected
+                    for step_id, expected in expected_rows.items()
+                    if step_id in actual_rows
+                )
             )
-            or any(
-                step["criticality"] != boundary["criticality"]
-                for step in ordered_steps
+        elif boundary:
+            boundary_violation = (
+                set(source_sequence) != boundary["source_step_numbers"]
+                or any(
+                    step["source_locator"]
+                    != f"{boundary['source_locator_prefix']}{step['source_step_no']}"
+                    for step in ordered_steps
+                )
+                or any(
+                    step["criticality"] != boundary["criticality"]
+                    for step in ordered_steps
+                )
             )
-        ):
+        if boundary_violation:
             raise FixtureValidationError(
                 f"{timeline['source_axis_id']} steps violate the audited source boundary"
             )
@@ -790,6 +925,33 @@ def load_pve_closure(research_core: Path) -> FixtureClosure:
     guides_by_id = {row["guide_id"]: row for row in guides_all}
     evidence_by_id = {row["evidence_id"]: row for row in evidence_all}
     claims_by_id = {row["claim_id"]: row for row in claims_all}
+    dangling_declared_claims = sorted(
+        {
+            evidence["claim_id"].strip()
+            for evidence in evidence_all
+            if evidence["claim_id"].strip()
+            and evidence["claim_id"].strip() not in claims_by_id
+        }
+    )
+    if dangling_declared_claims:
+        raise FixtureValidationError(
+            "selected evidence references missing claims: "
+            f"{dangling_declared_claims}"
+        )
+    active_claim_ids = {
+        claim_id
+        for claim_id, claim in claims_by_id.items()
+        if claim["status"] == "ACTIVE"
+    }
+
+    def evidence_has_active_claim(evidence_id: str) -> bool:
+        evidence = evidence_by_id[evidence_id]
+        declared_claim_id = evidence["claim_id"].strip()
+        return (
+            evidence["status"] == "ACTIVE"
+            and bool(declared_claim_id)
+            and declared_claim_id in active_claim_ids
+        )
 
     unknown_team_guides = sorted(
         {team["guide_id"] for team in teams} - guides_by_id.keys()
@@ -812,8 +974,18 @@ def load_pve_closure(research_core: Path) -> FixtureClosure:
     seen_stage_signatures: set[tuple[str, tuple[str, ...]]] = set()
     for team in teams:
         guide = guides_by_id[team["guide_id"]]
-        expected_stage = f"{guide['area']}{guide['stage']}"
-        if team["server"] != guide["server"] or team["stage"] != expected_stage:
+        # R3i rows use the legacy display label (for example ``紅焰8-10``),
+        # while A4 rows use the normalized guide stage (``8-10``).  Both are
+        # exact representations of the same guide relation; arbitrary labels
+        # remain fail-closed.
+        accepted_stage_labels = {
+            guide["stage"],
+            f"{guide['area']}{guide['stage']}",
+        }
+        if (
+            team["server"] != guide["server"]
+            or team["stage"] not in accepted_stage_labels
+        ):
             raise FixtureValidationError(
                 f"{team['team_id']} server/stage differs from its guide relation"
             )
@@ -841,9 +1013,7 @@ def load_pve_closure(research_core: Path) -> FixtureClosure:
             )
         seen_stage_signatures.add(stage_signature)
         requirements_by_team[team["team_id"]] = _validate_requirements(team)
-        support_slot = team["support_slot"].strip()
-        if support_slot and support_slot not in {f"slot{slot}" for slot in range(1, 6)}:
-            raise FixtureValidationError(f"{team['team_id']} support_slot is invalid")
+        _borrowed_states(team, requirements_by_team[team["team_id"]])
         evidence_ids = _split_ids(team["evidence_ids"])
         _require_ids(
             evidence_ids,
@@ -866,6 +1036,7 @@ def load_pve_closure(research_core: Path) -> FixtureClosure:
             team["clear_status"] == "VERIFIED"
             and team["tw_availability_check"] == "PASS"
             and evidence_ids
+            and all(evidence_has_active_claim(evidence_id) for evidence_id in evidence_ids)
         ):
             effective_signatures_by_guide[team["guide_id"]].add(signature)
 
@@ -899,6 +1070,15 @@ def load_pve_closure(research_core: Path) -> FixtureClosure:
             claims_by_id,
             relation=f"{guide['guide_id']} claim_ids",
         )
+        if guide["status"] == "VERIFIED" and (
+            not evidence_ids
+            or not claim_ids
+            or any(not evidence_has_active_claim(evidence_id) for evidence_id in evidence_ids)
+            or any(claim_id not in active_claim_ids for claim_id in claim_ids)
+        ):
+            raise FixtureValidationError(
+                f"{guide['guide_id']} VERIFIED closure contains non-ACTIVE Evidence/Claim"
+            )
         stage_evidence_ids_by_guide[guide["guide_id"]] = evidence_ids
         stage_claim_ids_by_guide[guide["guide_id"]] = claim_ids
 
@@ -1181,7 +1361,24 @@ def _counts(closure: FixtureClosure) -> dict[str, int]:
     }
 
 
-def _assert_materialized(session: Session, closure: FixtureClosure) -> None:
+def _assert_materialized(
+    session: Session,
+    closure: FixtureClosure,
+    *,
+    borrowed_state_semantics: str,
+) -> None:
+    guides_by_id = {row["guide_id"]: row for row in closure.guides}
+    requirements_by_team = {
+        row["team_id"]: _validate_requirements(row) for row in closure.teams
+    }
+    borrowed_states_by_team = {
+        row["team_id"]: _borrowed_states(
+            row,
+            requirements_by_team[row["team_id"]],
+            semantics=borrowed_state_semantics,
+        )
+        for row in closure.teams
+    }
     expected_guide_ids = {row["guide_id"] for row in closure.guides}
     actual_guide_ids = set(session.scalars(select(Stage.guide_id)).all())
     if actual_guide_ids != expected_guide_ids:
@@ -1206,7 +1403,7 @@ def _assert_materialized(session: Session, closure: FixtureClosure) -> None:
             row["team_id"],
             slot,
             row[f"slot{slot}"],
-            row["support_slot"].strip() == f"slot{slot}",
+            borrowed_states_by_team[row["team_id"]][slot - 1],
         )
         for row in closure.teams
         for slot in range(1, 6)
@@ -1233,15 +1430,21 @@ def _assert_materialized(session: Session, closure: FixtureClosure) -> None:
             .where(TeamMember.team_id == row["team_id"])
             .order_by(TeamMember.slot)
         ).all()
-        expected_support = row["support_slot"].strip()
+        guide = guides_by_id[row["guide_id"]]
         if (
             team is None
             or team.source_payload != row
             or team.requirements_raw != row["requirements"]
             or team.signature != ";".join(sorted(expected_members))
+            or team.stage_label != f"{guide['area']}{guide['stage']}"
+            or team.support_slot != (row["support_slot"].strip() or None)
             or actual_members
             != [
-                (slot, unit_key, expected_support == f"slot{slot}")
+                (
+                    slot,
+                    unit_key,
+                    borrowed_states_by_team[row["team_id"]][slot - 1],
+                )
                 for slot, unit_key in enumerate(expected_members, start=1)
             ]
         ):
@@ -1507,6 +1710,30 @@ def _projection_from_manifest(manifest: dict[str, Any]) -> str:
     raise MirrorDriftError("import run has an unsupported typed projection")
 
 
+def _borrowed_state_semantics_from_manifest(manifest: dict[str, Any]) -> str:
+    """Resolve the immutable TeamMember projection used by an existing run.
+
+    ImportRun manifests written before A4 had no policy marker and projected a
+    blank support slot as ``False``.  Treating a missing marker as that deployed
+    binary behavior is required for byte-for-byte A2/A3 reactivation.
+    """
+
+    if BORROWED_STATE_SEMANTICS_FIELD not in manifest:
+        return BORROWED_STATE_LEGACY_FALSE_V1
+    semantics = manifest[BORROWED_STATE_SEMANTICS_FIELD]
+    if not isinstance(semantics, str) or semantics not in BORROWED_STATE_SEMANTICS:
+        raise MirrorDriftError("import run has unsupported borrowed-state semantics")
+    return semantics
+
+
+def _new_borrowed_state_semantics(manifest_sha256: str) -> str:
+    """Select semantics for a first import without rewriting old checkpoints."""
+
+    if manifest_sha256 in LEGACY_BORROWED_MANIFESTS:
+        return BORROWED_STATE_LEGACY_FALSE_V1
+    return BORROWED_STATE_TRISTATE_V1
+
+
 def _closure_for_projection(
     full_closure: FixtureClosure,
     projection: str,
@@ -1569,6 +1796,11 @@ def import_pve_projection(
                 else FULL_PVE_PROJECTION
             )
         )
+        borrowed_state_semantics = (
+            _borrowed_state_semantics_from_manifest(previous.manifest)
+            if previous is not None
+            else _new_borrowed_state_semantics(snapshot.manifest_sha256)
+        )
         closure = _closure_for_projection(full_closure, projection)
         row_counts = _counts(closure)
         if previous is not None:
@@ -1582,7 +1814,11 @@ def import_pve_projection(
                 state.active_revision_id == snapshot.revision_id
                 and state.active_import_run_id == previous.id
             ):
-                _assert_materialized(session, closure)
+                _assert_materialized(
+                    session,
+                    closure,
+                    borrowed_state_semantics=borrowed_state_semantics,
+                )
                 actual_materialization = build_materialization_manifest(session)
                 drift_reason = materialization_drift_reason(
                     previous.manifest.get("materialization"),
@@ -1626,6 +1862,7 @@ def import_pve_projection(
                 status="RUNNING",
                 manifest={
                     "projection": projection,
+                    BORROWED_STATE_SEMANTICS_FIELD: borrowed_state_semantics,
                     "guide_ids": [guide["guide_id"] for guide in closure.guides],
                     **(
                         {"target_guide_id": TARGET_GUIDE_ID}
@@ -1786,8 +2023,10 @@ def import_pve_projection(
             )
         session.flush()
 
+        guides_by_id = {row["guide_id"]: row for row in closure.guides}
         for row in closure.teams:
             members = tuple(row[f"slot{slot}"] for slot in range(1, 6))
+            guide = guides_by_id[row["guide_id"]]
             _upsert(
                 session,
                 Team,
@@ -1796,7 +2035,7 @@ def import_pve_projection(
                     "team_id": row["team_id"],
                     "guide_id": row["guide_id"],
                     "server": row["server"],
-                    "stage_label": row["stage"],
+                    "stage_label": f"{guide['area']}{guide['stage']}",
                     "support_slot": row["support_slot"].strip() or None,
                     "operation_mode": row["operation_mode"],
                     "requirements": _validate_requirements(row),
@@ -1829,14 +2068,18 @@ def import_pve_projection(
             session.execute(delete(ClaimEvidence).where(ClaimEvidence.claim_id.in_(selected_claim_ids)))
 
         for row in closure.teams:
-            support_slot = row["support_slot"].strip()
+            borrowed_states = _borrowed_states(
+                row,
+                _validate_requirements(row),
+                semantics=borrowed_state_semantics,
+            )
             for slot in range(1, 6):
                 session.add(
                     TeamMember(
                         team_id=row["team_id"],
                         slot=slot,
                         unit_key=row[f"slot{slot}"],
-                        is_borrowed=support_slot == f"slot{slot}",
+                        is_borrowed=borrowed_states[slot - 1],
                     )
                 )
             for evidence_id in closure.team_evidence_ids[row["team_id"]]:
@@ -1882,7 +2125,11 @@ def import_pve_projection(
             )
         session.flush()
 
-        _assert_materialized(session, closure)
+        _assert_materialized(
+            session,
+            closure,
+            borrowed_state_semantics=borrowed_state_semantics,
+        )
         materialization = build_materialization_manifest(session)
         materialization_sha256 = materialization.get("sha256")
         if not isinstance(materialization_sha256, str):

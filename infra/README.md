@@ -1,4 +1,4 @@
-# A3 local/private deployment
+# A4 local/private deployment
 
 `compose.yml` is a production-shaped local/private staging stack, not a public
 production manifest. PostgreSQL is pinned to `18.4-bookworm`; every published
@@ -21,8 +21,11 @@ docker compose --env-file .env -f infra/compose.yml up --build --wait
 
 API-family runtime and profile-only verification services share one
 `${PCR_API_IMAGE}` so a smoke cannot silently run stale code. Do not set
-`AUTO_PUBLISH=true` or `SHADOW_MODE=false`; the scheduler rejects both in A3.
+`AUTO_PUBLISH=true` or `SHADOW_MODE=false`; the scheduler rejects both in A4.
 See `docs/operations/B1_RUNBOOK.md` for the still-valid full-core round-trip,
 verification, backup restore and atomic rollback procedure inherited from the B1
-foundation. V0004 additionally refuses a downgrade while any honest `UNKNOWN`
-operation-mode row remains.
+foundation. The rollback chain has two independent fail-closed boundaries:
+V0005 refuses V0004 while any honest `is_borrowed IS NULL` remains, and V0004
+refuses V0003 while any honest `UNKNOWN` operation-mode row remains.
+For the exact RP-A4 to RP-A3 deployment order, pinned-source contract and
+roll-forward procedure, follow `docs/operations/A4_ROLLBACK_RUNBOOK.md`.

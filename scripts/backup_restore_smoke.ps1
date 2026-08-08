@@ -6,7 +6,7 @@ param(
     [string]$SourceDatabase = "pcr_tw",
     [switch]$SeedRevisionHistory,
     [switch]$KeepBackup,
-    [Parameter(HelpMessage = "Keep the restored database at V0004 after the intentionally rejected lossy downgrade probe.")]
+    [Parameter(HelpMessage = "Keep the restored database at V0005 after the intentionally rejected borrowed-state downgrade probe.")]
     [switch]$KeepRestoredDatabase
 )
 
@@ -361,7 +361,7 @@ try {
     Invoke-DockerChecked run --rm --no-deps `
         --env "PCR_DATABASE_URL=$apiRestoreUrl" `
         round-trip-smoke
-    Write-Host "RESTORED_ROUND_TRIP_OK role=pcr_api files=48 csv=13 rows=239"
+    Write-Host "RESTORED_ROUND_TRIP_OK role=pcr_api files=48 csv=13 rows=325"
 
     Invoke-DockerChecked run --detach --no-deps `
         --name $apiContainer `
@@ -385,15 +385,15 @@ try {
         throw "Restored API revision metadata contract failed"
     }
     $expectedCounts = @{
-        stages = 2; teams = 5; team_members = 25; characters = 17; evidence = 34; claims = 27;
-        operation_timelines = 10; timeline_steps = 19
+        stages = 3; teams = 10; team_members = 50; characters = 25; evidence = 55; claims = 53;
+        operation_timelines = 15; timeline_steps = 37
     }
     foreach ($name in $expectedCounts.Keys) {
         if ([int]$baseline.data.counts.$name -ne $expectedCounts[$name]) {
             throw "Restored API count mismatch for $name"
         }
     }
-    if ($baseline.data.application_version -ne "3.0.0-a3") {
+    if ($baseline.data.application_version -ne "3.0.0-a4") {
         throw "Restored API application version mismatch"
     }
     $stage = Invoke-RestMethod -Uri "http://127.0.0.1:${apiPort}/api/v1/stages/TW_DEEP_FIRE_08_10_20260802" -TimeoutSec 5
@@ -401,6 +401,10 @@ try {
     $unknownTeam = Invoke-RestMethod -Uri "http://127.0.0.1:${apiPort}/api/v1/teams/TM-F810-04" -TimeoutSec 5
     $sourceTextTimeline = Invoke-RestMethod -Uri "http://127.0.0.1:${apiPort}/api/v1/teams/TM-F810-05/timelines" -TimeoutSec 5
     $evidence = Invoke-RestMethod -Uri "http://127.0.0.1:${apiPort}/api/v1/evidence/ev052" -TimeoutSec 5
+    $waterStage = Invoke-RestMethod -Uri "http://127.0.0.1:${apiPort}/api/v1/stages/TW_DEEP_WATER_08_10_20260808" -TimeoutSec 5
+    $waterTimeline = Invoke-RestMethod -Uri "http://127.0.0.1:${apiPort}/api/v1/teams/TM-W810-01/timelines" -TimeoutSec 5
+    $waterAutoTeam = Invoke-RestMethod -Uri "http://127.0.0.1:${apiPort}/api/v1/teams/TM-W810-05" -TimeoutSec 5
+    $waterEvidence = Invoke-RestMethod -Uri "http://127.0.0.1:${apiPort}/api/v1/evidence/ev084" -TimeoutSec 5
     $sourceTextSteps = @($sourceTextTimeline.data.sources[0].steps)
     if (
         $stage.data.status -ne "VERIFIED" -or
@@ -428,11 +432,23 @@ try {
         $sourceTextSteps.Count -ne 5 -or
         @($sourceTextSteps | Where-Object { $_.trigger_type -ne "SOURCE_TEXT_ONLY" }).Count -ne 0 -or
         @($sourceTextSteps | Where-Object { $_.action_type -ne "NO_ACTION" }).Count -ne 0 -or
-        $evidence.data.evidence_id -ne "ev052"
+        $evidence.data.evidence_id -ne "ev052" -or
+        $waterStage.data.status -ne "VERIFIED" -or
+        [int]$waterStage.data.team_count -ne 5 -or
+        [int]$waterStage.data.coverage.verified_distinct_teams -ne 5 -or
+        -not [bool]$waterStage.data.coverage.is_mature -or
+        $waterTimeline.data.status -ne "STRUCTURED" -or
+        [int]$waterTimeline.data.structured_sources -ne 1 -or
+        [int]$waterTimeline.data.registered_sources -ne 1 -or
+        $waterTimeline.data.sources[0].reproducibility -ne "TW_REPRODUCED" -or
+        $waterTimeline.data.sources[0].steps.Count -ne 9 -or
+        $waterAutoTeam.data.operation_mode -ne "AUTO" -or
+        $waterAutoTeam.data.timeline.sources[0].steps.Count -ne 1 -or
+        $waterEvidence.data.evidence_id -ne "ev084"
     ) {
         throw "Restored API critical read path failed"
     }
-    Write-Host "RESTORED_API_READINESS_OK role=pcr_api stage=VERIFIED teams=5 timelines=10 steps=19 tm04=UNKNOWN tm05=SOURCE_TEXT_ONLY evidence=ev052"
+    Write-Host "RESTORED_API_READINESS_OK role=pcr_api stages=3 teams=10 timelines=15 steps=37 fire=VERIFIED water=VERIFIED evidence=ev052,ev084"
 
     Invoke-DockerChecked run --detach --no-deps `
         --name $webContainer `
@@ -459,10 +475,15 @@ try {
     }
     Write-Host "RESTORED_WEB_EVIDENCE_OK stage=VERIFIED evidence=ev052"
 
-    # UNKNOWN is canonical source truth for TM-F810-04. A V0004 downgrade must
-    # fail transactionally instead of coercing or deleting that value. Quiesce
-    # readers, exercise the real migration command, and verify the restored
-    # database remains at V0004 with the UNKNOWN row intact.
+    # NULL is canonical source truth when the evidence does not establish which
+    # member was borrowed.  V0005 -> V0004 must therefore fail transactionally
+    # instead of coercing NULL to false.  UNKNOWN operation modes are checked as
+    # an additional invariant; their V0004 -> V0003 boundary is covered by the
+    # offline migration regression suite.
+    $borrowedNullBefore = [int](Get-Scalar -Database $restoreDatabase -Sql "SELECT COUNT(*) FROM team_members WHERE is_borrowed IS NULL")
+    if ($borrowedNullBefore -lt 1) {
+        throw "Restored database has no canonical unknown borrowed-state rows"
+    }
     Stop-DisposableContainer -Container $webContainer
     $webContainerCreated = $false
     Stop-DisposableContainer -Container $apiContainer
@@ -470,18 +491,20 @@ try {
     $downgradeOutput = & docker @compose run --rm --no-deps `
         --env "PCR_DATABASE_URL=$ownerRestoreMigrationUrl" `
         migration `
-        alembic -c database/alembic.ini downgrade v0003_core_revision_mirror 2>&1
+        alembic -c database/alembic.ini downgrade v0004_unknown_operation_mode 2>&1
     $downgradeExit = $LASTEXITCODE
     $postDowngradeRevision = Get-Scalar -Database $restoreDatabase -Sql "SELECT version_num FROM alembic_version"
+    $borrowedNullAfter = [int](Get-Scalar -Database $restoreDatabase -Sql "SELECT COUNT(*) FROM team_members WHERE is_borrowed IS NULL")
     $unknownTimelineCount = [int](Get-Scalar -Database $restoreDatabase -Sql "SELECT COUNT(*) FROM operation_timelines WHERE operation_mode='UNKNOWN'")
     if (
         $downgradeExit -eq 0 -or
-        $postDowngradeRevision -ne "v0004_unknown_operation_mode" -or
+        $postDowngradeRevision -ne "v0005_borrowed_tristate" -or
+        $borrowedNullAfter -ne $borrowedNullBefore -or
         $unknownTimelineCount -lt 1
     ) {
-        throw "Lossy UNKNOWN operation-mode downgrade was not rejected transactionally"
+        throw "Lossy borrowed-state downgrade was not rejected transactionally"
     }
-    Write-Host "LOSSY_DOWNGRADE_BLOCKED_OK alembic=$postDowngradeRevision unknown_timelines=$unknownTimelineCount"
+    Write-Host "BORROWED_TRISTATE_DOWNGRADE_BLOCKED_OK alembic=$postDowngradeRevision borrowed_nulls=$borrowedNullAfter unknown_timelines=$unknownTimelineCount"
 
     Write-Host "BACKUP_RESTORE_OK source=$SourceDatabase restore=$restoreDatabase tables=$($tables.Count) source_alembic=$sourceRevision restored_alembic=$postDowngradeRevision"
     Write-Host "Backup: $backupPath"

@@ -14,7 +14,10 @@ export function TeamRoster({ members }: { members: TeamMember[] }) {
             <strong>{member.tw_name}</strong>
             <code>{member.unit_key}</code>
           </span>
-          {member.is_borrowed ? <Badge tone="info">借角</Badge> : null}
+          {member.is_borrowed === true ? <Badge tone="info">借角</Badge> : null}
+          {member.is_borrowed === null ? (
+            <Badge tone="warning">借角未確認</Badge>
+          ) : null}
         </li>
       ))}
     </ol>

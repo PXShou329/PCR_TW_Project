@@ -40,6 +40,8 @@ from pcr_pipeline.pve_fixture import (
 from pcr_pipeline.research_core_snapshot import (
     EXPECTED_CSV_ROW_COUNT,
     EXPECTED_MANIFEST_SHA256,
+    RP_A3_MANIFEST_SHA256,
+    RP_A3_SNAPSHOT_CONTRACT,
     RP_A2_MANIFEST_SHA256,
     RP_A2_SNAPSHOT_CONTRACT,
     SnapshotValidationError,
@@ -50,6 +52,7 @@ from pcr_pipeline.research_core_snapshot import (
 
 ROOT = Path(__file__).resolve().parents[2]
 RESEARCH_CORE = ROOT / "research_core" / "pcr_tw_project"
+A4_MANIFEST = ROOT / "scripts" / "research_core_rp_a4_manifest.sha256"
 A3_MANIFEST = ROOT / "scripts" / "research_core_rp_a3_manifest.sha256"
 RP_A2_MANIFEST = ROOT / "scripts" / "research_core_rp_a2_manifest.sha256"
 SYNTHETIC_GUIDE_ID = "TW_DEEP_FIRE_09_10_SYNTHETIC"
@@ -110,9 +113,10 @@ def build_manifested_core(
 
 
 def export_checkpoint_core(tmp_path: Path, ref: str = "rp-b1-1") -> Path:
-    """Export the immutable B1 research core without touching the worktree."""
+    """Export an immutable tagged research core without touching the worktree."""
 
-    archive = tmp_path / "rp-b1-1.tar"
+    checkpoint_name = ref.replace("/", "_")
+    archive = tmp_path / f"{checkpoint_name}.tar"
     subprocess.run(
         [
             "git",
@@ -127,7 +131,7 @@ def export_checkpoint_core(tmp_path: Path, ref: str = "rp-b1-1") -> Path:
         capture_output=True,
         text=True,
     )
-    destination = tmp_path / "rp-b1-1"
+    destination = tmp_path / checkpoint_name
     destination.mkdir()
     with tarfile.open(archive, mode="r:") as bundle:
         bundle.extractall(destination, filter="data")
@@ -228,6 +232,7 @@ def test_loader_builds_all_pve_closure_without_strengthening_unknowns() -> None:
     assert [guide["guide_id"] for guide in closure.guides] == [
         TARGET_GUIDE_ID,
         "TW_DEEP_FIRE_10_10_20260802",
+        "TW_DEEP_WATER_08_10_20260808",
     ]
     assert [team["team_id"] for team in closure.teams] == [
         "TM-F810-01",
@@ -235,12 +240,17 @@ def test_loader_builds_all_pve_closure_without_strengthening_unknowns() -> None:
         "TM-F810-03",
         "TM-F810-04",
         "TM-F810-05",
+        "TM-W810-01",
+        "TM-W810-02",
+        "TM-W810-03",
+        "TM-W810-04",
+        "TM-W810-05",
     ]
-    assert len(closure.characters) == 17
-    assert len(closure.evidence) == 34
-    assert len(closure.claims) == 27
-    assert len(closure.timelines) == 10
-    assert len(closure.timeline_steps) == 19
+    assert len(closure.characters) == 25
+    assert len(closure.evidence) == 55
+    assert len(closure.claims) == 53
+    assert len(closure.timelines) == 15
+    assert len(closure.timeline_steps) == 37
     assert closure.dangling_claim_ids == ()
 
     first = closure.teams[0]
@@ -269,6 +279,108 @@ def test_loader_builds_all_pve_closure_without_strengthening_unknowns() -> None:
     assert len(fifth_steps) == 5
     assert all(step["trigger_type"] == "SOURCE_TEXT_ONLY" for step in fifth_steps)
     assert all(step["action_type"] == "NO_ACTION" for step in fifth_steps)
+
+
+def test_water_8_10_closure_preserves_five_verified_teams_and_source_axes() -> None:
+    closure = load_pve_closure(RESEARCH_CORE)
+    guide_id = "TW_DEEP_WATER_08_10_20260808"
+    guide = next(row for row in closure.guides if row["guide_id"] == guide_id)
+    teams = [row for row in closure.teams if row["guide_id"] == guide_id]
+
+    assert guide["status"] == "VERIFIED"
+    assert guide["team_count"] == "5"
+    assert guide["reproducibility"] == "CONFIRMED"
+    assert [team["team_id"] for team in teams] == [
+        "TM-W810-01",
+        "TM-W810-02",
+        "TM-W810-03",
+        "TM-W810-04",
+        "TM-W810-05",
+    ]
+    assert [team["operation_mode"] for team in teams] == [
+        "MANUAL_TIMELINE",
+        "SEMI_AUTO",
+        "AUTO",
+        "AUTO",
+        "AUTO",
+    ]
+    assert all(team["clear_status"] == "VERIFIED" for team in teams)
+    assert all(team["tw_availability_check"] == "PASS" for team in teams)
+    assert len(
+        {
+            tuple(sorted(team[f"slot{slot}"] for slot in range(1, 6)))
+            for team in teams
+        }
+    ) == 5
+
+    for team in teams:
+        requirements = fixture_module._validate_requirements(team)
+        assert requirements["support"]["unit"] == "UNKNOWN"
+        assert fixture_module._borrowed_states(team, requirements) == (None,) * 5
+        assert all(
+            value == "UNKNOWN"
+            for slot in requirements["slots"].values()
+            for value in slot.values()
+        )
+
+    water_axes = [
+        row for row in closure.timelines if row["team_id"].startswith("TM-W810-")
+    ]
+    assert len(water_axes) == 5
+    assert all(axis["status"] == "STRUCTURED" for axis in water_axes)
+    assert all(axis["source_id"] == "yt_w3My0QHcoTA" for axis in water_axes)
+    assert all(axis["reproducibility"] == "TW_REPRODUCED" for axis in water_axes)
+    step_counts = {
+        axis["team_id"]: sum(
+            step["timeline_id"] == axis["timeline_id"]
+            for step in closure.timeline_steps
+        )
+        for axis in water_axes
+    }
+    assert step_counts == {
+        "TM-W810-01": 9,
+        "TM-W810-02": 6,
+        "TM-W810-03": 1,
+        "TM-W810-04": 1,
+        "TM-W810-05": 1,
+    }
+    selected_evidence_ids = {row["evidence_id"] for row in closure.evidence}
+    assert {"ev084", "ev085", "ev086", "ev087", "ev088"} <= selected_evidence_ids
+    assert {"ev089", "ev090"}.isdisjoint(selected_evidence_ids)
+    assert all(row["status"] == "ACTIVE" for row in closure.evidence)
+
+
+def test_borrowed_member_projection_is_tri_state() -> None:
+    closure = load_pve_closure(RESEARCH_CORE)
+    teams = {row["team_id"]: row for row in closure.teams}
+
+    explicit = teams["TM-F810-03"]
+    assert fixture_module._borrowed_states(
+        explicit, fixture_module._validate_requirements(explicit)
+    ) == (False, False, True, False, False)
+
+    unknown = teams["TM-W810-01"]
+    assert fixture_module._borrowed_states(
+        unknown, fixture_module._validate_requirements(unknown)
+    ) == (None, None, None, None, None)
+
+    conflict = teams["TM-F810-01"]
+    assert fixture_module._borrowed_states(
+        conflict, fixture_module._validate_requirements(conflict)
+    ) == (None, None, None, None, None)
+
+    assert fixture_module._borrowed_state_semantics_from_manifest({}) == (
+        fixture_module.BORROWED_STATE_LEGACY_FALSE_V1
+    )
+    with pytest.raises(MirrorDriftError, match="unsupported borrowed-state semantics"):
+        fixture_module._borrowed_state_semantics_from_manifest(
+            {fixture_module.BORROWED_STATE_SEMANTICS_FIELD: "invented_v9"}
+        )
+    for invalid_semantics in (None, 1, {}, []):
+        with pytest.raises(MirrorDriftError, match="unsupported borrowed-state semantics"):
+            fixture_module._borrowed_state_semantics_from_manifest(
+                {fixture_module.BORROWED_STATE_SEMANTICS_FIELD: invalid_semantics}
+            )
 
 
 def test_zero_team_guide_and_compatibility_loader_are_preserved() -> None:
@@ -343,24 +455,24 @@ def test_import_is_atomic_idempotent_and_preserves_fk_closure(tmp_path: Path) ->
         assert first.revision_id == first.raw_tree_sha256
         assert first.file_count == 48
         assert first.csv_file_count == 13
-        assert first.csv_row_count == 239
+        assert first.csv_row_count == 325
         assert first.row_counts == {
-            "stages": 2,
-            "teams": 5,
-            "team_members": 25,
-            "characters": 17,
-            "evidence": 34,
-            "claims": 27,
-            "operation_timelines": 10,
-            "timeline_steps": 19,
+            "stages": 3,
+            "teams": 10,
+            "team_members": 50,
+            "characters": 25,
+            "evidence": 55,
+            "claims": 53,
+            "operation_timelines": 15,
+            "timeline_steps": 37,
         }
         assert session.scalar(select(func.count()).select_from(ImportRun)) == 1
-        assert session.scalar(select(func.count()).select_from(Stage)) == 2
-        assert session.scalar(select(func.count()).select_from(Team)) == 5
-        assert session.scalar(select(func.count()).select_from(TeamMember)) == 25
-        assert session.scalar(select(func.count()).select_from(Character)) == 17
-        assert session.scalar(select(func.count()).select_from(OperationTimeline)) == 10
-        assert session.scalar(select(func.count()).select_from(TimelineStep)) == 19
+        assert session.scalar(select(func.count()).select_from(Stage)) == 3
+        assert session.scalar(select(func.count()).select_from(Team)) == 10
+        assert session.scalar(select(func.count()).select_from(TeamMember)) == 50
+        assert session.scalar(select(func.count()).select_from(Character)) == 25
+        assert session.scalar(select(func.count()).select_from(OperationTimeline)) == 15
+        assert session.scalar(select(func.count()).select_from(TimelineStep)) == 37
         stage = session.get(Stage, TARGET_GUIDE_ID)
         assert stage is not None
         assert stage.team_count == 5
@@ -421,9 +533,9 @@ def test_synthetic_multi_stage_projection_retains_provisional_team_without_count
         team for team in closure.teams if team["team_id"] == SYNTHETIC_TEAM_ID
     )
 
-    assert len(closure.guides) == 3
-    assert len(closure.teams) == 6
-    assert len(closure.timelines) == 11
+    assert len(closure.guides) == 4
+    assert len(closure.teams) == 11
+    assert len(closure.timelines) == 16
     assert synthetic_guide["team_count"] == "0"
     assert synthetic_team["clear_status"] == "PROVISIONAL"
     assert synthetic_team["tw_availability_check"] == "PASS"
@@ -438,14 +550,14 @@ def test_synthetic_multi_stage_projection_retains_provisional_team_without_count
         )
 
         assert result.row_counts == {
-            "stages": 3,
-            "teams": 6,
-            "team_members": 30,
-            "characters": 17,
-            "evidence": 34,
-            "claims": 27,
-            "operation_timelines": 11,
-            "timeline_steps": 19,
+            "stages": 4,
+            "teams": 11,
+            "team_members": 55,
+            "characters": 25,
+            "evidence": 55,
+            "claims": 53,
+            "operation_timelines": 16,
+            "timeline_steps": 37,
         }
         stored_stage = session.get(Stage, SYNTHETIC_GUIDE_ID)
         stored_team = session.get(Team, SYNTHETIC_TEAM_ID)
@@ -467,6 +579,26 @@ def test_team_count_mismatch_is_rejected_before_any_write(tmp_path: Path) -> Non
         for row in rows:
             if row["guide_id"] == TARGET_GUIDE_ID:
                 row["team_count"] = "2"
+
+    rewrite_csv(path, mutate)
+    engine = sqlite_engine()
+    with Session(engine) as session:
+        with pytest.raises(FixtureValidationError, match="team_count differs"):
+            import_fire_8_10(session, core)
+        assert session.scalar(select(func.count()).select_from(ImportRun)) == 0
+        assert session.scalar(select(func.count()).select_from(Stage)) == 0
+
+
+def test_rejected_non_timeline_team_evidence_is_not_counted_as_effective(
+    tmp_path: Path,
+) -> None:
+    core = tmp_path / "pcr_tw_project"
+    shutil.copytree(RESEARCH_CORE, core)
+    path = core / "92_EVIDENCE_LEDGER.csv"
+
+    def mutate(rows):
+        evidence = next(row for row in rows if row["evidence_id"] == "ev074")
+        evidence["status"] = "REJECTED"
 
     rewrite_csv(path, mutate)
     engine = sqlite_engine()
@@ -582,6 +714,35 @@ def test_timeline_actor_must_be_a_member_of_its_team(tmp_path: Path) -> None:
     with Session(engine) as session:
         with pytest.raises(FixtureValidationError, match="not a member of its team"):
             import_fire_8_10(session, core)
+        assert session.scalar(select(func.count()).select_from(ImportRun)) == 0
+
+
+def test_water_exact_timeline_boundary_rejects_locator_alias_before_database_write(
+    tmp_path: Path,
+) -> None:
+    core, manifest, _ = build_manifested_core(tmp_path, name="water-boundary-drift")
+    path = core / "27_PVE_TIMELINE_STEPS.csv"
+
+    def mutate(rows):
+        target = next(
+            row for row in rows if row["timeline_step_id"] == "TLS-W810-01-006"
+        )
+        target["source_locator"] = "yt_w3My0QHcoTA@00:13-02:13#step-5"
+
+    rewrite_csv(path, mutate)
+    manifest_sha256 = write_tree_manifest(core, manifest)
+    engine = sqlite_engine()
+    with Session(engine) as session:
+        with pytest.raises(
+            FixtureValidationError,
+            match="AX-W810-01-EV084 steps violate the audited source boundary",
+        ):
+            import_pve_projection(
+                session,
+                core,
+                manifest_path=manifest,
+                expected_manifest_sha256=manifest_sha256,
+            )
         assert session.scalar(select(func.count()).select_from(ImportRun)) == 0
 
 
@@ -918,9 +1079,9 @@ def test_new_revision_activation_and_rollback_preserve_immutable_history(
         assert session.get(Stage, SYNTHETIC_GUIDE_ID) is None
         assert session.get(Team, SYNTHETIC_TEAM_ID) is None
         assert session.get(OperationTimeline, SYNTHETIC_AXIS_ID) is None
-        assert session.scalar(select(func.count()).select_from(Stage)) == 2
-        assert session.scalar(select(func.count()).select_from(Team)) == 5
-        assert session.scalar(select(func.count()).select_from(OperationTimeline)) == 10
+        assert session.scalar(select(func.count()).select_from(Stage)) == 3
+        assert session.scalar(select(func.count()).select_from(Team)) == 10
+        assert session.scalar(select(func.count()).select_from(OperationTimeline)) == 15
         session.rollback()  # end the read-only transaction opened by assertions
 
         reactivate = import_fire_8_10(
@@ -937,9 +1098,9 @@ def test_new_revision_activation_and_rollback_preserve_immutable_history(
         assert session.get(Stage, SYNTHETIC_GUIDE_ID) is not None
         assert session.get(Team, SYNTHETIC_TEAM_ID) is not None
         assert session.get(OperationTimeline, SYNTHETIC_AXIS_ID) is not None
-        assert session.scalar(select(func.count()).select_from(Stage)) == 3
-        assert session.scalar(select(func.count()).select_from(Team)) == 6
-        assert session.scalar(select(func.count()).select_from(OperationTimeline)) == 11
+        assert session.scalar(select(func.count()).select_from(Stage)) == 4
+        assert session.scalar(select(func.count()).select_from(Team)) == 11
+        assert session.scalar(select(func.count()).select_from(OperationTimeline)) == 16
         activations = session.scalars(
             select(RevisionActivation).order_by(RevisionActivation.sequence_no)
         ).all()
@@ -955,6 +1116,166 @@ def test_new_revision_activation_and_rollback_preserve_immutable_history(
         assert {revision.status for revision in session.scalars(select(CoreRevision))} == {
             "SUCCEEDED"
         }
+
+
+def test_a3_checkpoint_rolls_back_from_a4_and_reactivates_water_projection(
+    tmp_path: Path,
+) -> None:
+    a3_core = export_checkpoint_core(tmp_path, "rp-a3-1")
+    assert snapshot_contract_for_manifest(RP_A3_MANIFEST_SHA256) == (
+        RP_A3_SNAPSHOT_CONTRACT
+    )
+
+    engine = sqlite_engine()
+    with Session(engine) as session:
+        a3 = import_pve_projection(
+            session,
+            a3_core,
+            manifest_path=A3_MANIFEST,
+            expected_manifest_sha256=RP_A3_MANIFEST_SHA256,
+            application_version="3.0.0-a3",
+        )
+        assert a3.row_counts == {
+            "stages": 2,
+            "teams": 5,
+            "team_members": 25,
+            "characters": 17,
+            "evidence": 34,
+            "claims": 27,
+            "operation_timelines": 10,
+            "timeline_steps": 19,
+        }
+        assert session.get(Stage, "TW_DEEP_WATER_08_10_20260808") is None
+        assert session.get(Team, "TM-W810-01") is None
+        a3_run = session.get(ImportRun, a3.import_run_id)
+        assert a3_run is not None
+        assert a3_run.manifest[fixture_module.BORROWED_STATE_SEMANTICS_FIELD] == (
+            fixture_module.BORROWED_STATE_LEGACY_FALSE_V1
+        )
+        assert all(
+            member.is_borrowed is False
+            for member in session.scalars(
+                select(TeamMember).where(TeamMember.team_id == "TM-F810-01")
+            )
+        )
+
+        # Simulate the immutable manifest shape created by the deployed A3
+        # importer, before borrowed-state semantics became an explicit field.
+        historical_a3_manifest = dict(a3_run.manifest)
+        historical_a3_manifest.pop(fixture_module.BORROWED_STATE_SEMANTICS_FIELD)
+        session.execute(
+            update(ImportRun)
+            .where(ImportRun.id == a3.import_run_id)
+            .values(manifest=historical_a3_manifest)
+            .execution_options(synchronize_session=False)
+        )
+        session.commit()
+        session.expire_all()
+
+        historical_replay = import_pve_projection(
+            session,
+            a3_core,
+            manifest_path=A3_MANIFEST,
+            expected_manifest_sha256=RP_A3_MANIFEST_SHA256,
+        )
+        assert historical_replay.created is False
+        assert historical_replay.activated is False
+        assert all(
+            member.is_borrowed is False
+            for member in session.scalars(
+                select(TeamMember).where(TeamMember.team_id == "TM-F810-01")
+            )
+        )
+        session.rollback()
+
+        a4 = import_pve_projection(
+            session,
+            RESEARCH_CORE,
+            manifest_path=A4_MANIFEST,
+            expected_manifest_sha256=EXPECTED_MANIFEST_SHA256,
+        )
+        assert a4.row_counts == {
+            "stages": 3,
+            "teams": 10,
+            "team_members": 50,
+            "characters": 25,
+            "evidence": 55,
+            "claims": 53,
+            "operation_timelines": 15,
+            "timeline_steps": 37,
+        }
+        assert session.get(Stage, "TW_DEEP_WATER_08_10_20260808") is not None
+        assert session.get(Team, "TM-W810-05") is not None
+        assert session.get(Character, "labyrista_alpha") is not None
+        a4_run = session.get(ImportRun, a4.import_run_id)
+        assert a4_run is not None
+        assert a4_run.manifest[fixture_module.BORROWED_STATE_SEMANTICS_FIELD] == (
+            fixture_module.BORROWED_STATE_TRISTATE_V1
+        )
+        assert all(
+            member.is_borrowed is None
+            for member in session.scalars(
+                select(TeamMember).where(TeamMember.team_id == "TM-W810-01")
+            )
+        )
+        session.rollback()
+
+        rollback = import_pve_projection(
+            session,
+            a3_core,
+            manifest_path=A3_MANIFEST,
+            expected_manifest_sha256=RP_A3_MANIFEST_SHA256,
+        )
+        assert rollback.created is False
+        assert rollback.activated is True
+        assert session.scalar(select(func.count()).select_from(Stage)) == 2
+        assert session.scalar(select(func.count()).select_from(Team)) == 5
+        assert session.scalar(select(func.count()).select_from(Character)) == 17
+        assert session.scalar(select(func.count()).select_from(Evidence)) == 34
+        assert session.scalar(select(func.count()).select_from(OperationTimeline)) == 10
+        assert session.scalar(select(func.count()).select_from(TimelineStep)) == 19
+        assert session.get(Stage, "TW_DEEP_WATER_08_10_20260808") is None
+        assert session.get(Team, "TM-W810-01") is None
+        assert session.get(Character, "violet_isanami") is None
+        assert all(
+            member.is_borrowed is False
+            for member in session.scalars(
+                select(TeamMember).where(TeamMember.team_id == "TM-F810-01")
+            )
+        )
+        a3_run = session.get(ImportRun, a3.import_run_id)
+        assert a3_run is not None
+        assert fixture_module.BORROWED_STATE_SEMANTICS_FIELD not in a3_run.manifest
+        session.rollback()
+
+        reactivate = import_pve_projection(
+            session,
+            RESEARCH_CORE,
+            manifest_path=A4_MANIFEST,
+            expected_manifest_sha256=EXPECTED_MANIFEST_SHA256,
+        )
+        assert reactivate.created is False
+        assert reactivate.activated is True
+        assert session.get(Stage, "TW_DEEP_WATER_08_10_20260808") is not None
+        assert session.get(Team, "TM-W810-05") is not None
+        assert session.get(Character, "violet_isanami") is not None
+        assert all(
+            member.is_borrowed is None
+            for member in session.scalars(
+                select(TeamMember).where(TeamMember.team_id == "TM-W810-01")
+            )
+        )
+        activations = session.scalars(
+            select(RevisionActivation).order_by(RevisionActivation.sequence_no)
+        ).all()
+        assert [activation.kind for activation in activations] == [
+            "IMPORT",
+            "IMPORT",
+            "ROLLBACK",
+            "REACTIVATE",
+        ]
+        assert session.scalar(select(func.count()).select_from(ImportRun)) == 2
+        assert session.scalar(select(func.count()).select_from(CoreRevision)) == 2
 
 
 def test_legacy_b1_manifest_rolls_back_and_reactivates_without_projection_drift(
@@ -988,6 +1309,7 @@ def test_legacy_b1_manifest_rolls_back_and_reactivates_without_projection_drift(
         # importer before projection became an explicit field.
         legacy_manifest = dict(first_run.manifest)
         legacy_manifest.pop("projection")
+        legacy_manifest.pop(fixture_module.BORROWED_STATE_SEMANTICS_FIELD)
         legacy_manifest["target_guide_id"] = TARGET_GUIDE_ID
         # SQLite has no V0003 history trigger; a bulk update is used only to
         # construct the pre-existing B1 database fixture.  Application ORM
@@ -1004,13 +1326,15 @@ def test_legacy_b1_manifest_rolls_back_and_reactivates_without_projection_drift(
         second = import_pve_projection(
             session,
             RESEARCH_CORE,
-            manifest_path=A3_MANIFEST,
+            manifest_path=A4_MANIFEST,
             expected_manifest_sha256=EXPECTED_MANIFEST_SHA256,
         )
-        assert second.row_counts["stages"] == 2
-        assert second.row_counts["teams"] == 5
+        assert second.row_counts["stages"] == 3
+        assert second.row_counts["teams"] == 10
         assert session.get(Stage, "TW_DEEP_FIRE_10_10_20260802") is not None
+        assert session.get(Stage, "TW_DEEP_WATER_08_10_20260808") is not None
         assert session.get(Character, "anne_grea_orig") is not None
+        assert session.get(Character, "violet_isanami") is not None
         session.rollback()
 
         rollback = import_pve_projection(
@@ -1028,7 +1352,9 @@ def test_legacy_b1_manifest_rolls_back_and_reactivates_without_projection_drift(
         assert session.scalar(select(func.count()).select_from(OperationTimeline)) == 8
         assert session.scalar(select(func.count()).select_from(TimelineStep)) == 14
         assert session.get(Stage, "TW_DEEP_FIRE_10_10_20260802") is None
+        assert session.get(Stage, "TW_DEEP_WATER_08_10_20260808") is None
         assert session.get(Character, "anne_grea_orig") is None
+        assert session.get(Character, "violet_isanami") is None
         first_run = session.get(ImportRun, first.import_run_id)
         assert first_run is not None
         assert "projection" not in first_run.manifest
@@ -1038,13 +1364,15 @@ def test_legacy_b1_manifest_rolls_back_and_reactivates_without_projection_drift(
         reactivate = import_pve_projection(
             session,
             RESEARCH_CORE,
-            manifest_path=A3_MANIFEST,
+            manifest_path=A4_MANIFEST,
             expected_manifest_sha256=EXPECTED_MANIFEST_SHA256,
         )
         assert reactivate.created is False
         assert reactivate.activated is True
         assert session.get(Stage, "TW_DEEP_FIRE_10_10_20260802") is not None
+        assert session.get(Stage, "TW_DEEP_WATER_08_10_20260808") is not None
         assert session.get(Character, "anne_grea_orig") is not None
+        assert session.get(Character, "violet_isanami") is not None
         activations = session.scalars(
             select(RevisionActivation).order_by(RevisionActivation.sequence_no)
         ).all()

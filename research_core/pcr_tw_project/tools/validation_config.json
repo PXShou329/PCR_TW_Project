@@ -681,6 +681,21 @@
   "min_team": 1,
   "repro": "CONFIRMED"
  },
+ "pve_timeline_exact_step_fields": [
+  "source_step_no",
+  "trigger_type",
+  "trigger_actor_unit_key",
+  "time_state",
+  "clock_from_ms",
+  "clock_to_ms",
+  "actor_unit_key",
+  "action_type",
+  "target_unit_key",
+  "auto_state_after",
+  "animation_cue",
+  "criticality",
+  "source_locator"
+ ],
  "pve_timeline_source_boundaries": {
   "AX-F810-02-EV073": {
    "battle_duration_ms": "UNKNOWN",
@@ -699,6 +714,49 @@
    "not_stated_source_steps": [
     "1"
    ]
+  },
+  "AX-W810-01-EV084": {
+   "battle_duration_ms": "90000",
+   "step_assertions": {
+    "TLS-W810-01-001": ["1", "WAVE_START", "NONE", "STATED", "90000", "90000", "NONE", "NO_ACTION", "NONE", "ON", "raw_set_pattern=OOXOO", "UNKNOWN", "yt_w3My0QHcoTA@00:13-02:13#step-1"],
+    "TLS-W810-01-002": ["2", "CLOCK", "nanaka_sum", "STATED", "67000", "67000", "nanaka_sum", "NO_ACTION", "NONE", "ON", "raw_set_pattern=OXOOO", "UNKNOWN", "yt_w3My0QHcoTA@00:13-02:13#step-2"],
+    "TLS-W810-01-003": ["3", "ANIMATION_CUE", "ames_sum", "STATED", "59000", "59000", "ames_sum", "USE_UB", "NONE", "ON", "愛梅斯1技為美空充TP後最速／開眼後", "CRITICAL", "yt_w3My0QHcoTA@00:13-02:13#step-3"],
+    "TLS-W810-01-004": ["4", "SOURCE_TEXT_ONLY", "misora_xmas", "STATED", "53000", "53000", "NONE", "NO_ACTION", "NONE", "ON", "美空UB後接雪野UB", "UNKNOWN", "yt_w3My0QHcoTA@00:13-02:13#step-4"],
+    "TLS-W810-01-005": ["5", "ANIMATION_CUE", "ames_sum", "STATED", "48000", "48000", "ames_sum", "USE_UB", "NONE", "ON", "愛梅斯1技為薇歐莉特充TP後最速", "CRITICAL", "yt_w3My0QHcoTA@00:13-02:13#step-5a"],
+    "TLS-W810-01-006": ["5", "CLOCK", "NONE", "STATED", "48000", "48000", "NONE", "AUTO_OFF", "NONE", "OFF", "raw_set_pattern=OOXOO", "UNKNOWN", "yt_w3My0QHcoTA@00:13-02:13#step-5b"],
+    "TLS-W810-01-007": ["6", "BOSS_ACTION", "NONE", "STATED", "41000", "41000", "NONE", "NO_ACTION", "NONE", "OFF", "Boss UB", "UNKNOWN", "yt_w3My0QHcoTA@00:13-02:13#step-6"],
+    "TLS-W810-01-008": ["7", "CLOCK", "yukino_orig", "STATED", "38000", "38000", "NONE", "AUTO_ON", "NONE", "ON", "raw_set_pattern=OOOOX", "UNKNOWN", "yt_w3My0QHcoTA@00:13-02:13#step-7"],
+    "TLS-W810-01-009": ["8", "CLOCK", "violet_isanami", "STATED", "17000", "17000", "violet_isanami", "NO_ACTION", "NONE", "ON", "raw_set_pattern=OXOOO", "UNKNOWN", "yt_w3My0QHcoTA@00:13-02:13#step-8"]
+   }
+  },
+  "AX-W810-02-EV085": {
+   "battle_duration_ms": "90000",
+   "step_assertions": {
+    "TLS-W810-02-001": ["1", "WAVE_START", "NONE", "STATED", "90000", "90000", "NONE", "NO_ACTION", "NONE", "ON", "raw_set_pattern=OXOOO", "UNKNOWN", "yt_w3My0QHcoTA@02:14-03:48#step-1"],
+    "TLS-W810-02-002": ["2", "CLOCK", "ames_sum", "STATED", "71000", "71000", "NONE", "AUTO_OFF", "NONE", "OFF", "愛梅斯marker後關閉AUTO", "UNKNOWN", "yt_w3My0QHcoTA@02:14-03:48#step-2"],
+    "TLS-W810-02-003": ["3", "BOSS_ACTION", "NONE", "STATED", "56000", "56000", "NONE", "NO_ACTION", "NONE", "OFF", "Boss UB", "UNKNOWN", "yt_w3My0QHcoTA@02:14-03:48#step-3"],
+    "TLS-W810-02-004": ["4", "CLOCK", "yukino_orig", "STATED", "50000", "50000", "NONE", "AUTO_ON", "NONE", "ON", "雪野marker後開啟AUTO", "UNKNOWN", "yt_w3My0QHcoTA@02:14-03:48#step-4"],
+    "TLS-W810-02-005": ["5", "BOSS_ACTION", "NONE", "STATED", "39000", "39000", "NONE", "NO_ACTION", "NONE", "ON", "Boss UB", "UNKNOWN", "yt_w3My0QHcoTA@02:14-03:48#step-5"],
+    "TLS-W810-02-006": ["6", "CLOCK", "ames_sum", "STATED", "24000", "24000", "ames_sum", "NO_ACTION", "NONE", "ON", "raw_set_pattern=OOOOX", "UNKNOWN", "yt_w3My0QHcoTA@02:14-03:48#step-6"]
+   }
+  },
+  "AX-W810-03-EV086": {
+   "battle_duration_ms": "90000",
+   "step_assertions": {
+    "TLS-W810-03-001": ["1", "WAVE_START", "NONE", "STATED", "90000", "90000", "NONE", "NO_ACTION", "NONE", "ON", "raw_set_pattern=OXOOX", "UNKNOWN", "yt_w3My0QHcoTA@03:49-05:27#step-1"]
+   }
+  },
+  "AX-W810-04-EV087": {
+   "battle_duration_ms": "90000",
+   "step_assertions": {
+    "TLS-W810-04-001": ["1", "WAVE_START", "NONE", "STATED", "90000", "90000", "NONE", "NO_ACTION", "NONE", "ON", "raw_set_pattern=OOOXO", "UNKNOWN", "yt_w3My0QHcoTA@05:28-06:51#step-1"]
+   }
+  },
+  "AX-W810-05-EV088": {
+   "battle_duration_ms": "90000",
+   "step_assertions": {
+    "TLS-W810-05-001": ["1", "WAVE_START", "NONE", "STATED", "90000", "90000", "NONE", "NO_ACTION", "NONE", "ON", "raw_set_pattern=全SET", "UNKNOWN", "yt_w3My0QHcoTA@06:52-07:58#step-1"]
+   }
   }
  },
  "arena_gate_row": {

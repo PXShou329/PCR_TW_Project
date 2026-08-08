@@ -1,4 +1,4 @@
-# API v1 contract (A3 Fire maturity slice)
+# API v1 contract (A4 Fire + Water maturity slices)
 
 All public strategy endpoints are read-only `GET` endpoints and return:
 
