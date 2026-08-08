@@ -1,4 +1,4 @@
-# API v1 contract (B2 operation-timeline slice)
+# API v1 contract (A3 Fire maturity slice)
 
 All public strategy endpoints are read-only `GET` endpoints and return:
 
@@ -65,7 +65,7 @@ ids and its locator is `UNKNOWN`.
 CSV sentinels that represent absent structure or numbers are normalized at the
 serving boundary: gap `timeline_id`, gap clock/auto fields, unknown battle
 duration, unknown step clocks, and unknown tolerance serialize as `null`.
-Textual source statements such as `UNKNOWN` criticality remain unchanged.
+Textual source statements such as `UNKNOWN` criticality and operation mode remain unchanged.
 `time_state=NOT_STATED` requires null clocks; clients must not infer a standard
 battle duration. Cross-server reproducibility such as `UNVERIFIED_ON_TW` is
 passed through unchanged.
@@ -106,7 +106,7 @@ nullability against `packages/api-client/src/types.ts`, and fails closed on
 drift. Set `PCR_OPENAPI_PYTHON` only when the project Python interpreter cannot
 be discovered automatically.
 
-Browser access uses an explicit read-only CORS allowlist. B1 defaults to
+Browser access uses an explicit read-only CORS allowlist. Current defaults are
 `http://localhost:3000` and `http://127.0.0.1:3000`; deployments may replace it
 with the comma-separated `PCR_CORS_ORIGINS` environment value. Wildcards,
 credentialed requests, and non-GET preflights are rejected.

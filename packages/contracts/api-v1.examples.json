@@ -2,18 +2,18 @@
   "baseline": {
     "data": {
       "research_core_version": "v1.5",
-      "application_version": "3.0.0-b1",
+      "application_version": "3.0.0-a3",
       "canonical_source": "research_core_file_ssot",
       "generated_at": "2026-08-08T00:00:00Z",
       "counts": {
-        "stages": 1,
-        "teams": 3,
-        "team_members": 15,
-        "characters": 8,
-        "evidence": 18,
-        "claims": 13,
-        "operation_timelines": 8,
-        "timeline_steps": 14
+        "stages": 2,
+        "teams": 5,
+        "team_members": 25,
+        "characters": 17,
+        "evidence": 34,
+        "claims": 27,
+        "operation_timelines": 10,
+        "timeline_steps": 19
       },
       "gates": {
         "gate_a": false,
@@ -26,9 +26,9 @@
         "mode": "DEEP",
         "area": "紅焰",
         "stage": "8-10",
-        "status": "PROVISIONAL",
-        "team_count": 3,
-        "reproducibility": "PENDING",
+        "status": "VERIFIED",
+        "team_count": 5,
+        "reproducibility": "CONFIRMED",
         "verified_date": "2026-08-08"
       }
     }

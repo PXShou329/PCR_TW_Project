@@ -8,6 +8,20 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 Sha256Hex: TypeAlias = Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
+OperationModeValue: TypeAlias = Literal[
+    "AUTO",
+    "SEMI_AUTO",
+    "MANUAL_TIMELINE",
+    "SOURCE_CONFLICT",
+    "UNKNOWN",
+]
+StrategyStatusValue: TypeAlias = Literal[
+    "VERIFIED",
+    "PROVISIONAL",
+    "IN_RESEARCH",
+    "PENDING",
+]
+GuideReproducibilityValue: TypeAlias = Literal["CONFIRMED", "PENDING"]
 
 
 class SourceMeta(BaseModel):
@@ -58,9 +72,9 @@ class StageSummary(BaseModel):
     mode: str
     area: str
     stage: str
-    status: str
+    status: StrategyStatusValue
     team_count: int
-    reproducibility: str
+    reproducibility: GuideReproducibilityValue
     verified_date: date
 
 
@@ -77,8 +91,8 @@ class TeamSummary(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     team_id: str
-    operation_mode: str
-    clear_status: str
+    operation_mode: OperationModeValue
+    clear_status: StrategyStatusValue
     stability: str
     members: list[TeamMemberData]
 
@@ -102,6 +116,53 @@ class StageDetail(StageSummary):
     teams: list[TeamSummary]
     evidence_ids: list[str]
     claim_ids: list[str]
+
+
+class SlotRequirementData(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    star: str
+    rank: str
+    ue1: str
+    ue2: str
+    six_star: str
+    connect_rank: str
+    element_boost: str
+
+
+class SlotRequirementsData(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    slot1: SlotRequirementData
+    slot2: SlotRequirementData
+    slot3: SlotRequirementData
+    slot4: SlotRequirementData
+    slot5: SlotRequirementData
+
+
+class TeamSupportData(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    unit: str
+    requirements: str
+
+
+class OperationModeClaimData(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    source_id: str
+    mode: Literal["AUTO", "SEMI_AUTO", "MANUAL_TIMELINE", "UNKNOWN"]
+
+
+class TeamRequirementsData(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: Literal["1.0"]
+    slots: SlotRequirementsData
+    support: TeamSupportData
+    operation_mode_claims: list[OperationModeClaimData]
+    failure_conditions: list[str]
+    timeline_ref: str
 
 
 class TimelineReference(BaseModel):
@@ -164,7 +225,7 @@ class TimelineSourceBase(BaseModel):
     source_evidence_id: str
     source_locator: str
     timeline_variant_name: str
-    operation_mode: Literal["AUTO", "SEMI_AUTO", "MANUAL_TIMELINE"]
+    operation_mode: Literal["AUTO", "SEMI_AUTO", "MANUAL_TIMELINE", "UNKNOWN"]
     reproducibility: Literal["UNVERIFIED_ON_TW", "TW_REPRODUCED", "UNKNOWN"]
     last_verified_at: date
     notes: str
@@ -212,7 +273,7 @@ class TeamDetail(TeamSummary):
     server: str
     stage: str
     support_slot: str | None
-    requirements: dict[str, Any]
+    requirements: TeamRequirementsData
     timeline: TimelineData
     source_ids: list[str]
     evidence_ids: list[str]
@@ -274,6 +335,14 @@ class BaselineCounts(BaseModel):
     timeline_steps: int
 
 
+class GateSummary(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    gate_a: bool
+    gate_b: bool
+    gate_c: bool
+
+
 class BaselineData(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -282,5 +351,5 @@ class BaselineData(BaseModel):
     canonical_source: str
     generated_at: datetime
     counts: BaselineCounts
-    gates: dict[str, Any]
+    gates: GateSummary
     featured_stage: StageSummary | None

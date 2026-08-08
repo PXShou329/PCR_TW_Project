@@ -161,6 +161,21 @@ ck("18：強化欄位 Enum", all(r[i] in CFG['enums']['upgrade_status'] for r in
 ck("18：Evidence FK", all(e in set(ids92) for r in r18[1:] for e in r[_e18].split(';') if e))
 ck("18：日期格式", all((not r[h18.index('tw_release_date')] or date_ok(r[h18.index('tw_release_date')])) and date_ok(r[h18.index('last_verified')]) for r in r18[1:]))
 TW_UNITS = {r[0] for r in r18[1:] if r[_a18] == 'AVAILABLE'}
+h39 = r39[0]
+t39 = [dict(zip(h39, r)) for r in r39[1:]]
+def _arena_team_ids(row, field):
+    return [unit_key for unit_key in row[field].split(';') if unit_key]
+ck("39：tw_availability_check Enum；PASS 的敵我各五人須不同且均為 18 AVAILABLE", all(
+    row['tw_availability_check'] in CFG['enums']['tw_check']
+    and (row['tw_availability_check'] != 'PASS' or all(
+        len(team) == 5 and len(set(team)) == 5 and all(unit_key in TW_UNITS for unit_key in team)
+        for team in (
+            _arena_team_ids(row, 'enemy_team_ids'),
+            _arena_team_ids(row, 'counter_team_ids'),
+        )
+    ))
+    for row in t39
+))
 h25 = r25[0]
 ck("25：欄位標頭符合規格", h25 == CFG['t25_header'])
 t25 = [dict(zip(h25, r)) for r in r25[1:]]
@@ -391,7 +406,7 @@ for source_axis_id, boundary in CFG['pve_timeline_source_boundaries'].items():
 ck("ST87：來源邊界、locator 與未載欄位不得推測", not _source_boundary_bad, ','.join(_source_boundary_bad))
 
 def _timeline_claim_coverage_ok(team):
-    if team['operation_mode'] not in {'SEMI_AUTO', 'MANUAL_TIMELINE', 'SOURCE_CONFLICT'}:
+    if team['operation_mode'] not in {'SEMI_AUTO', 'MANUAL_TIMELINE', 'SOURCE_CONFLICT', 'UNKNOWN'}:
         return True
     req = _requirements_by_team.get(team['team_id'])
     if not req or not _pve_mode_claims_match(team, req):
@@ -598,7 +613,7 @@ for r in r39[1:]:
     eids = [e for e in r[c39['evidence_ids']].split(';') if e]; cids = [c for c in r[c39['claim_ids']].split(';') if c]
     fresh = (not r[c39['last_review_due']]) or r[c39['last_review_due']] >= TODAY
     twc = r[h39.index('tw_availability_check')] if 'tw_availability_check' in h39 else ''
-    if len(en) == 5 and len(co) == 5 and len(set(en)) == 5 and len(set(co)) == 5 and date_ok(r[c39['verified_date']]) and all(e in set(ids92) for e in eids) and all(c in set(ids93) for c in cids) and r[c39['reproducibility']] and fresh and eids and cids and twc == 'PASS':
+    if len(en) == 5 and len(co) == 5 and len(set(en)) == 5 and len(set(co)) == 5 and all(u in TW_UNITS for u in en + co) and date_ok(r[c39['verified_date']]) and all(e in set(ids92) for e in eids) and all(c in set(ids93) for c in cids) and r[c39['reproducibility']] and fresh and eids and cids and twc == 'PASS':
         arena_ok.append((r[c39['enemy_team_ids']], r[c39['counter_id']]))
 _def_groups = Counter(e for e, _ in arena_ok)
 ARENA_F = sum(1 for e, n in _def_groups.items() if n >= CFG['gate_thresholds']['B']['counters_per_defense'])
@@ -870,13 +885,16 @@ stats = {"generated_date": TODAY, "release_date": CFG['release_date'], "project_
 
 canonical = (MODE == 'PRE_SUITE' and FAIL_TOTAL == 0) or (MODE == 'ARTIFACT_READY' and gate_c_pass) or (WRITE and FAIL_TOTAL == 0)
 os.makedirs('tools/reports', exist_ok=True)
-json.dump(stats, open(f'tools/reports/{MODE.lower()}.json', 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+with open(f'tools/reports/{MODE.lower()}.json', 'w', encoding='utf-8', newline='\n') as report_file:
+    json.dump(stats, report_file, ensure_ascii=False, indent=1)
 
 def build_reports():
     # 13 AUTO_RESULTS
     s13 = R['13_ACCEPTANCE_RESULTS.md']
     m13 = re.search(r'<!-- AUTO_RESULTS_START -->.*?<!-- AUTO_RESULTS_END -->', s13, re.S)
-    if m13: open('13_ACCEPTANCE_RESULTS.md', 'w', encoding='utf-8').write(s13.replace(m13.group(0), compose_auto()))
+    if m13:
+        with open('13_ACCEPTANCE_RESULTS.md', 'w', encoding='utf-8', newline='\n') as report_file:
+            report_file.write(s13.replace(m13.group(0), compose_auto()))
     # 15 AUTO_STATS
     auto = f"""<!-- AUTO_STATS_START -->
 **程式化統計（validator 生成即核對；生成日 {TODAY}／版本 {CFG['project_version']}／Release {CFG['release_date']}／Mode {MODE}）**
@@ -890,7 +908,9 @@ def build_reports():
 <!-- AUTO_STATS_END -->"""
     s15 = R['15_DATA_QUALITY_REPORT.md']
     m15 = re.search(r'<!-- AUTO_STATS_START -->.*?<!-- AUTO_STATS_END -->', s15, re.S)
-    if m15: open('15_DATA_QUALITY_REPORT.md', 'w', encoding='utf-8').write(s15.replace(m15.group(0), auto))
+    if m15:
+        with open('15_DATA_QUALITY_REPORT.md', 'w', encoding='utf-8', newline='\n') as report_file:
+            report_file.write(s15.replace(m15.group(0), auto))
     lines = "\n".join(f"| {n} | {r} | {d} |" for n, r, d in checks)
     warn_lines = "\n".join(f"| {w['warning_id']} | {w['category']} | {w['severity']} | {'Y' if w['blocks_gate_c'] else 'N'} | {w['affected_module']} | {w['detail']} | {w['next_action']} |" for w in warns) if warns else "| （無） | | | | | | |"
     infos_l = [f"Mode＝{MODE}（PRE_SUITE／OPERATIONAL 增量／ARTIFACT_READY 強制 Gate A/B/C＋blocking_c=0）",
@@ -898,7 +918,8 @@ def build_reports():
                ("目前 PENDING_REVIEW Evidence：" + ("、".join(sorted(pending_ev)) if pending_ev else "無")),
                "回歸攔截由 tools/mutation_test.py 驗證（Active 情境數以其執行輸出為準；歷史／退休 ID 見 Account Archive）",
                f"Canonical 15/16/13/stats 寫入：{'是' if canonical else '否（check-only）'}"]
-    open('16_STATIC_VALIDATION_REPORT.md', 'w', encoding='utf-8').write(f"""# 16 靜態驗證報告（STATIC VALIDATION REPORT）
+    with open('16_STATIC_VALIDATION_REPORT.md', 'w', encoding='utf-8', newline='\n') as report_file:
+        report_file.write(f"""# 16 靜態驗證報告（STATIC VALIDATION REPORT）
 
 > 由 `tools/validate_project.py` 生成（唯一路徑）；回歸驗證：`python3 tools/mutation_test.py`（Active 情境數見其輸出；退休 ID 見 Archive）。
 > 生成日：{TODAY}｜版本：{CFG['project_version']}｜Release：{CFG['release_date']}｜Mode：{MODE}
@@ -941,7 +962,8 @@ def build_reports():
 
 {chr(10).join('- ' + h for h in hist_hits) if hist_hits else '（無）'}
 """)
-    json.dump(stats, open('tools/stats.json', 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+    with open('tools/stats.json', 'w', encoding='utf-8', newline='\n') as report_file:
+        json.dump(stats, report_file, ensure_ascii=False, indent=1)
 
 if canonical: build_reports()
 else: infos.append(f"Mode {MODE} 未達 canonical 寫入條件——僅 tools/reports/{MODE.lower()}.json")

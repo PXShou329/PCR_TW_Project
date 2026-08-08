@@ -4,11 +4,14 @@ export type StrategyStatus =
   | "IN_RESEARCH"
   | "PENDING";
 
+export type GuideReproducibility = "CONFIRMED" | "PENDING";
+
 export type OperationMode =
   | "AUTO"
   | "SEMI_AUTO"
   | "MANUAL_TIMELINE"
-  | "SOURCE_CONFLICT";
+  | "SOURCE_CONFLICT"
+  | "UNKNOWN";
 
 export interface SourceMetadata {
   canonical_source: string;
@@ -38,7 +41,6 @@ export interface GateSummary {
   gate_a: boolean;
   gate_b: boolean;
   gate_c: boolean;
-  blocking_warnings?: number;
 }
 
 export interface Baseline {
@@ -78,7 +80,7 @@ export interface StageSummary {
   status: StrategyStatus;
   verified_date: string;
   team_count: number;
-  reproducibility: StrategyStatus;
+  reproducibility: GuideReproducibility;
 }
 
 export interface TeamSummary {
@@ -118,26 +120,36 @@ export interface SlotRequirement {
   element_boost: string;
 }
 
+export interface SlotRequirements {
+  slot1: SlotRequirement;
+  slot2: SlotRequirement;
+  slot3: SlotRequirement;
+  slot4: SlotRequirement;
+  slot5: SlotRequirement;
+}
+
 export interface OperationModeClaim {
   source_id: string;
   mode: Exclude<OperationMode, "SOURCE_CONFLICT">;
 }
 
+export interface TeamSupport {
+  unit: string;
+  requirements: string;
+}
+
 export interface TeamRequirements {
-  schema_version: string;
-  slots: Record<string, SlotRequirement>;
-  support: {
-    unit: string;
-    requirements: string;
-  };
+  schema_version: "1.0";
+  slots: SlotRequirements;
+  support: TeamSupport;
   operation_mode_claims: OperationModeClaim[];
   failure_conditions: string[];
-  timeline_ref?: string;
+  timeline_ref: string;
 }
 
 export type TimelineStatus = "STRUCTURED" | "PARTIAL" | "SOURCE_GAP" | "MISSING";
 export type TimelineSourceStatus = "STRUCTURED" | "SOURCE_GAP";
-export type TimelineOperationMode = "AUTO" | "SEMI_AUTO" | "MANUAL_TIMELINE";
+export type TimelineOperationMode = "AUTO" | "SEMI_AUTO" | "MANUAL_TIMELINE" | "UNKNOWN";
 export type TimelineClockMode = "COUNTDOWN" | "ELAPSED";
 export type KnownTimelineAutoState = "ON" | "OFF";
 export type TimelineAutoState = KnownTimelineAutoState | "UNKNOWN";

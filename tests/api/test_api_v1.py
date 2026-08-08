@@ -33,6 +33,7 @@ from .conftest import make_factory
 
 
 GUIDE_ID = "TW_DEEP_FIRE_08_10_20260802"
+APPLICATION_VERSION = "3.0.0-a3"
 
 
 def test_postgresql_engine_uses_repeatable_read_for_route_snapshot(
@@ -102,7 +103,7 @@ def test_database_unavailable_is_a_uniform_structured_503() -> None:
     engine = factory.kw["bind"]
     engine.dispose()
     app = create_app(
-        settings=Settings(database_url="sqlite://", application_version="3.0.0-b1"),
+        settings=Settings(database_url="sqlite://", application_version=APPLICATION_VERSION),
         session_factory=factory,
     )
     endpoints = [
@@ -158,7 +159,7 @@ def test_latest_import_uses_active_pointer_not_newest_succeeded_run() -> None:
         session.commit()
 
     app = create_app(
-        settings=Settings(database_url="sqlite://", application_version="3.0.0-b1"),
+        settings=Settings(database_url="sqlite://", application_version=APPLICATION_VERSION),
         session_factory=factory,
     )
     with TestClient(app) as pointer_client:
@@ -181,7 +182,7 @@ def test_readiness_rejects_import_run_fixture_raw_tree_mismatch() -> None:
         session.commit()
 
     app = create_app(
-        settings=Settings(database_url="sqlite://", application_version="3.0.0-b1"),
+        settings=Settings(database_url="sqlite://", application_version=APPLICATION_VERSION),
         session_factory=factory,
     )
     with TestClient(app) as provenance_client:
@@ -203,7 +204,7 @@ def test_readiness_fails_closed_on_serving_count_key_set_drift() -> None:
         session.commit()
 
     app = create_app(
-        settings=Settings(database_url="sqlite://", application_version="3.0.0-b1"),
+        settings=Settings(database_url="sqlite://", application_version=APPLICATION_VERSION),
         session_factory=factory,
     )
     with TestClient(app) as drifted_client:
@@ -228,7 +229,7 @@ def test_readiness_fails_closed_on_run_manifest_table_set_drift() -> None:
         session.commit()
 
     app = create_app(
-        settings=Settings(database_url="sqlite://", application_version="3.0.0-b1"),
+        settings=Settings(database_url="sqlite://", application_version=APPLICATION_VERSION),
         session_factory=factory,
     )
     with TestClient(app) as drifted_client:
@@ -253,7 +254,7 @@ def test_readiness_fails_closed_on_declared_serving_count_key_set_drift() -> Non
         session.commit()
 
     app = create_app(
-        settings=Settings(database_url="sqlite://", application_version="3.0.0-b1"),
+        settings=Settings(database_url="sqlite://", application_version=APPLICATION_VERSION),
         session_factory=factory,
     )
     with TestClient(app) as drifted_client:
@@ -278,7 +279,7 @@ def test_readiness_fails_closed_on_import_run_core_revision_provenance_drift() -
         session.commit()
 
     app = create_app(
-        settings=Settings(database_url="sqlite://", application_version="3.0.0-b1"),
+        settings=Settings(database_url="sqlite://", application_version=APPLICATION_VERSION),
         session_factory=factory,
     )
     with TestClient(app) as drifted_client:
@@ -311,7 +312,7 @@ def test_full_core_file_content_drift_blocks_strategy_reads() -> None:
         session.commit()
 
     app = create_app(
-        settings=Settings(database_url="sqlite://", application_version="3.0.0-b1"),
+        settings=Settings(database_url="sqlite://", application_version=APPLICATION_VERSION),
         session_factory=factory,
     )
     with TestClient(app) as drifted_client:
@@ -373,7 +374,7 @@ def test_full_core_csv_row_reorder_blocks_strategy_reads() -> None:
         session.commit()
 
     app = create_app(
-        settings=Settings(database_url="sqlite://", application_version="3.0.0-b1"),
+        settings=Settings(database_url="sqlite://", application_version=APPLICATION_VERSION),
         session_factory=factory,
     )
     with TestClient(app) as drifted_client:
@@ -444,7 +445,7 @@ def test_readiness_fails_closed_when_materialized_team_is_deleted() -> None:
         session.commit()
 
     app = create_app(
-        settings=Settings(database_url="sqlite://", application_version="3.0.0-b1"),
+        settings=Settings(database_url="sqlite://", application_version=APPLICATION_VERSION),
         session_factory=factory,
     )
     with TestClient(app) as drifted_client:
@@ -472,7 +473,7 @@ def test_readiness_fails_closed_when_team_evidence_link_is_deleted() -> None:
         session.commit()
 
     app = create_app(
-        settings=Settings(database_url="sqlite://", application_version="3.0.0-b1"),
+        settings=Settings(database_url="sqlite://", application_version=APPLICATION_VERSION),
         session_factory=factory,
     )
     with TestClient(app) as drifted_client:
@@ -498,7 +499,7 @@ def test_readiness_fails_closed_when_normalized_team_field_is_tampered() -> None
         session.commit()
 
     app = create_app(
-        settings=Settings(database_url="sqlite://", application_version="3.0.0-b1"),
+        settings=Settings(database_url="sqlite://", application_version=APPLICATION_VERSION),
         session_factory=factory,
     )
     with TestClient(app) as drifted_client:
@@ -517,7 +518,7 @@ def test_all_strategy_reads_fail_closed_on_timeline_materialization_drift() -> N
         session.commit()
 
     app = create_app(
-        settings=Settings(database_url="sqlite://", application_version="3.0.0-b1"),
+        settings=Settings(database_url="sqlite://", application_version=APPLICATION_VERSION),
         session_factory=factory,
     )
     endpoints = [
@@ -558,7 +559,7 @@ def test_coverage_excludes_provisional_team() -> None:
         team.clear_status = "PROVISIONAL"
         session.commit()
 
-    assert _effective_team_count(factory) == 2
+    assert _effective_team_count(factory) == 4
 
 
 def test_coverage_excludes_team_with_incomplete_evidence_closure() -> None:
@@ -578,7 +579,7 @@ def test_coverage_excludes_team_with_incomplete_evidence_closure() -> None:
         )
         session.commit()
 
-    assert _effective_team_count(factory) == 2
+    assert _effective_team_count(factory) == 4
 
 
 def test_coverage_excludes_team_with_unavailable_character() -> None:
@@ -596,7 +597,7 @@ def test_coverage_excludes_team_with_unavailable_character() -> None:
         character.availability_status = "UNAVAILABLE"
         session.commit()
 
-    assert _effective_team_count(factory) == 2
+    assert _effective_team_count(factory) == 4
 
 
 def test_baseline_reports_real_counts_and_research_gates(client: TestClient) -> None:
@@ -606,16 +607,16 @@ def test_baseline_reports_real_counts_and_research_gates(client: TestClient) -> 
     assert_meta(payload)
     data = payload["data"]
     assert data["research_core_version"] == "v1.5"
-    assert data["application_version"] == "3.0.0-b1"
+    assert data["application_version"] == "3.0.0-a3"
     assert data["counts"] == {
-        "stages": 1,
-        "teams": 3,
-        "team_members": 15,
-        "characters": 8,
-            "evidence": 18,
-            "claims": 13,
-            "operation_timelines": 8,
-            "timeline_steps": 14,
+        "stages": 2,
+        "teams": 5,
+        "team_members": 25,
+        "characters": 17,
+        "evidence": 34,
+        "claims": 27,
+        "operation_timelines": 10,
+        "timeline_steps": 19,
     }
     assert data["gates"]["gate_a"] is False
     assert data["gates"]["gate_b"] is False
@@ -623,23 +624,25 @@ def test_baseline_reports_real_counts_and_research_gates(client: TestClient) -> 
     assert data["featured_stage"]["guide_id"] == GUIDE_ID
 
 
-def test_stage_exposes_all_three_teams_and_honest_maturity_gap(client: TestClient) -> None:
+def test_stage_exposes_all_five_teams_and_mature_coverage(client: TestClient) -> None:
     response = client.get(f"/api/v1/stages/{GUIDE_ID}")
     assert response.status_code == 200
     data = response.json()["data"]
-    assert data["status"] == "PROVISIONAL"
-    assert data["reproducibility"] == "PENDING"
-    assert data["team_count"] == 3
+    assert data["status"] == "VERIFIED"
+    assert data["reproducibility"] == "CONFIRMED"
+    assert data["team_count"] == 5
     assert [team["team_id"] for team in data["teams"]] == [
         "TM-F810-01",
         "TM-F810-02",
         "TM-F810-03",
+        "TM-F810-04",
+        "TM-F810-05",
     ]
     assert data["coverage"] == {
-        "verified_distinct_teams": 3,
+        "verified_distinct_teams": 5,
         "maturity_target": 5,
-        "remaining": 2,
-        "is_mature": False,
+        "remaining": 0,
+        "is_mature": True,
     }
 
 
@@ -715,6 +718,63 @@ def test_partial_timeline_is_source_separated_and_preserves_cross_server_status(
     nested = client.get("/api/v1/teams/TM-F810-02/timelines")
     assert nested.status_code == 200
     assert nested.json()["data"] == timeline
+
+
+def test_unknown_operation_mode_and_source_gap_are_preserved(client: TestClient) -> None:
+    response = client.get("/api/v1/teams/TM-F810-04")
+    assert response.status_code == 200
+    payload = response.json()
+    data = payload["data"]
+
+    assert data["operation_mode"] == "UNKNOWN"
+    assert data["requirements"]["operation_mode_claims"] == [
+        {"mode": "UNKNOWN", "source_id": "yt_p95ZoBCWuYE"}
+    ]
+    assert all(
+        value == "UNKNOWN"
+        for slot in data["requirements"]["slots"].values()
+        for value in slot.values()
+    )
+    assert data["timeline"]["status"] == "SOURCE_GAP"
+    assert data["timeline"]["registered_sources"] == 1
+    assert data["timeline"]["structured_sources"] == 0
+    assert data["timeline"]["sources"][0]["operation_mode"] == "UNKNOWN"
+    assert data["timeline"]["sources"][0]["steps"] == []
+    assert "STRUCTURED_TIMELINE_SOURCE_GAP" in payload["meta"]["warnings"]
+
+
+def test_source_text_only_timeline_does_not_invent_actions(client: TestClient) -> None:
+    response = client.get("/api/v1/teams/TM-F810-05/timelines")
+    assert response.status_code == 200
+    timeline = response.json()["data"]
+
+    assert timeline["status"] == "STRUCTURED"
+    assert timeline["registered_sources"] == 1
+    assert timeline["structured_sources"] == 1
+    source = timeline["sources"][0]
+    assert source["source_axis_id"] == "AX-F810-05-EV083"
+    assert source["timeline_id"] == "TL-F810-05-EV083"
+    assert source["operation_mode"] == "SEMI_AUTO"
+    assert source["initial_auto_state"] == "OFF"
+    assert source["reproducibility"] == "UNVERIFIED_ON_TW"
+    assert len(source["steps"]) == 5
+    assert [step["clock_from_ms"] for step in source["steps"]] == [
+        90000,
+        38000,
+        27000,
+        26000,
+        7000,
+    ]
+    assert all(step["trigger_type"] == "SOURCE_TEXT_ONLY" for step in source["steps"])
+    assert all(step["action_type"] == "NO_ACTION" for step in source["steps"])
+    assert [step["auto_state_after"] for step in source["steps"]] == [
+        "OFF",
+        "OFF",
+        "OFF",
+        "OFF",
+        "ON",
+    ]
+    assert all(step["criticality"] == "UNKNOWN" for step in source["steps"])
 
 
 def test_evidence_claim_drawer_and_pvp_no_result(client: TestClient) -> None:

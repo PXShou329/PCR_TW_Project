@@ -18,6 +18,7 @@ export function operationLabel(mode: OperationMode | string): string {
     SEMI_AUTO: "半自動",
     MANUAL_TIMELINE: "手動操作軸",
     SOURCE_CONFLICT: "來源操作聲明衝突",
+    UNKNOWN: "操作模式未確認",
   };
   return labels[mode] ?? mode;
 }

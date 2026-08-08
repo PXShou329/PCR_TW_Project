@@ -148,12 +148,14 @@
    "AUTO",
    "SEMI_AUTO",
    "MANUAL_TIMELINE",
-   "SOURCE_CONFLICT"
+   "SOURCE_CONFLICT",
+   "UNKNOWN"
   ],
   "pve_mode_claim": [
    "AUTO",
    "SEMI_AUTO",
-   "MANUAL_TIMELINE"
+   "MANUAL_TIMELINE",
+   "UNKNOWN"
   ],
   "pve_timeline_status": [
    "STRUCTURED",

@@ -19,17 +19,23 @@ SUPERSEDED＋新建 CURRENT-0802；next_review_due=2026-08-09（含 08/08 日服
 - 新增：18 公共角色可用性（PVE／Arena／P-Arena 可用性唯一來源）、25 PVE 隊伍層、45 Gacha 社群來源索引、46 Arena 來源 Registry。
 - 測試集＝Guide-Only 41（A1–A3、T1、T2、T13、T14、T16–T18、T22–T52）；17 為 21 欄公共 Schema。
 
-**Phase 狀態**：Baseline Current through 2026/08/02｜PVE Registry 3 VERIFIED（紅焰 8-10 關卡仍 PROVISIONAL；5 隊門檻未達）｜Arena Registry 0（Checkpoint D）
+**Phase 狀態**：Baseline Current through 2026/08/02｜PVE Registry 5 VERIFIED（紅焰 8-10＝VERIFIED／CONFIRMED，5 隊成熟結構門檻已達；紅焰 10-10 仍 IN_RESEARCH）｜Arena Registry 0（Checkpoint D）
 ｜P-Arena 理論模型 3（Checkpoint E 組合求解）｜Gacha MATURE 2＋RESEARCH 1（Checkpoint C 社群整合）｜Suite 全 NOT_RUN（部署後）。
 
 **R3i（2026/08/08）**：PVE Gate 已封住 PROVISIONAL／缺失 unit_key 灌水路徑；TM-F810-01 已以
-`SOURCE_CONFLICT`＋canonical requirements JSON 正規化；紅焰 8-10 實開候選來源後取得 3 支不同五人的
-VERIFIED effective teams（詳見 22／23／25）。相同五人多來源只計一隊；因仍少於 5 支，24 不升 `VERIFIED`。
+`SOURCE_CONFLICT`＋canonical requirements JSON 正規化；紅焰 8-10 第一階段實開候選來源後取得 3 支不同五人的
+VERIFIED effective teams（詳見 22／23／25）。相同五人多來源只計一隊；該階段因少於 5 支，24 當時未升 `VERIFIED`。
 
 **A2（2026/08/08）**：新增 26／27 逐來源操作軸 SSOT。TM-F810-02 的 GameWith
 2025 年 9 月半自動正文已拆為 14 個原子步驟；其餘已登錄來源均明列 `SOURCE_GAP`，不把影片區間、
 操作次數或多來源摘要冒充逐步操作。該軸來源為日服，雖同隊另有台服通關影片，仍標
 `UNVERIFIED_ON_TW`，Gate 與關卡 lifecycle 均未提高。
+
+**A3（2026/08/08）**：另以兩支已實際開啟並核對關卡、完整五人與通關結果的玩家影片補足
+`TM-F810-04`／`TM-F810-05`，紅焰 8-10 現為 5 支不同五人的 VERIFIED effective teams，24 升為
+`VERIFIED／CONFIRMED`。第四隊未取得足以判定全程操作模式的來源聲明，故保留 `UNKNOWN`＋`SOURCE_GAP`；
+第五隊只將來源明載的五條時間／AUTO 狀態保存為 `SOURCE_TEXT_ONLY／NO_ACTION`，未把括號圖樣或全域養成條件
+臆測成逐 slot／玩家操作事實。
 
 ## 檔案清單（唯一權威清單）
 

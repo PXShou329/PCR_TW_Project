@@ -2,6 +2,8 @@ import { expect, test } from "@playwright/test";
 
 const teamTwoPath = "/pve/TW_DEEP_FIRE_08_10_20260802/teams/TM-F810-02";
 const teamOnePath = "/pve/TW_DEEP_FIRE_08_10_20260802/teams/TM-F810-01";
+const teamFourPath = "/pve/TW_DEEP_FIRE_08_10_20260802/teams/TM-F810-04";
+const teamFivePath = "/pve/TW_DEEP_FIRE_08_10_20260802/teams/TM-F810-05";
 
 test("TM-F810-02 逐來源呈現 PARTIAL 操作軸且不合併缺口來源", async ({ page }) => {
   await page.goto(teamTwoPath);
@@ -72,4 +74,36 @@ test("TM-F810-01 純 SOURCE_GAP 保留三個來源且不生成步驟", async ({ 
   await gapDrawer.getByRole("button", { name: "關閉" }).click();
 
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
+
+test("TM-F810-04 誠實呈現 UNKNOWN 與單一 SOURCE_GAP", async ({ page }) => {
+  await page.goto(teamFourPath);
+
+  await expect(page.getByRole("heading", { name: "尚未建立可驗證的結構化操作軸" })).toBeVisible();
+  await expect(page.getByLabel("操作軸來源涵蓋率")).toContainText(/0\s*\/\s*1 個來源已結構化/);
+  const source = page.locator('[data-source-id="yt_p95ZoBCWuYE"]');
+  await expect(source).toContainText("操作模式未確認");
+  await expect(source).toContainText("尚未建立可驗證步驟");
+  await expect(source.locator(".timeline-step")).toHaveCount(0);
+});
+
+test("TM-F810-05 只呈現來源文字與 NO_ACTION，不推定操作", async ({ page }) => {
+  await page.goto(teamFivePath);
+
+  await expect(page.getByRole("heading", { name: "已取得逐來源結構化操作軸" })).toBeVisible();
+  await expect(page.getByLabel("操作軸來源涵蓋率")).toContainText(/1\s*\/\s*1 個來源已結構化/);
+  const source = page.locator('[data-source-id="yt_Zw31omyYDKI"]');
+  await expect(source.locator(".timeline-step")).toHaveCount(5);
+  const first = source.locator('[data-step-id="TLS-F810-05-001"]');
+  await expect(first).toContainText("倒數 1:30");
+  await expect(first).toContainText("來源文字提示");
+  await expect(first).toContainText("不操作");
+  const last = source.locator('[data-step-id="TLS-F810-05-005"]');
+  await expect(last).toContainText("倒數 0:07");
+  await expect(last).toContainText("AUTO 開啟");
+
+  await first.getByRole("button", { name: /核對本步 Evidence/ }).click();
+  const drawer = page.getByRole("dialog", { name: "ev083" });
+  await expect(drawer).toContainText("YouTube 深域火 8-10 未央（NGs）半自動通關實戰");
+  await expect(drawer.getByText("本次核對定位：影片說明／timeline 1")).toBeVisible();
 });

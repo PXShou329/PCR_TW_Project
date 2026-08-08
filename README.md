@@ -1,16 +1,17 @@
 # 公主連結台服 AI 攻略研究所
 
-Guide-Only Strategy Platform v3.0 的 B1 full-core round-trip 里程碑。這是一個可部署的
+Guide-Only Strategy Platform v3.0 的 A3 Fire 成熟切片，建立在已封存的 B1
+full-core round-trip 里程碑之上。這是一個可部署的
 **本機／私人 staging**，不是公開正式版，也尚未宣稱 Gates D–G 通過。
 
-目前端到端垂直切片以「紅焰深域 8-10」為例，提供三支實際通關隊伍、逐 Slot
-條件、來源分離的操作軸、逐步 Evidence Drawer，以及誠實的結構化操作軸缺口。競技場在
+目前端到端垂直切片以「紅焰深域 8-10」為例，提供五支不同五人的實際通關隊伍、逐 Slot
+條件、來源分離的操作軸、逐步 Evidence Drawer，以及誠實的 `UNKNOWN`／結構化操作軸缺口。競技場在
 尚無 exact verified counter 時只回傳空結果，不建立示意隊。
 
 ## 真相與安全邊界
 
-- `research_core/pcr_tw_project/` 是唯一 canonical source；目前 RP-A2 的 48 個檔案
-  由 `scripts/research_core_rp_a2_manifest.sha256` 逐檔 SHA-256 鎖定。
+- `research_core/pcr_tw_project/` 是唯一 canonical source；目前 RP-A3 的 48 個檔案
+  由 `scripts/research_core_rp_a3_manifest.sha256` 逐檔 SHA-256 鎖定；RP-A2 manifest 保留供 immutable rollback 相容驗證。
 - PostgreSQL 是可重建的 immutable multi-revision read mirror，不會回寫 research core。
 - 台服是攻略主體；日服只作未來視與可轉用研究。中國服／B 服資料不作核心、
   替代或補洞依據。

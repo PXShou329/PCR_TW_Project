@@ -7,7 +7,7 @@ from dataclasses import dataclass
 @dataclass(frozen=True)
 class Settings:
     database_url: str
-    application_version: str = "3.0.0-b1"
+    application_version: str = "3.0.0-a3"
     api_version: str = "v1"
     cors_origins: tuple[str, ...] = (
         "http://localhost:3000",
@@ -31,6 +31,6 @@ class Settings:
             raise ValueError("PCR_CORS_ORIGINS must be a non-empty explicit allowlist")
         return cls(
             database_url=database_url,
-            application_version=os.getenv("PCR_APPLICATION_VERSION", "3.0.0-b1"),
+            application_version=os.getenv("PCR_APPLICATION_VERSION", "3.0.0-a3"),
             cors_origins=configured_origins,
         )

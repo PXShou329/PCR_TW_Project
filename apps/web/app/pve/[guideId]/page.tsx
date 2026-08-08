@@ -44,14 +44,22 @@ export default async function StagePage({ params }: { params: Promise<{ guideId:
           <span>不同五人實證隊</span>
           <strong>{coverage.verified_distinct_teams}<small> / {coverage.maturity_target}</small></strong>
           <div className="progress-track" aria-hidden="true"><span style={{ width: `${percent}%` }} /></div>
-          <p>距成熟門檻仍差 {coverage.remaining} 隊，因此本關維持 PROVISIONAL。</p>
+          <p>
+            {coverage.is_mature
+              ? `已達 ${coverage.maturity_target} 支不同五人實證隊伍的成熟結構門檻。`
+              : `距成熟門檻仍差 ${coverage.remaining} 隊，因此本關仍是「${statusLabel(stage.status)}」狀態。`}
+          </p>
         </Panel>
       </header>
 
       <Panel className="truth-notice">
         <div>
           <p className="eyebrow">MATURITY DISCLOSURE</p>
-          <h2>已確認 {coverage.verified_distinct_teams} 隊，不等於成熟攻略</h2>
+          <h2>
+            {coverage.is_mature
+              ? `已確認 ${coverage.verified_distinct_teams} 隊，達成成熟結構門檻`
+              : `已確認 ${coverage.verified_distinct_teams} 隊，不等於成熟攻略`}
+          </h2>
         </div>
         <p>{stage.notes}</p>
       </Panel>
@@ -64,6 +72,11 @@ export default async function StagePage({ params }: { params: Promise<{ guideId:
         <div className="team-grid">
           {stage.teams.map((team) => <TeamCard guideId={stage.guide_id} key={team.team_id} team={team} />)}
         </div>
+        {stage.teams.length === 0 ? (
+          <Panel>
+            <p>目前沒有符合完整五人、明確關卡與實際通關證據的有效隊伍。</p>
+          </Panel>
+        ) : null}
       </section>
 
       <Panel className="metadata-panel">

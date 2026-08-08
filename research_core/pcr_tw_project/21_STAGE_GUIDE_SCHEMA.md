@@ -77,7 +77,7 @@
 
 ### 2.1 25 Registry 的 operation_mode／requirements 契約（R3i）
 
-- `operation_mode` 合法值：`AUTO`、`SEMI_AUTO`、`MANUAL_TIMELINE`、`SOURCE_CONFLICT`。
+- `operation_mode` 合法值：`AUTO`、`SEMI_AUTO`、`MANUAL_TIMELINE`、`SOURCE_CONFLICT`、`UNKNOWN`。`UNKNOWN` 只用於已確認通關、但來源未聲明且畫面不足以裁決操作模式的隊伍；不得由 AUTO／SET 圖示或遊戲常識補猜。
 - 無法在來源間裁決操作模式時必須用 `SOURCE_CONFLICT`，不得自行選 AUTO 或 SEMI_AUTO。
 - `requirements` 保留在 25 的單一欄位，但內容必須是可 `json.loads()` 且以 UTF-8、keys 排序、無多餘空白序列化的 canonical JSON。
 - top-level keys 必須精確包含：`schema_version`、`operation_mode_claims`、`slots`、`support`、`timeline_ref`、`failure_conditions`；`schema_version` 固定為 `1.0`。
@@ -89,7 +89,7 @@
 
 ### 2.2 26／27 逐來源操作軸契約（A2）
 
-- `26_PVE_OPERATION_TIMELINES.csv` 每列是一個 `source_axis_id`；同隊不同來源必須分列，不得合併、平均或生成「綜合操作軸」。
+- `26_PVE_OPERATION_TIMELINES.csv` 每列是一個 `source_axis_id`；同隊不同來源必須分列，不得合併、平均或生成「綜合操作軸」。`UNKNOWN` 亦須建立逐來源 axis；沒有可驗證手順時必須明列 `SOURCE_GAP`，不能因模式未知而略過來源閉環。
 - 25 的 legacy 欄名 `requirements.timeline_ref` 自 A2 起保存該隊以分號分隔的完整 `source_axis_id` 精確集合；Evidence locator 僅保存在 26／27，不再混用於此欄。
 - `status=STRUCTURED` 才能有非 `UNKNOWN` 的 `timeline_id`，且必須在 27 至少有一個步驟；`status=SOURCE_GAP` 必須 `timeline_id=UNKNOWN`、零步驟並填入非 `NONE` 的 `gap_reason`。
 - 26 的 `source_id` 必須對應 25 同隊 `requirements.operation_mode_claims` 的來源與 mode；`source_evidence_id` 必須存在於 92 且已列於該隊 `evidence_ids`。

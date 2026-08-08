@@ -23,6 +23,7 @@ from pcr_pipeline.research_core_snapshot import (
     ExportSafetyError,
     SnapshotDriftError,
     SnapshotValidationError,
+    VALIDATOR_RUNTIME_PATHS,
     canonical_json_bytes,
     canonical_manifest_sha256,
     core_materialization_manifest,
@@ -42,8 +43,8 @@ from pcr_pipeline.verify_round_trip import run_round_trip_smoke
 
 ROOT = Path(__file__).resolve().parents[2]
 RESEARCH_CORE = ROOT / "research_core" / "pcr_tw_project"
-MANIFEST = ROOT / "scripts" / "research_core_rp_a2_manifest.sha256"
-RAW_TREE_SHA256 = "fd3f1a0a102873ad4a0f0248e24f52cfc0e4e2e7f371e3abe35fd6848ba00900"
+MANIFEST = ROOT / "scripts" / "research_core_rp_a3_manifest.sha256"
+RAW_TREE_SHA256 = "46d4fea8c1c5cd92e2fd5cb71a7a3ca232d872b1c6d56ce6cd100971250bde45"
 
 
 def sqlite_engine():
@@ -67,6 +68,8 @@ def write_tree_manifest(root: Path, destination: Path) -> str:
     lines = []
     for path in sorted(candidate for candidate in root.rglob("*") if candidate.is_file()):
         relative = path.relative_to(root).as_posix()
+        if relative in VALIDATOR_RUNTIME_PATHS:
+            continue
         lines.append(f"{hashlib.sha256(path.read_bytes()).hexdigest()}  {relative}")
     destination.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
     return canonical_manifest_sha256(lines)
@@ -82,9 +85,9 @@ def add_import_run(session: Session, run_id: str, fixture_sha256: str) -> None:
     run = ImportRun(
         id=run_id,
         fixture_sha256=fixture_sha256,
-        canonical_source="research_core_rp_a2",
+        canonical_source="research_core_rp_a3",
         research_core_version="1.5",
-        application_version="3.0.0-b1",
+        application_version="3.0.0-a3",
         imported_at=datetime.now(timezone.utc),
         status="RUNNING",
         manifest={"materialization": {"sha256": "a" * 64}},
@@ -104,21 +107,21 @@ def test_manifest_pinned_loader_preserves_exact_rows_and_directed_edges() -> Non
     assert snapshot.raw_tree_sha256 == RAW_TREE_SHA256
     assert report.file_count == 48
     assert report.csv_file_count == 13
-    assert report.csv_row_count == 215
+    assert report.csv_row_count == 239
     assert report.csv_row_counts == {
         "17_TEST_EXECUTION_LOG.csv": 0,
-        "18_TW_CHARACTER_AVAILABILITY.csv": 15,
+        "18_TW_CHARACTER_AVAILABILITY.csv": 17,
         "24_PVE_GUIDE_REGISTRY.csv": 2,
-        "25_PVE_TEAM_REGISTRY.csv": 3,
-        "26_PVE_OPERATION_TIMELINES.csv": 8,
-        "27_PVE_TIMELINE_STEPS.csv": 14,
+        "25_PVE_TEAM_REGISTRY.csv": 5,
+        "26_PVE_OPERATION_TIMELINES.csv": 10,
+        "27_PVE_TIMELINE_STEPS.csv": 19,
         "39_ARENA_COUNTER_REGISTRY.csv": 0,
         "41_GACHA_TIMELINE.csv": 3,
         "45_GACHA_COMMUNITY_SOURCE_INDEX.csv": 4,
         "46_ARENA_SOURCE_REGISTRY.csv": 5,
         "47_PRINCESS_ARENA_CASE_REGISTRY.csv": 0,
-        "92_EVIDENCE_LEDGER.csv": 75,
-        "93_CLAIM_REGISTER.csv": 86,
+        "92_EVIDENCE_LEDGER.csv": 81,
+        "93_CLAIM_REGISTER.csv": 93,
     }
     guide = snapshot.csv_file("24_PVE_GUIDE_REGISTRY.csv").row_by_key(
         "TW_DEEP_FIRE_08_10_20260802"
@@ -126,11 +129,11 @@ def test_manifest_pinned_loader_preserves_exact_rows_and_directed_edges() -> Non
     assert guide.natural_key == "TW_DEEP_FIRE_08_10_20260802"
     assert guide.as_mapping(snapshot.csv_file("24_PVE_GUIDE_REGISTRY.csv").header)[
         "team_count"
-    ] == "3"
+    ] == "5"
     assert all(isinstance(value, str) for value in guide.values)
 
-    assert report.evidence_to_claim_count == 75
-    assert report.claim_to_evidence_count == 162
+    assert report.evidence_to_claim_count == 81
+    assert report.claim_to_evidence_count == 184
     assert ("ev053", "CLM-PVE-F810-STD") in snapshot.evidence_to_claim_edges
     assert ("CLM-PVE-F810-STD", "ev053") not in snapshot.claim_to_evidence_edges
     assert report.ev053_asymmetry_preserved is True
@@ -151,7 +154,7 @@ def test_manifest_pinned_loader_preserves_exact_rows_and_directed_edges() -> Non
     assert (stats.file_role, stats.semantic_kind, stats.newline_profile) == (
         "VALIDATOR_GENERATED",
         "json",
-        "CRLF",
+        "LF",
     )
     assert (
         snapshot.file("tools/validation_config.json").file_role

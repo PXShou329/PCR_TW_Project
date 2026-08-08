@@ -36,3 +36,13 @@ reconciliation projects the B1 active run into the V0002 legacy `latest_import`
 ordering before removing B1 tables. Follow `docs/operations/B1_RUNBOOK.md`; roll-forward
 after downgrade requires a verified B1 backup restore or a deliberately rebuilt
 disposable mirror.
+
+`V0004` extends the operation-mode contract with `UNKNOWN`, preserving an honest
+source gap instead of inventing `AUTO`, `SEMI_AUTO`, or `MANUAL`. A downgrade to
+V0003 is allowed only when no persisted operation timeline uses `UNKNOWN`.
+
+If an `UNKNOWN` row exists, the downgrade refuses the lossy operation
+transactionally: the database remains at V0004 and the row is retained intact.
+Never coerce the value merely to make rollback succeed. Before a real downgrade,
+either restore a verified pre-V0004/B1 backup or resolve every `UNKNOWN` from
+admissible evidence, then repeat validation and the backup/restore smoke test.

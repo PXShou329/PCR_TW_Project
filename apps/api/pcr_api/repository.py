@@ -337,7 +337,10 @@ def baseline_data(session: Session, run: ImportRun) -> dict[str, Any]:
         "canonical_source": run.canonical_source,
         "generated_at": run.imported_at,
         "counts": counts,
-        "gates": run.manifest.get("stats", {}).get("gate", {}),
+        "gates": {
+            key: bool(run.manifest.get("stats", {}).get("gate", {}).get(key, False))
+            for key in ("gate_a", "gate_b", "gate_c")
+        },
         "featured_stage": stage_summary(featured) if featured else None,
     }
 

@@ -10,7 +10,7 @@ from pathlib import Path
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-from .pve_fixture import import_fire_8_10
+from .pve_fixture import import_pve_projection
 from .research_core_snapshot import DEFAULT_MANIFEST, EXPECTED_MANIFEST_SHA256
 
 
@@ -74,7 +74,7 @@ def main() -> int:
     )
     engine = create_engine(args.database_url, pool_pre_ping=True)
     with Session(engine) as session:
-        result = import_fire_8_10(
+        result = import_pve_projection(
             session,
             args.research_core,
             manifest_path=args.manifest,
