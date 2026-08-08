@@ -9,8 +9,8 @@ Guide-Only Strategy Platform v3.0 的 B0 walking skeleton。這是一個可部�
 
 ## 真相與安全邊界
 
-- `research_core/pcr_tw_project/` 是唯一 canonical source；46 個 R3i 檔案受逐檔
-  SHA-256 鎖定。
+- `research_core/pcr_tw_project/` 是唯一 canonical source；目前 RP-I0 的 46 個檔案
+  由 `scripts/research_core_rp_i0_manifest.sha256` 逐檔 SHA-256 鎖定。
 - PostgreSQL 只是可重建的 read mirror，不會回寫 research core。
 - 台服是攻略主體；日服只作未來視與可轉用研究。中國服／B 服資料不作核心、
   替代或補洞依據。
@@ -54,6 +54,9 @@ python tools/mutation_test.py
 
 目前預期 ARTIFACT_READY 仍以 exit 1 誠實揭露 Gate A／B／C 三項缺口；B0 不會為了
 讓測試變綠而降低研究 Gate。
+
+I0 的實際五命令、Mutation、PostgreSQL 與 E2E 輸出見
+[`docs/operations/I0_VERIFICATION_REPORT.md`](docs/operations/I0_VERIFICATION_REPORT.md)。
 
 ## 啟動本機私人堆疊
 
