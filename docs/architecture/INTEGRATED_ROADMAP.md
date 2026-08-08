@@ -19,7 +19,8 @@
 2. ✅ B0b：紅焰 8-10 完整三隊 closure → DB mirror → API → Web → Evidence Drawer。
 3. ✅ I0：逐筆裁決七個 Evidence→Claim 懸空引用，新增 Validator 與 Mutation。
 4. ✅ A2＋B2：file-SSOT 結構化操作軸與真實深域垂直切片。
-5. B1：完整 importer／exporter／round-trip parity。
+5. 🚧 B1：完整 importer／exporter／round-trip parity；資料邊界見
+   [`ADR-0004`](ADR-0004-full-core-round-trip.md)。
 6. A3–A6 與 B3–B5 配對完成 PVE、Gacha、Arena、P-Arena。
 7. B6 Shadow → B7 Review／Audit／Rollback。
 8. A7：Data Gate A／B／C PASS。
