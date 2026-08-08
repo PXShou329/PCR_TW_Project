@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import hashlib
+import io
 import json
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
@@ -10,7 +11,7 @@ from typing import Any, Iterable
 from urllib.parse import urlsplit
 from uuid import uuid4
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, text
 from sqlalchemy.orm import Session
 
 from pcr_database.models import (
@@ -18,8 +19,11 @@ from pcr_database.models import (
     Claim,
     ClaimEvidence,
     Evidence,
+    CoreRevision,
     ImportRun,
+    MaterializationState,
     OperationTimeline,
+    RevisionActivation,
     Stage,
     StageClaim,
     StageEvidence,
@@ -32,11 +36,21 @@ from pcr_database.materialization import (
     build_materialization_manifest,
     materialization_drift_reason,
 )
+from pcr_pipeline.research_core_snapshot import (
+    DEFAULT_MANIFEST,
+    EXPECTED_MANIFEST_SHA256,
+    ResearchCoreSnapshot,
+    assert_materialized_snapshot,
+    finalize_materialized_snapshot,
+    load_research_core_snapshot,
+    materialize_snapshot,
+)
 
 
 TARGET_GUIDE_ID = "TW_DEEP_FIRE_08_10_20260802"
-APPLICATION_VERSION = "3.0.0-b0"
+APPLICATION_VERSION = "3.0.0-b1"
 CANONICAL_SOURCE = "research_core_file_ssot"
+IMPORT_LOCK_KEY = 0x5043524231
 
 # B0 imports one audited vertical slice only.  Expanding this set requires a
 # reviewed Source Registry change; restricted/China sources are deliberately
@@ -141,6 +155,13 @@ class ImportResult:
     import_run_id: str
     fixture_sha256: str
     created: bool
+    activated: bool
+    revision_id: str
+    raw_tree_sha256: str
+    semantic_tree_sha256: str
+    file_count: int
+    csv_file_count: int
+    csv_row_count: int
     row_counts: dict[str, int]
     warnings: tuple[str, ...]
 
@@ -183,15 +204,23 @@ def _unit_or_none(value: str) -> str | None:
     return None if value == "NONE" else value
 
 
-def _read_csv(path: Path, key: str) -> tuple[dict[str, str], ...]:
-    with path.open("r", encoding="utf-8-sig", newline="") as handle:
+def _read_csv(
+    relative_path: str,
+    content: bytes,
+    key: str,
+) -> tuple[dict[str, str], ...]:
+    try:
+        text_content = content.decode("utf-8-sig")
+    except UnicodeDecodeError as exc:
+        raise FixtureValidationError(f"{relative_path} must be UTF-8") from exc
+    with io.StringIO(text_content, newline="") as handle:
         reader = csv.DictReader(handle)
         if not reader.fieldnames or key not in reader.fieldnames:
-            raise FixtureValidationError(f"{path.name} is missing key column {key}")
+            raise FixtureValidationError(f"{relative_path} is missing key column {key}")
         rows = tuple({name: value or "" for name, value in row.items()} for row in reader)
     values = [row[key] for row in rows]
     if len(values) != len(set(values)):
-        raise FixtureValidationError(f"{path.name} contains duplicate {key}")
+        raise FixtureValidationError(f"{relative_path} contains duplicate {key}")
     return rows
 
 
@@ -219,11 +248,17 @@ def _validate_evidence_url(row: dict[str, str]) -> None:
         )
 
 
-def _file_fingerprint(root: Path) -> tuple[str, dict[str, str]]:
+def _capture_source_files(root: Path) -> dict[str, bytes]:
+    return {relative: (root / relative).read_bytes() for relative in SOURCE_FILES}
+
+
+def _file_fingerprint(
+    source_contents: dict[str, bytes],
+) -> tuple[str, dict[str, str]]:
     digest = hashlib.sha256()
     file_hashes: dict[str, str] = {}
     for relative in SOURCE_FILES:
-        content = (root / relative).read_bytes()
+        content = source_contents[relative]
         current = hashlib.sha256(content).hexdigest()
         file_hashes[relative] = current
         digest.update(relative.encode("utf-8"))
@@ -593,15 +628,25 @@ def load_fire_8_10_closure(research_core: Path) -> FixtureClosure:
     if missing_files:
         raise FixtureValidationError(f"research core is missing files: {missing_files}")
 
-    fingerprint, file_hashes = _file_fingerprint(root)
-    characters_all = _read_csv(root / SOURCE_FILES[0], "unit_key")
-    guides_all = _read_csv(root / SOURCE_FILES[1], "guide_id")
-    teams_all = _read_csv(root / SOURCE_FILES[2], "team_id")
-    timelines_all = _read_csv(root / SOURCE_FILES[3], "source_axis_id")
-    timeline_steps_all = _read_csv(root / SOURCE_FILES[4], "timeline_step_id")
-    evidence_all = _read_csv(root / SOURCE_FILES[5], "evidence_id")
-    claims_all = _read_csv(root / SOURCE_FILES[6], "claim_id")
-    stats = json.loads((root / SOURCE_FILES[7]).read_text(encoding="utf-8"))
+    source_contents = _capture_source_files(root)
+    fingerprint, file_hashes = _file_fingerprint(source_contents)
+    characters_all = _read_csv(SOURCE_FILES[0], source_contents[SOURCE_FILES[0]], "unit_key")
+    guides_all = _read_csv(SOURCE_FILES[1], source_contents[SOURCE_FILES[1]], "guide_id")
+    teams_all = _read_csv(SOURCE_FILES[2], source_contents[SOURCE_FILES[2]], "team_id")
+    timelines_all = _read_csv(
+        SOURCE_FILES[3], source_contents[SOURCE_FILES[3]], "source_axis_id"
+    )
+    timeline_steps_all = _read_csv(
+        SOURCE_FILES[4], source_contents[SOURCE_FILES[4]], "timeline_step_id"
+    )
+    evidence_all = _read_csv(
+        SOURCE_FILES[5], source_contents[SOURCE_FILES[5]], "evidence_id"
+    )
+    claims_all = _read_csv(SOURCE_FILES[6], source_contents[SOURCE_FILES[6]], "claim_id")
+    try:
+        stats = json.loads(source_contents[SOURCE_FILES[7]].decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise FixtureValidationError(f"{SOURCE_FILES[7]} must be valid UTF-8 JSON") from exc
 
     characters_by_id = {row["unit_key"]: row for row in characters_all}
     guides_by_id = {row["guide_id"]: row for row in guides_all}
@@ -978,76 +1023,239 @@ def _assert_materialized(session: Session, closure: FixtureClosure) -> None:
             raise MirrorDriftError(f"idempotent fixture {row['claim_id']} evidence links drifted")
 
 
+def _acquire_import_lock(session: Session) -> None:
+    """Serialize revision activation on PostgreSQL; SQLite tests are single-writer."""
+
+    if session.get_bind().dialect.name == "postgresql":
+        session.execute(
+            text("SELECT pg_advisory_xact_lock(:lock_key)"),
+            {"lock_key": IMPORT_LOCK_KEY},
+        )
+
+
+def _materialization_state(session: Session) -> MaterializationState:
+    state = session.get(MaterializationState, 1)
+    if state is None:
+        state = MaterializationState(
+            id=1,
+            active_revision_id=None,
+            active_import_run_id=None,
+            epoch=0,
+            materialization_sha256=None,
+            serving_counts={},
+        )
+        session.add(state)
+        session.flush()
+    return state
+
+
+def _clear_serving_mirror(session: Session) -> None:
+    """Remove only typed serving rows, in FK-safe order, inside the activation transaction."""
+
+    for model in (
+        TimelineStep,
+        OperationTimeline,
+        TeamMember,
+        TeamEvidence,
+        StageEvidence,
+        StageClaim,
+        ClaimEvidence,
+        Team,
+        Stage,
+        Evidence,
+        Claim,
+        Character,
+    ):
+        session.execute(delete(model))
+    session.flush()
+
+
+def _serving_counts(materialization: dict[str, Any]) -> dict[str, int]:
+    tables = materialization.get("tables")
+    if not isinstance(tables, dict):
+        raise MirrorDriftError("typed materialization has no table manifest")
+    counts: dict[str, int] = {}
+    for table_name, table_manifest in tables.items():
+        if not isinstance(table_manifest, dict) or not isinstance(
+            table_manifest.get("primary_keys"), list
+        ):
+            raise MirrorDriftError(
+                f"typed materialization table is malformed: {table_name}"
+            )
+        counts[table_name] = len(table_manifest["primary_keys"])
+    return counts
+
+
+def _import_result(
+    *,
+    run: ImportRun,
+    snapshot: ResearchCoreSnapshot,
+    created: bool,
+    activated: bool,
+) -> ImportResult:
+    return ImportResult(
+        import_run_id=run.id,
+        fixture_sha256=run.fixture_sha256,
+        created=created,
+        activated=activated,
+        revision_id=snapshot.revision_id,
+        raw_tree_sha256=snapshot.raw_tree_sha256,
+        semantic_tree_sha256=snapshot.semantic_tree_sha256,
+        file_count=len(snapshot.files),
+        csv_file_count=len(snapshot.csv_files),
+        csv_row_count=snapshot.csv_row_count,
+        row_counts=dict(run.row_counts),
+        warnings=tuple(run.manifest.get("warnings", [])),
+    )
+
+
+def _initial_import_sequence(session: Session, revision_id: str) -> int:
+    sequence_no = session.scalar(
+        select(func.min(RevisionActivation.sequence_no)).where(
+            RevisionActivation.to_revision_id == revision_id,
+            RevisionActivation.kind == "IMPORT",
+        )
+    )
+    if sequence_no is None:
+        raise MirrorDriftError(
+            f"revision activation chronology is incomplete: {revision_id}"
+        )
+    return int(sequence_no)
+
+
+def _activation_kind(
+    session: Session,
+    *,
+    created: bool,
+    previous_revision_id: str | None,
+    target_revision_id: str,
+) -> str:
+    if created:
+        return "IMPORT"
+    if previous_revision_id is None or previous_revision_id == target_revision_id:
+        raise MirrorDriftError("existing revision activation has no distinct active predecessor")
+    previous_sequence = _initial_import_sequence(session, previous_revision_id)
+    target_sequence = _initial_import_sequence(session, target_revision_id)
+    if target_sequence < previous_sequence:
+        return "ROLLBACK"
+    if target_sequence > previous_sequence:
+        return "REACTIVATE"
+    raise MirrorDriftError("distinct revisions share an initial-import chronology position")
+
+
 def import_fire_8_10(
     session: Session,
     research_core: Path,
     *,
+    manifest_path: Path = DEFAULT_MANIFEST,
+    expected_manifest_sha256: str = EXPECTED_MANIFEST_SHA256,
     application_version: str = APPLICATION_VERSION,
     now: datetime | None = None,
 ) -> ImportResult:
-    """Validate and import the exact Fire Deep Zone 8-10 closure atomically.
+    """Atomically activate a full-core revision and its typed Fire 8-10 closure.
 
-    Parsing and all cross-registry checks happen before the transaction. No dummy
-    Claim is created for an Evidence row whose declared Claim is absent.
+    All file/row and selected-domain validation happens before any database write.
+    The active pointer is switched only after artifact parity, typed parity and the
+    immutable ImportRun manifest have all been verified in the same transaction.
     """
 
+    # Keep the domain validator first so malformed selected facts retain precise
+    # errors; a valid candidate must then also match the independently pinned full tree.
     closure = load_fire_8_10_closure(research_core)
+    snapshot = load_research_core_snapshot(
+        research_core,
+        manifest_path,
+        expected_manifest_sha256=expected_manifest_sha256,
+    )
+    changed_source_files = [
+        relative
+        for relative in SOURCE_FILES
+        if closure.file_hashes.get(relative) != snapshot.file(relative).sha256
+    ]
+    if changed_source_files:
+        raise FixtureValidationError(
+            "source files changed during import snapshot capture: "
+            f"{changed_source_files}"
+        )
     row_counts = _counts(closure)
     imported_at = now or datetime.now(timezone.utc)
-    run_id = str(uuid4())
 
     with session.begin():
+        _acquire_import_lock(session)
+        state = _materialization_state(session)
         previous = session.scalar(
-            select(ImportRun).where(ImportRun.fixture_sha256 == closure.fingerprint)
+            select(ImportRun).where(ImportRun.fixture_sha256 == snapshot.raw_tree_sha256)
         )
         if previous is not None:
             if previous.status != "SUCCEEDED":
-                raise MirrorDriftError("fixture fingerprint exists without a successful import")
-            _assert_materialized(session, closure)
-            drift_reason = materialization_drift_reason(
-                previous.manifest.get("materialization"),
-                build_materialization_manifest(session),
-            )
-            if drift_reason is not None:
-                raise MirrorDriftError(
-                    f"idempotent fixture complete closure drifted: {drift_reason}"
+                raise MirrorDriftError("revision fingerprint exists without a successful import")
+            revision = session.get(CoreRevision, snapshot.revision_id)
+            if revision is None or revision.import_run_id != previous.id:
+                raise MirrorDriftError("revision/import provenance is incomplete")
+            assert_materialized_snapshot(session, snapshot)
+            if (
+                state.active_revision_id == snapshot.revision_id
+                and state.active_import_run_id == previous.id
+            ):
+                _assert_materialized(session, closure)
+                actual_materialization = build_materialization_manifest(session)
+                drift_reason = materialization_drift_reason(
+                    previous.manifest.get("materialization"),
+                    actual_materialization,
                 )
-            return ImportResult(
-                import_run_id=previous.id,
-                fixture_sha256=closure.fingerprint,
-                created=False,
-                row_counts=dict(previous.row_counts),
-                warnings=tuple(previous.manifest.get("warnings", [])),
-            )
-
-        other_successful_run = session.scalar(
-            select(ImportRun.id).where(ImportRun.status == "SUCCEEDED").limit(1)
-        )
-        if other_successful_run is not None:
-            raise MirrorDriftError(
-                "B0 read mirror contains a different fixture fingerprint; "
-                "rebuild the disposable mirror instead of partially updating it"
-            )
+                if drift_reason is not None:
+                    raise MirrorDriftError(
+                        f"idempotent revision complete closure drifted: {drift_reason}"
+                    )
+                expected_sha256 = actual_materialization.get("sha256")
+                expected_counts = _serving_counts(actual_materialization)
+                if (
+                    not isinstance(expected_sha256, str)
+                    or revision.materialization_sha256 != expected_sha256
+                    or state.materialization_sha256 != expected_sha256
+                    or state.serving_counts != expected_counts
+                ):
+                    raise MirrorDriftError("idempotent active materialization digest drifted")
+                return _import_result(
+                    run=previous,
+                    snapshot=snapshot,
+                    created=False,
+                    activated=False,
+                )
+            run = previous
+            run_id = run.id
+            created = False
+        else:
+            run_id = str(uuid4())
+            created = True
 
         warnings: tuple[str, ...] = ()
-        run = ImportRun(
-            id=run_id,
-            fixture_sha256=closure.fingerprint,
-            canonical_source=CANONICAL_SOURCE,
-            research_core_version=str(closure.stats.get("project_version", "UNKNOWN")),
-            application_version=application_version,
-            imported_at=imported_at,
-            status="RUNNING",
-            manifest={
-                "target_guide_id": TARGET_GUIDE_ID,
-                "input_file_sha256": closure.file_hashes,
-                "stats": closure.stats,
-                "warnings": list(warnings),
-            },
-            row_counts=row_counts,
-        )
-        session.add(run)
-        session.flush()
+        if created:
+            run = ImportRun(
+                id=run_id,
+                fixture_sha256=snapshot.raw_tree_sha256,
+                canonical_source=CANONICAL_SOURCE,
+                research_core_version=str(closure.stats.get("project_version", "UNKNOWN")),
+                application_version=application_version,
+                imported_at=imported_at,
+                status="RUNNING",
+                manifest={
+                    "target_guide_id": TARGET_GUIDE_ID,
+                    "selected_fixture_sha256": closure.fingerprint,
+                    "selected_input_file_sha256": closure.file_hashes,
+                    "core_revision": snapshot.report().as_dict(),
+                    "stats": closure.stats,
+                    "warnings": list(warnings),
+                },
+                row_counts=row_counts,
+            )
+            session.add(run)
+            session.flush()
+            materialize_snapshot(session, snapshot, import_run_id=run_id)
+
+        # A revision switch is a full replacement, never a partial upsert. Any
+        # later error rolls these deletes and the previous active pointer back.
+        _clear_serving_mirror(session)
 
         for row in closure.claims:
             _upsert(
@@ -1276,17 +1484,88 @@ def import_fire_8_10(
         session.flush()
 
         _assert_materialized(session, closure)
-        run.manifest = {
-            **run.manifest,
-            "materialization": build_materialization_manifest(session),
-        }
-        run.status = "SUCCEEDED"
+        materialization = build_materialization_manifest(session)
+        materialization_sha256 = materialization.get("sha256")
+        if not isinstance(materialization_sha256, str):
+            raise MirrorDriftError("typed materialization has no SHA-256")
+        serving_counts = _serving_counts(materialization)
+
+        if created:
+            run.manifest = {
+                **run.manifest,
+                "materialization": materialization,
+                "serving_row_counts": serving_counts,
+            }
+            run.status = "SUCCEEDED"
+            finalize_materialized_snapshot(
+                session,
+                snapshot,
+                import_run_id=run_id,
+                typed_materialization_sha256=materialization_sha256,
+            )
+        else:
+            drift_reason = materialization_drift_reason(
+                run.manifest.get("materialization"),
+                materialization,
+            )
+            if drift_reason is not None:
+                raise MirrorDriftError(
+                    f"reactivated revision typed closure drifted: {drift_reason}"
+                )
+            revision = session.get(CoreRevision, snapshot.revision_id)
+            if (
+                revision is None
+                or revision.status != "SUCCEEDED"
+                or revision.materialization_sha256 != materialization_sha256
+            ):
+                raise MirrorDriftError("reactivated revision metadata drifted")
         session.flush()
 
-    return ImportResult(
-        import_run_id=run_id,
-        fixture_sha256=closure.fingerprint,
-        created=True,
-        row_counts=row_counts,
-        warnings=warnings,
-    )
+        # Epoch triggers have now observed every artifact/typed/run write. Refresh
+        # before reserving the activation epoch, then append audit and switch last.
+        session.refresh(state)
+        next_epoch = state.epoch + 1
+        previous_revision_id = state.active_revision_id
+        sequence_no = (
+            session.scalar(select(func.max(RevisionActivation.sequence_no))) or 0
+        ) + 1
+        activation_kind = _activation_kind(
+            session,
+            created=created,
+            previous_revision_id=previous_revision_id,
+            target_revision_id=snapshot.revision_id,
+        )
+        session.add(
+            RevisionActivation(
+                activation_id=str(uuid4()),
+                sequence_no=sequence_no,
+                from_revision_id=previous_revision_id,
+                to_revision_id=snapshot.revision_id,
+                kind=activation_kind,
+                reason={
+                    "IMPORT": "activate manifest-pinned full-core import",
+                    "ROLLBACK": "rollback to earlier verified immutable revision",
+                    "REACTIVATE": "reactivate later verified immutable revision",
+                }[activation_kind],
+                actor="pcr_pipeline.import_pve",
+                activated_at=imported_at,
+                epoch=next_epoch,
+            )
+        )
+        session.flush()
+
+        state.active_revision_id = snapshot.revision_id
+        state.active_import_run_id = run_id
+        state.epoch = next_epoch
+        state.materialization_sha256 = materialization_sha256
+        state.serving_counts = serving_counts
+        state.updated_at = imported_at
+        session.flush()
+        result = _import_result(
+            run=run,
+            snapshot=snapshot,
+            created=created,
+            activated=True,
+        )
+
+    return result

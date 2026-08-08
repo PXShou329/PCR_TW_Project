@@ -19,19 +19,21 @@
 2. ✅ B0b：紅焰 8-10 完整三隊 closure → DB mirror → API → Web → Evidence Drawer。
 3. ✅ I0：逐筆裁決七個 Evidence→Claim 懸空引用，新增 Validator 與 Mutation。
 4. ✅ A2＋B2：file-SSOT 結構化操作軸與真實深域垂直切片。
-5. B1：完整 importer／exporter／round-trip parity。
+5. ✅ B1：完整 importer／exporter／round-trip parity；資料邊界見
+   [`ADR-0004`](ADR-0004-full-core-round-trip.md)。
 6. A3–A6 與 B3–B5 配對完成 PVE、Gacha、Arena、P-Arena。
 7. B6 Shadow → B7 Review／Audit／Rollback。
 8. A7：Data Gate A／B／C PASS。
 9. B8：writable SSOT 原子切換。
 10. B9／B10：效能、安全、備援與 Production Gate G。
 
-## B0 明確保留的非阻斷債務
+## B1 明確保留的非阻斷債務
 
-- B1 將每請求完整重算 closure manifest 改為 revision-aware cache，同時保留
-  fail-closed 語意。
-- 將策略路由的 DB unavailable 例外統一為結構化 503；目前不會洩漏或回傳漂移
-  資料，但連線層錯誤仍由框架形成一般 500。
+- B1 已導入 revision-aware cache、嚴格單調 epoch 與 `REPEATABLE READ`，同時保留
+  core／typed drift 的 fail-closed 語意。
+- B1 已將策略路由的 DB unavailable／mirror drift 統一為結構化 503；Production Gate
+  前仍需加入不含 secret 的 structured root-cause class／path／correlation id，避免
+  `--no-access-log` 環境缺少可診斷訊號。
 - Production Gate 前以 OpenAPI generator 取代手寫 client types，並產生 Python
   transitive dependency lock／SBOM；B0 先以可執行 schema parity check 守住漂移。
 
@@ -41,7 +43,7 @@
   TM-F810-03 為 `SOURCE_GAP 0/1`；局部來源軸不會被合併成虛構共識軸。
 - PostgreSQL read mirror 新增 8 條 timeline、14 個 atomic steps；import replay、
   完整 fixture fingerprint 與 serving-boundary drift 均 fail-closed。
-- 下一固定里程碑為 B1 round-trip parity；Data Gate A／B／C 與 Gates D–G 仍未宣稱通過。
+- 下一固定里程碑為 A3＋B3；Data Gate A／B／C 與 Gates D–G 仍未宣稱通過。
 - 回滾點：A2 research core 使用 `rp-a2-2`；A2＋B2 通過 Compose CI 的完整切片使用
   `rp-a2-b2-2`。`rp-a2-b2-1` 僅保留作 CI parity 修正前的稽核 checkpoint。
 

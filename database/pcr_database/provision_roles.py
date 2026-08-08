@@ -1,9 +1,10 @@
-"""Idempotently provision least-privilege B0 PostgreSQL service roles.
+"""Idempotently provision least-privilege PostgreSQL service roles.
 
 Alembic remains the only schema owner. The importer can write the serving
-mirror, the API can only read it, and the scheduler can only touch its two
-control tables. Passwords are accepted from environment variables and are
-never emitted to stdout or logs.
+and full artifact mirrors except for append-only activation history, the API
+can only read them, and the scheduler can only touch its two control tables.
+Passwords are accepted from environment variables and are never emitted to
+stdout or logs.
 """
 
 from __future__ import annotations
@@ -16,7 +17,7 @@ import psycopg
 from psycopg import sql
 
 
-SERVING_TABLES = (
+TYPED_SERVING_TABLES = (
     "import_runs",
     "characters",
     "claims",
@@ -31,6 +32,15 @@ SERVING_TABLES = (
     "operation_timelines",
     "timeline_steps",
 )
+CORE_MIRROR_TABLES = (
+    "core_revisions",
+    "core_files",
+    "core_csv_rows",
+    "materialization_state",
+)
+APPEND_ONLY_TABLES = ("revision_activations",)
+MUTABLE_MIRROR_TABLES = TYPED_SERVING_TABLES + CORE_MIRROR_TABLES
+SERVING_TABLES = MUTABLE_MIRROR_TABLES + APPEND_ONLY_TABLES
 SCHEDULER_TABLES = ("scheduler_leases", "scheduler_runs")
 
 
@@ -55,9 +65,29 @@ def _ensure_login_role(cursor: psycopg.Cursor, role: ServiceRole) -> None:
     cursor.execute(
         sql.SQL(
             f"{action} {{}} WITH LOGIN PASSWORD {{}} "
-            "NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION"
+            "NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS"
         ).format(sql.Identifier(role.name), sql.Literal(role.password))
     )
+
+
+def _revoke_role_memberships(cursor: psycopg.Cursor, role_name: str) -> None:
+    """Remove inherited/SET ROLE privilege paths from a drifted service role."""
+
+    cursor.execute(
+        "SELECT parent.rolname "
+        "FROM pg_auth_members membership "
+        "JOIN pg_roles parent ON parent.oid = membership.roleid "
+        "JOIN pg_roles member ON member.oid = membership.member "
+        "WHERE member.rolname = %s",
+        (role_name,),
+    )
+    for (parent_role,) in cursor.fetchall():
+        cursor.execute(
+            sql.SQL("REVOKE {} FROM {}").format(
+                sql.Identifier(parent_role),
+                sql.Identifier(role_name),
+            )
+        )
 
 
 def _table_list(names: tuple[str, ...]) -> sql.Composed:
@@ -83,6 +113,7 @@ def provision_roles(
             owner = cursor.fetchone()[0]
             for role in roles.values():
                 _ensure_login_role(cursor, role)
+                _revoke_role_memberships(cursor, role.name)
                 cursor.execute(
                     sql.SQL("REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public FROM {}")
                     .format(sql.Identifier(role.name))
@@ -114,7 +145,14 @@ def provision_roles(
             )
             cursor.execute(
                 sql.SQL("GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE {} TO {}").format(
-                    _table_list(SERVING_TABLES), sql.Identifier(roles["importer"].name)
+                    _table_list(MUTABLE_MIRROR_TABLES),
+                    sql.Identifier(roles["importer"].name),
+                )
+            )
+            cursor.execute(
+                sql.SQL("GRANT SELECT, INSERT ON TABLE {} TO {}").format(
+                    _table_list(APPEND_ONLY_TABLES),
+                    sql.Identifier(roles["importer"].name),
                 )
             )
             cursor.execute(
@@ -126,8 +164,11 @@ def provision_roles(
     return {
         "status": "SERVICE_ROLES_READY",
         "roles": {key: value.name for key, value in roles.items()},
-        "api_permissions": ["SELECT serving mirror"],
-        "importer_permissions": ["SELECT/INSERT/UPDATE/DELETE serving mirror"],
+        "api_permissions": ["SELECT typed and artifact mirror"],
+        "importer_permissions": [
+            "SELECT/INSERT/UPDATE/DELETE mutable mirror",
+            "SELECT/INSERT revision activations",
+        ],
         "scheduler_permissions": ["SELECT/INSERT/UPDATE scheduler control"],
     }
 

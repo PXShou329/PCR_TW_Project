@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pcr-tw-strategy-platform"
-version = "3.0.0b0"
+version = "3.0.0b1"
 description = "Guide-only PCR TW strategy platform walking skeleton"
 requires-python = ">=3.12,<3.14"
 dependencies = [
@@ -24,7 +24,7 @@ dev = [
 
 [tool.pytest.ini_options]
 addopts = "-q --strict-markers --strict-config"
-testpaths = ["tests/api", "tests/importer", "tests/database", "apps/scheduler/tests"]
+testpaths = ["tests/api", "tests/importer", "tests/database", "tests/operations", "apps/scheduler/tests"]
 pythonpath = ["apps/api", "data_pipeline", "database", "apps/scheduler/src"]
 
 [tool.coverage.run]

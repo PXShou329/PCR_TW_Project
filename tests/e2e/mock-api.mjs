@@ -105,8 +105,12 @@ const meta = (warnings = []) => ({
     canonical_source: "research_core_file_ssot",
     fixture_sha256: "a".repeat(64),
     import_run_id: "00000000-0000-4000-8000-000000000001",
+    revision_id: "a".repeat(64),
     imported_at: "2026-08-08T00:00:00Z",
     research_core_version: "v1.5",
+    raw_tree_sha256: "a".repeat(64),
+    semantic_tree_sha256: "c".repeat(64),
+    materialization_sha256: "d".repeat(64),
   },
   warnings,
 });
@@ -115,7 +119,7 @@ const envelope = (data, warnings = []) => ({ data, meta: meta(warnings) });
 
 const baseline = envelope({
   research_core_version: "v1.5",
-  application_version: "3.0.0-b0",
+  application_version: "3.0.0-b1",
   canonical_source: "research_core_file_ssot",
   generated_at: "2026-08-08T00:00:00Z",
   counts: {

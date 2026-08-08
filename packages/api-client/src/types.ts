@@ -14,8 +14,12 @@ export interface SourceMetadata {
   canonical_source: string;
   fixture_sha256: string;
   import_run_id: string;
+  revision_id: string;
   imported_at: string;
   research_core_version: string;
+  raw_tree_sha256: string;
+  semantic_tree_sha256: string;
+  materialization_sha256: string;
 }
 
 export interface ApiMetadata {
@@ -292,7 +296,7 @@ export interface ApiProblem {
   detail?: {
     code?: string;
     resource?: string;
-    id?: string;
+    id?: string | null;
     reason?: string;
   };
 }

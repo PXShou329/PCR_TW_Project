@@ -1,6 +1,6 @@
 # 公主連結台服 AI 攻略研究所
 
-Guide-Only Strategy Platform v3.0 的 A2＋B2 operation-timeline 垂直切片。這是一個可部署的
+Guide-Only Strategy Platform v3.0 的 B1 full-core round-trip 里程碑。這是一個可部署的
 **本機／私人 staging**，不是公開正式版，也尚未宣稱 Gates D–G 通過。
 
 目前端到端垂直切片以「紅焰深域 8-10」為例，提供三支實際通關隊伍、逐 Slot
@@ -11,7 +11,7 @@ Guide-Only Strategy Platform v3.0 的 A2＋B2 operation-timeline 垂直切片。
 
 - `research_core/pcr_tw_project/` 是唯一 canonical source；目前 RP-A2 的 48 個檔案
   由 `scripts/research_core_rp_a2_manifest.sha256` 逐檔 SHA-256 鎖定。
-- PostgreSQL 只是可重建的 read mirror，不會回寫 research core。
+- PostgreSQL 是可重建的 immutable multi-revision read mirror，不會回寫 research core。
 - 台服是攻略主體；日服只作未來視與可轉用研究。中國服／B 服資料不作核心、
   替代或補洞依據。
 - 不含帳號匯入、roster／owned、個人寶石或個人化推薦，也不登入或操作遊戲。
@@ -23,7 +23,7 @@ Guide-Only Strategy Platform v3.0 的 A2＋B2 operation-timeline 垂直切片。
 ```mermaid
 flowchart LR
   RC["R3i research core\nFile SSOT"] --> IM["Fail-closed importer"]
-  IM --> DB["PostgreSQL\nread mirror"]
+  IM --> DB["PostgreSQL\nimmutable revision mirror"]
   DB --> API["FastAPI read API"]
   API --> WEB["Next.js Web UI"]
   SCH["Disabled shadow scheduler"] --> CTRL["Scheduler control tables only"]
@@ -52,11 +52,11 @@ python tools/validate_project.py --mode ARTIFACT_READY
 python tools/mutation_test.py
 ```
 
-目前預期 ARTIFACT_READY 仍以 exit 1 誠實揭露 Gate A／B／C 三項缺口；B2 不會為了
+目前預期 ARTIFACT_READY 仍以 exit 1 誠實揭露 Gate A／B／C 三項缺口；本里程碑不會為了
 讓測試變綠而降低研究 Gate。
 
-A2＋B2 的實際五命令、Mutation、PostgreSQL、瀏覽器與 E2E 輸出見
-[`docs/operations/A2_B2_VERIFICATION_REPORT.md`](docs/operations/A2_B2_VERIFICATION_REPORT.md)。
+B1 的實際五命令、round-trip、PostgreSQL、瀏覽器、E2E 與 restore 輸出見
+[`docs/operations/B1_VERIFICATION_REPORT.md`](docs/operations/B1_VERIFICATION_REPORT.md)。
 
 ## 啟動本機私人堆疊
 
@@ -75,6 +75,6 @@ docker compose --env-file .env -f infra/compose.yml up --build --wait
 - API readiness：<http://127.0.0.1:8000/health/ready>
 - Scheduler health：<http://127.0.0.1:8081/health>
 
-完整的權限實測、scheduler smoke、備份還原與回滾流程請依
-[`docs/operations/B0_RUNBOOK.md`](docs/operations/B0_RUNBOOK.md)；架構決策與後續
+完整的權限實測、scheduler smoke、備份還原與原子回滾流程請依
+[`docs/operations/B1_RUNBOOK.md`](docs/operations/B1_RUNBOOK.md)；架構決策與後續
 依賴順序見 [`docs/architecture/INTEGRATED_ROADMAP.md`](docs/architecture/INTEGRATED_ROADMAP.md)。

@@ -4,6 +4,8 @@ from collections.abc import Callable
 
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, sessionmaker
 
 from .config import Settings
@@ -34,6 +36,30 @@ def create_app(
         allow_headers=["Accept", "Content-Type"],
         max_age=600,
     )
+
+    @app.exception_handler(SQLAlchemyError)
+    async def database_unavailable(
+        request: Request,
+        _error: SQLAlchemyError,
+    ) -> JSONResponse:
+        if request.url.path == "/health/ready":
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "status": "not_ready",
+                    "checks": {"database": "error", "fixture": "unknown"},
+                },
+            )
+        return JSONResponse(
+            status_code=503,
+            content={
+                "detail": {
+                    "code": "DATABASE_UNAVAILABLE",
+                    "resource": "database",
+                    "id": None,
+                }
+            },
+        )
 
     @app.middleware("http")
     async def security_headers(request: Request, call_next: Callable) -> Response:

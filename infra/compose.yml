@@ -1,4 +1,4 @@
-name: pcr-tw-b0
+name: pcr-tw-b1
 
 x-python-security: &python-security
   read_only: true
@@ -40,9 +40,7 @@ services:
 
   migration:
     <<: *python-security
-    build:
-      context: ..
-      dockerfile: infra/docker/api.Dockerfile
+    image: ${PCR_API_IMAGE:-pcr-tw-platform-api:local}
     command: ["alembic", "-c", "database/alembic.ini", "upgrade", "head"]
     environment:
       <<: *owner-database-environment
@@ -56,9 +54,7 @@ services:
 
   role-provision:
     <<: *python-security
-    build:
-      context: ..
-      dockerfile: infra/docker/api.Dockerfile
+    image: ${PCR_API_IMAGE:-pcr-tw-platform-api:local}
     command: ["python", "-m", "pcr_database.provision_roles"]
     environment:
       PCR_OWNER_DATABASE_URL: postgresql://${POSTGRES_USER:-pcr_owner}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in a local .env file}@db:5432/${POSTGRES_DB:-pcr_tw}
@@ -75,9 +71,7 @@ services:
 
   importer:
     <<: *python-security
-    build:
-      context: ..
-      dockerfile: infra/docker/api.Dockerfile
+    image: ${PCR_API_IMAGE:-pcr-tw-platform-api:local}
     command:
       - python
       - -m
@@ -94,15 +88,122 @@ services:
     networks:
       - backend
 
+  round-trip-smoke:
+    <<: *python-security
+    profiles: [verification]
+    image: ${PCR_API_IMAGE:-pcr-tw-platform-api:local}
+    command:
+      - python
+      - -m
+      - pcr_pipeline.verify_round_trip
+      - --research-core
+      - research_core/pcr_tw_project
+      - --manifest
+      - scripts/research_core_rp_a2_manifest.sha256
+      - --run-baseline
+    environment:
+      PCR_DATABASE_URL: postgresql+psycopg://pcr_api:${PCR_API_DB_PASSWORD:?Set a distinct PCR_API_DB_PASSWORD in .env}@db:5432/${POSTGRES_DB:-pcr_tw}
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONUNBUFFERED: "1"
+    depends_on:
+      importer:
+        condition: service_completed_successfully
+    restart: "no"
+    networks:
+      - backend
+
+  consistency-smoke:
+    <<: *python-security
+    profiles: [verification]
+    image: ${PCR_API_IMAGE:-pcr-tw-platform-api:local}
+    command: ["python", "-m", "pcr_pipeline.repeatable_read_smoke"]
+    environment:
+      PCR_API_DATABASE_URL: postgresql+psycopg://pcr_api:${PCR_API_DB_PASSWORD:?Set a distinct PCR_API_DB_PASSWORD in .env}@db:5432/${POSTGRES_DB:-pcr_tw}
+      PCR_IMPORTER_DATABASE_URL: postgresql+psycopg://pcr_importer:${PCR_IMPORTER_DB_PASSWORD:?Set a distinct PCR_IMPORTER_DB_PASSWORD in .env}@db:5432/${POSTGRES_DB:-pcr_tw}
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONUNBUFFERED: "1"
+    depends_on:
+      importer:
+        condition: service_completed_successfully
+    restart: "no"
+    networks:
+      - backend
+
+  cache-epoch-smoke:
+    <<: *python-security
+    profiles: [verification]
+    image: ${PCR_API_IMAGE:-pcr-tw-platform-api:local}
+    command: ["python", "-m", "pcr_pipeline.cache_epoch_smoke"]
+    environment:
+      PCR_API_BASE_URL: http://api:8000
+      PCR_IMPORTER_DATABASE_URL: postgresql+psycopg://pcr_importer:${PCR_IMPORTER_DB_PASSWORD:?Set a distinct PCR_IMPORTER_DB_PASSWORD in .env}@db:5432/${POSTGRES_DB:-pcr_tw}
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONUNBUFFERED: "1"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: "no"
+    networks:
+      - backend
+
+  artifact-lock-smoke:
+    <<: *python-security
+    profiles: [verification]
+    image: ${PCR_API_IMAGE:-pcr-tw-platform-api:local}
+    command: ["python", "-m", "pcr_pipeline.artifact_lock_smoke"]
+    environment:
+      PCR_IMPORTER_DATABASE_URL: postgresql+psycopg://pcr_importer:${PCR_IMPORTER_DB_PASSWORD:?Set a distinct PCR_IMPORTER_DB_PASSWORD in .env}@db:5432/${POSTGRES_DB:-pcr_tw}
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONUNBUFFERED: "1"
+    depends_on:
+      importer:
+        condition: service_completed_successfully
+    restart: "no"
+    networks:
+      - backend
+
+  revision-history-smoke:
+    <<: *python-security
+    profiles: [verification]
+    image: ${PCR_API_IMAGE:-pcr-tw-platform-api:local}
+    command: ["python", "-m", "pcr_pipeline.revision_history_smoke"]
+    environment:
+      PCR_DATABASE_URL: postgresql+psycopg://pcr_importer:${PCR_IMPORTER_DB_PASSWORD:?Set a distinct PCR_IMPORTER_DB_PASSWORD in .env}@db:5432/${POSTGRES_DB:-pcr_tw}
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONUNBUFFERED: "1"
+    depends_on:
+      importer:
+        condition: service_completed_successfully
+    restart: "no"
+    networks:
+      - backend
+
+  revision-history-verify:
+    <<: *python-security
+    profiles: [verification]
+    image: ${PCR_API_IMAGE:-pcr-tw-platform-api:local}
+    command: ["python", "-m", "pcr_pipeline.verify_revision_history"]
+    environment:
+      PCR_DATABASE_URL: postgresql+psycopg://pcr_api:${PCR_API_DB_PASSWORD:?Set a distinct PCR_API_DB_PASSWORD in .env}@db:5432/${POSTGRES_DB:-pcr_tw}
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONUNBUFFERED: "1"
+    depends_on:
+      importer:
+        condition: service_completed_successfully
+    restart: "no"
+    networks:
+      - backend
+
   api:
     <<: *python-security
+    image: ${PCR_API_IMAGE:-pcr-tw-platform-api:local}
     build:
       context: ..
       dockerfile: infra/docker/api.Dockerfile
     restart: unless-stopped
     environment:
       PCR_DATABASE_URL: postgresql+psycopg://pcr_api:${PCR_API_DB_PASSWORD:?Set a distinct PCR_API_DB_PASSWORD in .env}@db:5432/${POSTGRES_DB:-pcr_tw}
-      PCR_APPLICATION_VERSION: 3.0.0-b0
+      PCR_APPLICATION_VERSION: 3.0.0-b1
       PCR_RESEARCH_CORE_VERSION: "1.5"
       PYTHONDONTWRITEBYTECODE: "1"
       PYTHONUNBUFFERED: "1"
@@ -137,6 +238,7 @@ services:
 
   scheduler:
     <<: *python-security
+    image: ${PCR_SCHEDULER_IMAGE:-pcr-tw-platform-scheduler:local}
     build:
       context: ..
       dockerfile: infra/docker/scheduler.Dockerfile
@@ -175,9 +277,7 @@ services:
   scheduler-smoke:
     <<: *python-security
     profiles: [verification]
-    build:
-      context: ..
-      dockerfile: infra/docker/scheduler.Dockerfile
+    image: ${PCR_SCHEDULER_IMAGE:-pcr-tw-platform-scheduler:local}
     entrypoint: ["python", "-m", "pcr_scheduler.smoke"]
     environment:
       DATABASE_URL: postgresql://pcr_scheduler:${PCR_SCHEDULER_DB_PASSWORD:?Set a distinct PCR_SCHEDULER_DB_PASSWORD in .env}@db:5432/${POSTGRES_DB:-pcr_tw}

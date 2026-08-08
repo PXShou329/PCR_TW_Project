@@ -12,8 +12,12 @@ All public strategy endpoints are read-only `GET` endpoints and return:
       "canonical_source": "research_core_file_ssot",
       "fixture_sha256": "<64 lowercase hex>",
       "import_run_id": "<uuid>",
+      "revision_id": "<64 lowercase hex>",
       "imported_at": "2026-08-08T00:00:00Z",
-      "research_core_version": "v1.5"
+      "research_core_version": "v1.5",
+      "raw_tree_sha256": "<64 lowercase hex>",
+      "semantic_tree_sha256": "<64 lowercase hex>",
+      "materialization_sha256": "<64 lowercase hex>"
     },
     "warnings": []
   }
@@ -72,9 +76,10 @@ Unknown resources return `404` with:
 {"detail":{"code":"NOT_FOUND","resource":"team","id":"..."}}
 ```
 
-Every `/api/v1/*` request first verifies the complete materialization manifest.
-If any normalized row or relation link differs from the successful ImportRun,
-the API returns `503` and does not serialize strategy data:
+Every `/api/v1/*` request first resolves the active revision pointer, verifies
+the full-core file/CSV-row mirror, and verifies the complete typed serving
+materialization. If any revision, artifact, normalized row, or relation link
+drifts, the API returns `503` and does not serialize strategy data:
 
 ```json
 {
@@ -87,6 +92,10 @@ the API returns `503` and does not serialize strategy data:
 }
 ```
 
+Database connectivity/query failures use one strategy-route envelope with
+`503` and `detail.code=DATABASE_UNAVAILABLE`; `/health/ready` remains a
+`HealthResponse` with `database=error` and `fixture=unknown`.
+
 The running FastAPI application publishes the executable OpenAPI contract at
 `/openapi.json`.
 
@@ -97,7 +106,7 @@ nullability against `packages/api-client/src/types.ts`, and fails closed on
 drift. Set `PCR_OPENAPI_PYTHON` only when the project Python interpreter cannot
 be discovered automatically.
 
-Browser access uses an explicit read-only CORS allowlist. B0 defaults to
+Browser access uses an explicit read-only CORS allowlist. B1 defaults to
 `http://localhost:3000` and `http://127.0.0.1:3000`; deployments may replace it
 with the comma-separated `PCR_CORS_ORIGINS` environment value. Wildcards,
 credentialed requests, and non-GET preflights are rejected.

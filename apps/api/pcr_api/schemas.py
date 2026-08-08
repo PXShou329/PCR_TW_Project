@@ -2,18 +2,26 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from typing import Annotated, Any, Generic, Literal, TypeAlias, TypeVar
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
+
+
+Sha256Hex: TypeAlias = Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
 
 
 class SourceMeta(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     canonical_source: str
-    fixture_sha256: str
-    import_run_id: str
+    fixture_sha256: Sha256Hex
+    import_run_id: UUID
+    revision_id: Sha256Hex
     imported_at: datetime
     research_core_version: str
+    raw_tree_sha256: Sha256Hex
+    semantic_tree_sha256: Sha256Hex
+    materialization_sha256: Sha256Hex
 
 
 class ResponseMeta(BaseModel):

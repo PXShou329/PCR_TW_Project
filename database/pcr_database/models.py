@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import Any
 
 from sqlalchemy import (
     JSON,
+    BigInteger,
     Boolean,
     CheckConstraint,
     Date,
@@ -13,13 +14,17 @@ from sqlalchemy import (
     ForeignKeyConstraint,
     Index,
     Integer,
+    LargeBinary,
     MetaData,
     String,
     Text,
     UniqueConstraint,
+    event,
+    inspect,
+    select,
 )
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
 
 
 NAMING_CONVENTION = {
@@ -31,6 +36,9 @@ NAMING_CONVENTION = {
 }
 
 json_type = JSON().with_variant(JSONB(), "postgresql")
+nullable_json_type = JSON(none_as_null=True).with_variant(
+    JSONB(none_as_null=True), "postgresql"
+)
 
 
 class Base(DeclarativeBase):
@@ -46,12 +54,241 @@ class ImportRun(Base):
     research_core_version: Mapped[str] = mapped_column(String(40), nullable=False)
     application_version: Mapped[str] = mapped_column(String(40), nullable=False)
     imported_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, active_history=True
+    )
     manifest: Mapped[dict[str, Any]] = mapped_column(json_type, nullable=False)
     row_counts: Mapped[dict[str, int]] = mapped_column(json_type, nullable=False)
 
     __table_args__ = (
         CheckConstraint("status IN ('RUNNING','SUCCEEDED','FAILED')", name="import_status"),
+    )
+
+
+class CoreRevision(Base):
+    """Immutable full research-core artifact revision metadata.
+
+    The file SSOT remains writable through B7.  A revision therefore records a
+    lossless database mirror and its parity fingerprints; activation is kept in
+    ``MaterializationState`` instead of being inferred from timestamps.
+    """
+
+    __tablename__ = "core_revisions"
+
+    revision_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    import_run_id: Mapped[str | None] = mapped_column(
+        ForeignKey("import_runs.id", ondelete="RESTRICT"), nullable=True, unique=True
+    )
+    raw_tree_sha256: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    semantic_tree_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    manifest_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    materialization_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    file_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    csv_file_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    csv_row_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    evidence_to_claim_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    evidence_to_claim_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    claim_to_evidence_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    claim_to_evidence_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, active_history=True
+    )
+    manifest: Mapped[dict[str, Any]] = mapped_column(json_type, nullable=False, default=dict)
+    project_version: Mapped[str] = mapped_column(String(40), nullable=False, default="UNKNOWN")
+    serialization_version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+    __table_args__ = (
+        CheckConstraint("length(raw_tree_sha256) = 64", name="core_revision_raw_hash"),
+        CheckConstraint(
+            "length(semantic_tree_sha256) = 64", name="core_revision_semantic_hash"
+        ),
+        CheckConstraint("length(manifest_sha256) = 64", name="core_revision_manifest_hash"),
+        CheckConstraint(
+            "materialization_sha256 IS NULL OR length(materialization_sha256) = 64",
+            name="core_revision_materialization_hash",
+        ),
+        CheckConstraint("file_count >= 1", name="core_revision_file_count_positive"),
+        CheckConstraint(
+            "csv_file_count >= 1 AND csv_file_count <= file_count",
+            name="core_revision_csv_file_count_range",
+        ),
+        CheckConstraint("csv_row_count >= 0", name="core_revision_csv_row_count_nonnegative"),
+        CheckConstraint(
+            "evidence_to_claim_count >= 0", name="core_revision_evidence_edge_count"
+        ),
+        CheckConstraint(
+            "claim_to_evidence_count >= 0", name="core_revision_claim_edge_count"
+        ),
+        CheckConstraint(
+            "length(evidence_to_claim_sha256) = 64",
+            name="core_revision_evidence_edge_hash",
+        ),
+        CheckConstraint(
+            "length(claim_to_evidence_sha256) = 64",
+            name="core_revision_claim_edge_hash",
+        ),
+        CheckConstraint(
+            "status IN ('STAGING','SUCCEEDED','FAILED')", name="core_revision_status"
+        ),
+        CheckConstraint(
+            "serialization_version >= 1", name="core_revision_serialization_version"
+        ),
+        Index("ix_core_revisions_status_created", "status", "created_at"),
+        UniqueConstraint(
+            "revision_id",
+            "import_run_id",
+            name="uq_core_revisions_revision_import_run",
+        ),
+    )
+
+
+class CoreFile(Base):
+    """Lossless bytes and structural metadata for one file in a core revision."""
+
+    __tablename__ = "core_files"
+
+    revision_id: Mapped[str] = mapped_column(
+        ForeignKey("core_revisions.revision_id", ondelete="CASCADE"), primary_key=True
+    )
+    relative_path: Mapped[str] = mapped_column(String(500), primary_key=True)
+    ordinal: Mapped[int] = mapped_column(Integer, nullable=False)
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    semantic_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    content: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    is_csv: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    natural_key_field: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    header: Mapped[list[str] | None] = mapped_column(nullable_json_type, nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint("revision_id", "ordinal", name="uq_core_files_revision_ordinal"),
+        CheckConstraint("length(relative_path) > 0", name="core_file_path_nonempty"),
+        CheckConstraint("ordinal >= 1", name="core_file_ordinal_positive"),
+        CheckConstraint("length(sha256) = 64", name="core_file_hash"),
+        CheckConstraint("length(semantic_sha256) = 64", name="core_file_semantic_hash"),
+        CheckConstraint("size_bytes >= 0", name="core_file_size_nonnegative"),
+        CheckConstraint(
+            "(is_csv AND header IS NOT NULL AND natural_key_field IS NOT NULL) OR "
+            "(NOT is_csv AND header IS NULL AND natural_key_field IS NULL)",
+            name="core_file_csv_shape",
+        ),
+        Index("ix_core_files_revision_csv", "revision_id", "is_csv"),
+    )
+
+
+class CoreCsvRow(Base):
+    """Ordered, lossless string-cell projection of a canonical CSV record."""
+
+    __tablename__ = "core_csv_rows"
+
+    revision_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    relative_path: Mapped[str] = mapped_column(String(500), primary_key=True)
+    ordinal: Mapped[int] = mapped_column(Integer, primary_key=True)
+    natural_key: Mapped[str] = mapped_column(Text, nullable=False)
+    values: Mapped[list[str]] = mapped_column(json_type, nullable=False)
+    row_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["revision_id", "relative_path"],
+            ["core_files.revision_id", "core_files.relative_path"],
+            name="fk_core_csv_rows_revision_path_core_files",
+            ondelete="CASCADE",
+        ),
+        UniqueConstraint(
+            "revision_id",
+            "relative_path",
+            "natural_key",
+            name="uq_core_csv_rows_revision_path_key",
+        ),
+        CheckConstraint("ordinal >= 1", name="core_csv_row_ordinal_positive"),
+        CheckConstraint("length(natural_key) > 0", name="core_csv_row_key_nonempty"),
+        CheckConstraint("length(row_sha256) = 64", name="core_csv_row_hash"),
+        Index("ix_core_csv_rows_revision_path", "revision_id", "relative_path"),
+    )
+
+
+class MaterializationState(Base):
+    """Singleton pointer and cache epoch for the active read mirror."""
+
+    __tablename__ = "materialization_state"
+
+    id: Mapped[int] = mapped_column(
+        Integer, primary_key=True, autoincrement=False, default=1
+    )
+    active_revision_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    active_import_run_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    epoch: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, default=0, active_history=True
+    )
+    materialization_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    serving_counts: Mapped[dict[str, int]] = mapped_column(json_type, nullable=False, default=dict)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+    __table_args__ = (
+        CheckConstraint("id = 1", name="materialization_state_singleton"),
+        CheckConstraint("epoch >= 0", name="materialization_state_epoch_nonnegative"),
+        CheckConstraint(
+            "(active_revision_id IS NULL AND active_import_run_id IS NULL "
+            "AND materialization_sha256 IS NULL) OR "
+            "(active_revision_id IS NOT NULL AND active_import_run_id IS NOT NULL "
+            "AND materialization_sha256 IS NOT NULL "
+            "AND length(materialization_sha256) = 64)",
+            name="materialization_state_active_shape",
+        ),
+        ForeignKeyConstraint(
+            ["active_revision_id", "active_import_run_id"],
+            ["core_revisions.revision_id", "core_revisions.import_run_id"],
+            name="fk_materialization_state_active_revision_run",
+            ondelete="RESTRICT",
+        ),
+    )
+
+
+class RevisionActivation(Base):
+    """Append-only audit record for import, rollback and forward reactivation."""
+
+    __tablename__ = "revision_activations"
+
+    activation_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    sequence_no: Mapped[int] = mapped_column(BigInteger, nullable=False, unique=True)
+    from_revision_id: Mapped[str | None] = mapped_column(
+        ForeignKey("core_revisions.revision_id", ondelete="RESTRICT"), nullable=True
+    )
+    to_revision_id: Mapped[str] = mapped_column(
+        ForeignKey("core_revisions.revision_id", ondelete="RESTRICT"), nullable=False
+    )
+    kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    actor: Mapped[str] = mapped_column(String(160), nullable=False)
+    activated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+    epoch: Mapped[int] = mapped_column(BigInteger, nullable=False)
+
+    __table_args__ = (
+        CheckConstraint("sequence_no >= 1", name="revision_activation_sequence_positive"),
+        CheckConstraint("epoch >= 0", name="revision_activation_epoch_nonnegative"),
+        CheckConstraint(
+            "kind IN ('IMPORT','ROLLBACK','REACTIVATE')",
+            name="revision_activation_kind",
+        ),
+        CheckConstraint(
+            "from_revision_id IS NULL OR from_revision_id <> to_revision_id",
+            name="revision_activation_distinct_revisions",
+        ),
+        Index("ix_revision_activations_activated_at", "activated_at"),
     )
 
 
@@ -462,3 +699,189 @@ class SchedulerRun(Base):
             name="scheduler_run_status",
         ),
     )
+
+
+class ImmutableCoreRevisionError(RuntimeError):
+    """Raised by the ORM guard when terminal artifact history is mutated."""
+
+
+class ImmutableImportRunError(RuntimeError):
+    """Raised when an import run bypasses or rewrites its lifecycle."""
+
+
+class NonMonotonicMaterializationEpochError(RuntimeError):
+    """Raised when an ORM write would keep or rewind the serving epoch."""
+
+
+class ImmutableMaterializationStateError(RuntimeError):
+    """Raised when the singleton materialization pointer is deleted."""
+
+
+class ImmutableRevisionActivationError(RuntimeError):
+    """Raised when append-only revision activation audit is rewritten."""
+
+
+_CORE_TERMINAL_STATUSES = frozenset({"SUCCEEDED", "FAILED"})
+_IMPORT_RUN_TERMINAL_STATUSES = frozenset({"SUCCEEDED", "FAILED"})
+
+
+def _persisted_import_run_status(
+    session: Session,
+    candidate: ImportRun,
+) -> str | None:
+    """Return OLD status even when the instance was expired before assignment."""
+
+    history = inspect(candidate).attrs.status.history
+    if history.deleted:
+        return history.deleted[0]
+    identity = inspect(candidate).identity
+    if not identity:
+        return None
+    with session.no_autoflush:
+        return session.scalar(
+            select(ImportRun.status).where(ImportRun.id == identity[0])
+        )
+
+
+def _persisted_materialization_epoch(
+    session: Session,
+    candidate: MaterializationState,
+) -> int | None:
+    history = inspect(candidate).attrs.epoch.history
+    if history.deleted:
+        return history.deleted[0]
+    identity = inspect(candidate).identity
+    if not identity:
+        return None
+    with session.no_autoflush:
+        return session.scalar(
+            select(MaterializationState.epoch).where(
+                MaterializationState.id == identity[0]
+            )
+        )
+
+
+def _persisted_core_revision_status(
+    session: Session,
+    candidate: CoreRevision,
+) -> str | None:
+    """Return OLD revision status across expiration and reassignment."""
+
+    history = inspect(candidate).attrs.status.history
+    if history.deleted:
+        return history.deleted[0]
+    identity = inspect(candidate).identity
+    if not identity:
+        return None
+    with session.no_autoflush:
+        return session.scalar(
+            select(CoreRevision.status).where(
+                CoreRevision.revision_id == identity[0]
+            )
+        )
+
+
+def _revision_status_for_guard(session: Session, revision_id: str) -> str | None:
+    for candidate in session.new:
+        if isinstance(candidate, CoreRevision) and candidate.revision_id == revision_id:
+            return candidate.status
+    for candidate in session.identity_map.values():
+        if isinstance(candidate, CoreRevision) and candidate.revision_id == revision_id:
+            return candidate.status
+    with session.no_autoflush:
+        return session.scalar(
+            select(CoreRevision.status).where(CoreRevision.revision_id == revision_id)
+        )
+
+
+@event.listens_for(Session, "before_flush")
+def guard_terminal_core_revision_history(
+    session: Session,
+    _flush_context: Any,
+    _instances: Any,
+) -> None:
+    """Mirror PostgreSQL history guards for ORM-based SQLite tests and tools.
+
+    Bulk SQL deliberately remains a database concern: PostgreSQL V0003 guards
+    it with row triggers, while SQLite is used only for application tests.
+    """
+
+    for candidate in session.new:
+        if isinstance(candidate, ImportRun) and candidate.status != "RUNNING":
+            raise ImmutableImportRunError(
+                "import runs must be inserted in RUNNING status"
+            )
+        if isinstance(candidate, CoreRevision) and candidate.status != "STAGING":
+            raise ImmutableCoreRevisionError(
+                "core revisions must be inserted in STAGING status"
+            )
+
+    for candidate in session.dirty:
+        if isinstance(candidate, ImportRun):
+            previous_status = _persisted_import_run_status(session, candidate)
+            if previous_status in _IMPORT_RUN_TERMINAL_STATUSES:
+                raise ImmutableImportRunError(
+                    f"terminal import run {candidate.id} is immutable"
+                )
+            continue
+        if isinstance(candidate, MaterializationState):
+            if not session.is_modified(candidate, include_collections=True):
+                continue
+            previous_epoch = _persisted_materialization_epoch(session, candidate)
+            if previous_epoch is not None and candidate.epoch <= previous_epoch:
+                raise NonMonotonicMaterializationEpochError(
+                    "materialization_state epoch must strictly increase "
+                    f"(old {previous_epoch}, new {candidate.epoch})"
+                )
+            continue
+        if isinstance(candidate, RevisionActivation):
+            if session.is_modified(candidate, include_collections=True):
+                raise ImmutableRevisionActivationError(
+                    "revision_activations is append-only"
+                )
+            continue
+        if not isinstance(candidate, CoreRevision):
+            continue
+        previous_status = _persisted_core_revision_status(session, candidate)
+        if previous_status in _CORE_TERMINAL_STATUSES:
+            raise ImmutableCoreRevisionError(
+                f"terminal core revision {candidate.revision_id} is immutable"
+            )
+
+    for candidate in session.deleted:
+        if isinstance(candidate, ImportRun):
+            previous_status = _persisted_import_run_status(session, candidate)
+            if previous_status in _IMPORT_RUN_TERMINAL_STATUSES:
+                raise ImmutableImportRunError(
+                    f"terminal import run {candidate.id} is immutable"
+                )
+        if isinstance(candidate, CoreRevision):
+            previous_status = _persisted_core_revision_status(session, candidate)
+            if previous_status in _CORE_TERMINAL_STATUSES:
+                raise ImmutableCoreRevisionError(
+                    f"terminal core revision {candidate.revision_id} is immutable"
+                )
+        if isinstance(candidate, MaterializationState):
+            raise ImmutableMaterializationStateError(
+                "materialization_state singleton cannot be deleted"
+            )
+        if isinstance(candidate, RevisionActivation):
+            raise ImmutableRevisionActivationError(
+                "revision_activations is append-only"
+            )
+
+    artifact_candidates = (
+        list(session.new) + list(session.dirty) + list(session.deleted)
+    )
+    for candidate in artifact_candidates:
+        if not isinstance(candidate, (CoreFile, CoreCsvRow)):
+            continue
+        revision_ids = {candidate.revision_id}
+        revision_history = inspect(candidate).attrs.revision_id.history
+        revision_ids.update(value for value in revision_history.deleted if value)
+        for revision_id in revision_ids:
+            status = _revision_status_for_guard(session, revision_id)
+            if status != "STAGING":
+                raise ImmutableCoreRevisionError(
+                    f"artifact revision {revision_id} is not mutable STAGING data"
+                )

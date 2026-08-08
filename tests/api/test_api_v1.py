@@ -1,14 +1,28 @@
 from __future__ import annotations
 
+from copy import deepcopy
+from datetime import timedelta
+from uuid import uuid4
+
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 
 from pcr_api.config import Settings
 from pcr_api.main import create_app
-from pcr_api.repository import effective_team_signatures
+from pcr_api import database as database_module
+from pcr_api import repository as repository_module
+from pcr_api.repository import (
+    effective_team_signatures,
+    latest_import,
+    mirror_readiness,
+)
 from pcr_database.models import (
     Character,
+    CoreCsvRow,
+    CoreFile,
+    ImportRun,
+    MaterializationState,
     OperationTimeline,
     Team,
     TeamEvidence,
@@ -21,12 +35,41 @@ from .conftest import make_factory
 GUIDE_ID = "TW_DEEP_FIRE_08_10_20260802"
 
 
+def test_postgresql_engine_uses_repeatable_read_for_route_snapshot(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, dict[str, object]]] = []
+    sentinel = object()
+
+    def fake_create_engine(url: str, **options: object):
+        calls.append((url, options))
+        return sentinel
+
+    monkeypatch.setattr(database_module, "create_engine", fake_create_engine)
+    postgres = database_module.build_engine(
+        Settings(database_url="postgresql+psycopg://reader:secret@db/pcr_tw")
+    )
+    sqlite = database_module.build_engine(Settings(database_url="sqlite://"))
+
+    assert postgres is sentinel
+    assert sqlite is sentinel
+    assert calls[0][1] == {
+        "pool_pre_ping": True,
+        "isolation_level": "REPEATABLE READ",
+    }
+    assert calls[1][1] == {"pool_pre_ping": True}
+
+
 def assert_meta(payload: dict) -> None:
     meta = payload["meta"]
     assert meta["api_version"] == "v1"
     assert len(meta["source"]["fixture_sha256"]) == 64
     assert meta["source"]["canonical_source"] == "research_core_file_ssot"
     assert meta["source"]["research_core_version"] == "v1.5"
+    assert meta["source"]["revision_id"]
+    assert len(meta["source"]["raw_tree_sha256"]) == 64
+    assert len(meta["source"]["semantic_tree_sha256"]) == 64
+    assert len(meta["source"]["materialization_sha256"]) == 64
 
 
 def test_environment_settings_require_database_url(monkeypatch) -> None:
@@ -54,6 +97,346 @@ def test_health_is_split_between_liveness_and_fixture_readiness(client: TestClie
         assert response.json()["checks"]["fixture"] == "missing"
 
 
+def test_database_unavailable_is_a_uniform_structured_503() -> None:
+    factory = make_factory()
+    engine = factory.kw["bind"]
+    engine.dispose()
+    app = create_app(
+        settings=Settings(database_url="sqlite://", application_version="3.0.0-b1"),
+        session_factory=factory,
+    )
+    endpoints = [
+        "/api/v1/baseline",
+        "/api/v1/stages",
+        f"/api/v1/stages/{GUIDE_ID}",
+        "/api/v1/teams/TM-F810-01",
+        "/api/v1/teams/TM-F810-01/timelines",
+        "/api/v1/evidence/ev050",
+        "/api/v1/claims/CLM-PVE-F810-MAIN",
+        "/api/v1/pvp/counters",
+    ]
+    expected = {
+        "detail": {
+            "code": "DATABASE_UNAVAILABLE",
+            "resource": "database",
+            "id": None,
+        }
+    }
+    with TestClient(app) as unavailable_client:
+        health = unavailable_client.get("/health/ready")
+        responses = [unavailable_client.get(path) for path in endpoints]
+
+    assert health.status_code == 503
+    assert health.json() == {
+        "status": "not_ready",
+        "checks": {"database": "error", "fixture": "unknown"},
+    }
+    assert all(response.status_code == 503 for response in responses)
+    assert all(response.json() == expected for response in responses)
+
+
+def test_latest_import_uses_active_pointer_not_newest_succeeded_run() -> None:
+    factory = make_factory()
+    with factory() as session:
+        active = latest_import(session)
+        assert active is not None
+        active_id = active.id
+        newer = ImportRun(
+            id=str(uuid4()),
+            fixture_sha256="0" * 64,
+            canonical_source=active.canonical_source,
+            research_core_version=active.research_core_version,
+            application_version=active.application_version,
+            imported_at=active.imported_at + timedelta(days=1),
+            status="RUNNING",
+            manifest=deepcopy(active.manifest),
+            row_counts=dict(active.row_counts),
+        )
+        session.add(newer)
+        session.flush()
+        newer.status = "SUCCEEDED"
+        session.commit()
+
+    app = create_app(
+        settings=Settings(database_url="sqlite://", application_version="3.0.0-b1"),
+        session_factory=factory,
+    )
+    with TestClient(app) as pointer_client:
+        response = pointer_client.get("/api/v1/baseline")
+
+    assert response.status_code == 200
+    assert response.json()["meta"]["source"]["import_run_id"] == active_id
+
+
+def test_readiness_rejects_import_run_fixture_raw_tree_mismatch() -> None:
+    factory = make_factory()
+    with factory() as session:
+        active = latest_import(session)
+        assert active is not None
+        session.execute(
+            update(ImportRun)
+            .where(ImportRun.id == active.id)
+            .values(fixture_sha256="0" * 64)
+        )
+        session.commit()
+
+    app = create_app(
+        settings=Settings(database_url="sqlite://", application_version="3.0.0-b1"),
+        session_factory=factory,
+    )
+    with TestClient(app) as provenance_client:
+        response = provenance_client.get("/health/ready")
+
+    assert response.status_code == 503
+    assert response.json()["checks"]["fixture"] == "active_revision_drift"
+
+
+def test_readiness_fails_closed_on_serving_count_key_set_drift() -> None:
+    factory = make_factory()
+    with factory() as session:
+        state = session.get(MaterializationState, 1)
+        assert state is not None
+        counts = dict(state.serving_counts)
+        counts.pop("claim_evidence")
+        state.serving_counts = counts
+        state.epoch += 1
+        session.commit()
+
+    app = create_app(
+        settings=Settings(database_url="sqlite://", application_version="3.0.0-b1"),
+        session_factory=factory,
+    )
+    with TestClient(app) as drifted_client:
+        response = drifted_client.get("/health/ready")
+
+    assert response.status_code == 503
+    assert response.json()["checks"]["fixture"] == "serving_count_state_drift"
+
+
+def test_readiness_fails_closed_on_run_manifest_table_set_drift() -> None:
+    factory = make_factory()
+    with factory() as session:
+        run = latest_import(session)
+        assert run is not None
+        manifest = deepcopy(run.manifest)
+        manifest["materialization"]["tables"].pop("claim_evidence")
+        session.execute(
+            update(ImportRun)
+            .where(ImportRun.id == run.id)
+            .values(manifest=manifest)
+        )
+        session.commit()
+
+    app = create_app(
+        settings=Settings(database_url="sqlite://", application_version="3.0.0-b1"),
+        session_factory=factory,
+    )
+    with TestClient(app) as drifted_client:
+        response = drifted_client.get("/health/ready")
+
+    assert response.status_code == 503
+    assert response.json()["checks"]["fixture"] == "serving_count_manifest_drift"
+
+
+def test_readiness_fails_closed_on_declared_serving_count_key_set_drift() -> None:
+    factory = make_factory()
+    with factory() as session:
+        run = latest_import(session)
+        assert run is not None
+        manifest = deepcopy(run.manifest)
+        manifest["serving_row_counts"].pop("claim_evidence")
+        session.execute(
+            update(ImportRun)
+            .where(ImportRun.id == run.id)
+            .values(manifest=manifest)
+        )
+        session.commit()
+
+    app = create_app(
+        settings=Settings(database_url="sqlite://", application_version="3.0.0-b1"),
+        session_factory=factory,
+    )
+    with TestClient(app) as drifted_client:
+        response = drifted_client.get("/health/ready")
+
+    assert response.status_code == 503
+    assert response.json()["checks"]["fixture"] == "serving_count_manifest_drift"
+
+
+def test_readiness_fails_closed_on_import_run_core_revision_provenance_drift() -> None:
+    factory = make_factory()
+    with factory() as session:
+        run = latest_import(session)
+        assert run is not None
+        manifest = deepcopy(run.manifest)
+        manifest["core_revision"]["semantic_tree_sha256"] = "0" * 64
+        session.execute(
+            update(ImportRun)
+            .where(ImportRun.id == run.id)
+            .values(manifest=manifest)
+        )
+        session.commit()
+
+    app = create_app(
+        settings=Settings(database_url="sqlite://", application_version="3.0.0-b1"),
+        session_factory=factory,
+    )
+    with TestClient(app) as drifted_client:
+        response = drifted_client.get("/health/ready")
+
+    assert response.status_code == 503
+    assert response.json()["checks"]["fixture"] == "core_revision_manifest_drift"
+
+
+def test_full_core_file_content_drift_blocks_strategy_reads() -> None:
+    factory = make_factory()
+    with factory() as session:
+        state = session.get(MaterializationState, 1)
+        assert state is not None
+        content = session.scalar(
+            select(CoreFile.content).where(
+                CoreFile.revision_id == state.active_revision_id,
+                CoreFile.relative_path == "00_PROJECT_INSTRUCTIONS.md",
+            )
+        )
+        assert content is not None
+        session.execute(
+            update(CoreFile.__table__)
+            .where(
+                CoreFile.revision_id == state.active_revision_id,
+                CoreFile.relative_path == "00_PROJECT_INSTRUCTIONS.md",
+            )
+            .values(content=b"tampered\n" + bytes(content))
+        )
+        session.commit()
+
+    app = create_app(
+        settings=Settings(database_url="sqlite://", application_version="3.0.0-b1"),
+        session_factory=factory,
+    )
+    with TestClient(app) as drifted_client:
+        readiness = drifted_client.get("/health/ready")
+        strategy = drifted_client.get("/api/v1/baseline")
+
+    assert readiness.status_code == 503
+    assert readiness.json()["checks"]["fixture"] == "core_files_drift"
+    assert strategy.status_code == 503
+    assert strategy.json()["detail"]["reason"] == "core_files_drift"
+
+
+def test_full_core_csv_row_reorder_blocks_strategy_reads() -> None:
+    factory = make_factory()
+    with factory() as session:
+        state = session.get(MaterializationState, 1)
+        assert state is not None
+        rows = session.scalars(
+            select(CoreCsvRow)
+            .where(
+                CoreCsvRow.revision_id == state.active_revision_id,
+                CoreCsvRow.relative_path == "18_TW_CHARACTER_AVAILABILITY.csv",
+                CoreCsvRow.ordinal.in_([1, 2]),
+            )
+            .order_by(CoreCsvRow.ordinal)
+        ).all()
+        assert len(rows) == 2
+        first, second = rows
+        first_payload = (first.natural_key, list(first.values), first.row_sha256)
+        second_payload = (second.natural_key, list(second.values), second.row_sha256)
+        table = CoreCsvRow.__table__
+        row_filter = (
+            (CoreCsvRow.revision_id == state.active_revision_id)
+            & (CoreCsvRow.relative_path == "18_TW_CHARACTER_AVAILABILITY.csv")
+        )
+        session.execute(
+            update(table)
+            .where(row_filter, CoreCsvRow.ordinal == first.ordinal)
+            .values(natural_key="__row_swap_staging__")
+        )
+        session.execute(
+            update(table)
+            .where(row_filter, CoreCsvRow.ordinal == second.ordinal)
+            .values(
+                natural_key=first_payload[0],
+                values=first_payload[1],
+                row_sha256=first_payload[2],
+            )
+        )
+        session.execute(
+            update(table)
+            .where(row_filter, CoreCsvRow.ordinal == first.ordinal)
+            .values(
+                natural_key=second_payload[0],
+                values=second_payload[1],
+                row_sha256=second_payload[2],
+            )
+        )
+        session.commit()
+
+    app = create_app(
+        settings=Settings(database_url="sqlite://", application_version="3.0.0-b1"),
+        session_factory=factory,
+    )
+    with TestClient(app) as drifted_client:
+        readiness = drifted_client.get("/health/ready")
+        strategy = drifted_client.get("/api/v1/baseline")
+
+    assert readiness.status_code == 503
+    assert readiness.json()["checks"]["fixture"] == "core_csv_rows_drift"
+    assert strategy.status_code == 503
+    assert strategy.json()["detail"]["reason"] == "core_csv_rows_drift"
+
+
+@pytest.mark.parametrize(
+    ("drift_kind", "expected_reason"),
+    [
+        ("core", "core_files_drift"),
+        ("typed", "materialization_teams_drift"),
+    ],
+)
+def test_postgresql_epoch_change_forces_readiness_revalidation(
+    monkeypatch,
+    drift_kind: str,
+    expected_reason: str,
+) -> None:
+    factory = make_factory()
+    monkeypatch.setattr(repository_module, "_is_postgresql", lambda _session: True)
+    with factory() as session:
+        run = latest_import(session)
+        assert run is not None
+        assert mirror_readiness(session, run) == (True, "imported")
+
+    with factory() as session:
+        state = session.get(MaterializationState, 1)
+        assert state is not None
+        if drift_kind == "core":
+            content = session.scalar(
+                select(CoreFile.content).where(
+                    CoreFile.revision_id == state.active_revision_id,
+                    CoreFile.relative_path == "00_PROJECT_INSTRUCTIONS.md",
+                )
+            )
+            assert content is not None
+            session.execute(
+                update(CoreFile.__table__)
+                .where(
+                    CoreFile.revision_id == state.active_revision_id,
+                    CoreFile.relative_path == "00_PROJECT_INSTRUCTIONS.md",
+                )
+                .values(content=b"epoch tamper\n" + bytes(content))
+            )
+        else:
+            team = session.get(Team, "TM-F810-01")
+            assert team is not None
+            team.notes = "epoch tamper"
+        state.epoch += 1
+        session.commit()
+
+    with factory() as session:
+        run = latest_import(session)
+        assert run is not None
+        assert mirror_readiness(session, run) == (False, expected_reason)
+
+
 def test_readiness_fails_closed_when_materialized_team_is_deleted() -> None:
     factory = make_factory()
     with factory() as session:
@@ -61,7 +444,7 @@ def test_readiness_fails_closed_when_materialized_team_is_deleted() -> None:
         session.commit()
 
     app = create_app(
-        settings=Settings(database_url="sqlite://", application_version="3.0.0-b0"),
+        settings=Settings(database_url="sqlite://", application_version="3.0.0-b1"),
         session_factory=factory,
     )
     with TestClient(app) as drifted_client:
@@ -70,7 +453,10 @@ def test_readiness_fails_closed_when_materialized_team_is_deleted() -> None:
     assert response.status_code == 503
     assert response.json() == {
         "status": "not_ready",
-        "checks": {"database": "ok", "fixture": "row_count_drift"},
+        "checks": {
+            "database": "ok",
+            "fixture": "materialization_operation_timelines_drift",
+        },
     }
 
 
@@ -86,7 +472,7 @@ def test_readiness_fails_closed_when_team_evidence_link_is_deleted() -> None:
         session.commit()
 
     app = create_app(
-        settings=Settings(database_url="sqlite://", application_version="3.0.0-b0"),
+        settings=Settings(database_url="sqlite://", application_version="3.0.0-b1"),
         session_factory=factory,
     )
     with TestClient(app) as drifted_client:
@@ -112,7 +498,7 @@ def test_readiness_fails_closed_when_normalized_team_field_is_tampered() -> None
         session.commit()
 
     app = create_app(
-        settings=Settings(database_url="sqlite://", application_version="3.0.0-b0"),
+        settings=Settings(database_url="sqlite://", application_version="3.0.0-b1"),
         session_factory=factory,
     )
     with TestClient(app) as drifted_client:
@@ -131,7 +517,7 @@ def test_all_strategy_reads_fail_closed_on_timeline_materialization_drift() -> N
         session.commit()
 
     app = create_app(
-        settings=Settings(database_url="sqlite://", application_version="3.0.0-b0"),
+        settings=Settings(database_url="sqlite://", application_version="3.0.0-b1"),
         session_factory=factory,
     )
     endpoints = [
@@ -220,7 +606,7 @@ def test_baseline_reports_real_counts_and_research_gates(client: TestClient) -> 
     assert_meta(payload)
     data = payload["data"]
     assert data["research_core_version"] == "v1.5"
-    assert data["application_version"] == "3.0.0-b0"
+    assert data["application_version"] == "3.0.0-b1"
     assert data["counts"] == {
         "stages": 1,
         "teams": 3,
