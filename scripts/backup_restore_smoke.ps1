@@ -301,7 +301,15 @@ finally {
         Write-Host "Removed disposable restore database: $restoreDatabase"
     }
     if ((Test-Path -LiteralPath $backupPath -PathType Leaf) -and -not $KeepBackup) {
-        Remove-Item -LiteralPath $backupPath -Force
+        # The dump is created by the postgres user inside the bind mount. On a
+        # Linux GitHub runner that UID-owned file cannot be removed by host
+        # PowerShell, even though the complete restore drill has passed. Delete
+        # the exact validated basename through the same database container,
+        # then confirm the bind-mounted host path is gone.
+        Invoke-DockerChecked exec -T db rm -f -- "/backups/$backupName"
+        if (Test-Path -LiteralPath $backupPath -PathType Leaf) {
+            throw "Database container did not remove the disposable smoke backup"
+        }
         Write-Host "Removed disposable smoke backup: $backupPath"
     }
     if ($null -eq $previousBackupDirectory) {
