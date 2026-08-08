@@ -11,7 +11,7 @@
 - 92 Evidence 75 列｜Tier {'OFFICIAL': 47, 'MAJOR_GUIDE': 10, 'SINGLE_PLAYER_REPORT': 9, 'MULTI_PLAYER_REPORT': 5, 'STRUCTURED_DB': 1, 'UNKNOWN': 3}｜evidence_confidence {'A': 47, 'D': 28}｜PENDING_REVIEW 1
 - 93 Claim 86 列｜claim_confidence {'A': 50, 'D': 19, 'C': 2, 'B': 15}｜claim_type {'SOURCE_FACT': 58, 'DERIVED_CALCULATION': 6, 'ANALYTICAL_JUDGMENT': 22}
 - Gate A=FAIL｜B=FAIL｜C=FAIL｜阻擋 Gate C 警告 7
-- 靜態檢查 125 項｜FAIL 0｜WARN 16
+- 靜態檢查 128 項｜FAIL 0｜WARN 16
 <!-- AUTO_STATS_END -->
 
 ## 帳號層狀態

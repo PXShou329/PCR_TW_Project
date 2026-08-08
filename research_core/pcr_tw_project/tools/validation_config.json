@@ -70,8 +70,8 @@
    "min_rows": 1
   },
   "27_PVE_TIMELINE_STEPS.csv": {
-   "cols": 19,
-   "min_rows": 1
+   "cols": 20,
+   "min_rows": 0
   },
   "45_GACHA_COMMUNITY_SOURCE_INDEX.csv": {
    "cols": 14,
@@ -182,6 +182,10 @@
    "WAVE_START",
    "BOSS_ACTION",
    "SOURCE_TEXT_ONLY"
+  ],
+  "pve_timeline_time_state": [
+   "STATED",
+   "NOT_STATED"
   ],
   "pve_timeline_action": [
    "USE_UB",
@@ -675,6 +679,26 @@
   "min_team": 1,
   "repro": "CONFIRMED"
  },
+ "pve_timeline_source_boundaries": {
+  "AX-F810-02-EV073": {
+   "battle_duration_ms": "UNKNOWN",
+   "criticality": "UNKNOWN",
+   "source_locator_prefix": "2025年9月魔法半自動／手順",
+   "source_step_numbers": [
+    "1",
+    "2",
+    "3",
+    "4",
+    "5",
+    "6",
+    "7",
+    "8"
+   ],
+   "not_stated_source_steps": [
+    "1"
+   ]
+  }
+ },
  "arena_gate_row": {
   "status": "VERIFIED",
   "team_size": 5,
@@ -762,6 +786,7 @@
   "source_step_no",
   "trigger_type",
   "trigger_actor_unit_key",
+  "time_state",
   "clock_from_ms",
   "clock_to_ms",
   "actor_unit_key",

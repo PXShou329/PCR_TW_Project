@@ -3,7 +3,7 @@
 > 由 `tools/validate_project.py` 生成（唯一路徑）；回歸驗證：`python3 tools/mutation_test.py`（Active 情境數見其輸出；退休 ID 見 Archive）。
 > 生成日：2026-08-08｜版本：v1.5｜Release：2026-08-02｜Mode：PRE_SUITE
 
-## 檢查結果（125 項）
+## 檢查結果（128 項）
 
 | 檢查 | 結果 | 明細 |
 |---|---|---|
@@ -25,7 +25,7 @@
 | 18：欄數 15＋列數 ≥1 | PASS | 15 列 |
 | 25：欄數 20＋列數 ≥0 | PASS | 3 列 |
 | 26：欄數 16＋列數 ≥1 | PASS | 8 列 |
-| 27：欄數 19＋列數 ≥1 | PASS | 14 列 |
+| 27：欄數 20＋列數 ≥0 | PASS | 14 列 |
 | 45：欄數 14＋列數 ≥2 | PASS | 4 列 |
 | 46：欄數 12＋列數 ≥2 | PASS | 5 列 |
 | 47：欄數 20＋列數 ≥0 | PASS | 0 列 |
@@ -60,12 +60,15 @@
 | 26：欄位標頭符合規格 | PASS |  |
 | 27：欄位標頭符合規格 | PASS |  |
 | 26：team／Evidence FK 與逐來源 operation mode 聲明一致 | PASS |  |
+| 26：source locator 必須等於 Evidence locator 或其 # 子定位 | PASS |  |
 | 26：同隊同來源只保留一條 source axis；結構化 timeline_id 唯一 | PASS |  |
 | 26：STRUCTURED／SOURCE_GAP 狀態不得強化 UNKNOWN | PASS |  |
 | 27：step FK／Enum／時間範圍／角色成員資格完整 | PASS |  |
 | 27：每來源 sequence_no 唯一且連續 | PASS |  |
+| 27：source_step_no 依序且分組連續 | PASS |  |
 | 26／27：STRUCTURED 必有步驟；SOURCE_GAP 必為零步驟 | PASS |  |
-| 25→26：VERIFIED 手動／半自動／衝突隊伍每個來源均有結構化軸或明示缺口 | PASS |  |
+| ST87：來源邊界、locator 與未載欄位不得推測 | PASS |  |
+| 25→26：手動／半自動／衝突隊伍每個來源與 timeline_ref 均有結構化軸或明示缺口 | PASS |  |
 | 26：跨服結構化軸不得冒充台服已重現 | PASS |  |
 | 45：欄位標頭符合規格 | PASS |  |
 | 45：source_type Enum | PASS |  |

@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
-EXPECTED_MANIFEST_SHA256 = "e69f3b6b071c56b3e6a13fbd034fd8479d069ac61602859e73aef763a3b629a6"
+EXPECTED_MANIFEST_SHA256 = "3a242b521d830af12ce8559d88b733068fb1b6cb503219395d2986b89e5dc352"
 MANIFEST_PATH = Path(__file__).with_name("research_core_rp_a2_manifest.sha256")
 MANIFEST_LINE = re.compile(r"^([0-9a-f]{64})  ([^\\]+(?:/[^\\]+)*)$")
 
@@ -34,7 +34,7 @@ VALIDATOR_RUNS = (
         ("tools/validate_project.py", "--mode", "PRE_SUITE", "--write"),
         0,
         (
-            "MODE=PRE_SUITE CHECKS=125 FAIL=0 WARN=16",
+            "MODE=PRE_SUITE CHECKS=128 FAIL=0 WARN=16",
             "GateA=False GateB=False GateC=False blk=7",
             "canonical=Y",
         ),
@@ -44,7 +44,7 @@ VALIDATOR_RUNS = (
         ("tools/validate_project.py", "--mode", "PRE_SUITE"),
         0,
         (
-            "MODE=PRE_SUITE CHECKS=125 FAIL=0 WARN=16",
+            "MODE=PRE_SUITE CHECKS=128 FAIL=0 WARN=16",
             "GateA=False GateB=False GateC=False blk=7",
             "canonical=Y",
         ),
@@ -54,7 +54,7 @@ VALIDATOR_RUNS = (
         ("tools/validate_project.py", "--mode", "OPERATIONAL"),
         0,
         (
-            "MODE=OPERATIONAL CHECKS=124 FAIL=0 WARN=15",
+            "MODE=OPERATIONAL CHECKS=127 FAIL=0 WARN=15",
             "GateA=False GateB=False GateC=False blk=7",
             "canonical=N",
         ),
@@ -64,7 +64,7 @@ VALIDATOR_RUNS = (
         ("tools/validate_project.py", "--mode", "ARTIFACT_READY"),
         1,
         (
-            "MODE=ARTIFACT_READY CHECKS=127 FAIL=3 WARN=15",
+            "MODE=ARTIFACT_READY CHECKS=130 FAIL=3 WARN=15",
             "GateA=False GateB=False GateC=False blk=7",
             "canonical=N",
             "ARTIFACT_READY 需 Gate A",
@@ -196,7 +196,7 @@ def main() -> int:
             "MUTATION",
             ("tools/mutation_test.py",),
             0,
-            ("MUTATION_TESTS ALL_OK", "active_scenarios=60"),
+            ("MUTATION_TESTS ALL_OK", "active_scenarios=66"),
         )
         errors.extend(run(project, mutation))
 
@@ -206,7 +206,7 @@ def main() -> int:
             print(f"- {error}", file=sys.stderr)
         return 1
     print(
-        "\nRESEARCH_BASELINE_OK | files=48 | mutation_scenarios=60 "
+        "\nRESEARCH_BASELINE_OK | files=48 | mutation_scenarios=66 "
         f"| manifest_sha256={EXPECTED_MANIFEST_SHA256}"
     )
     return 0

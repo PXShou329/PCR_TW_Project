@@ -6,6 +6,7 @@
 
 | 日期 | 檔案 | 變更摘要 | 來源 |
 |---|---|---|---|
+| 2026-08-08 | A2 Maintainer 修正：21、23、25–27、99、README、tools/* | 逐字複核 ev073 後移除未載的 `battle_duration=90000`、開場 1:30 與 `criticality` 推論；新增 `time_state` 並將手順 1 時間保持 UNKNOWN，手順 6／8 移除「下一次 UB」解釋。25 `timeline_ref` 原子切換為完整 source_axis 集合，coverage 納入 PROVISIONAL；新增 Evidence locator 子定位、source_step 分組／locator、來源邊界 ST87 與 M63–M68，並將 27 `min_rows=0`，由 STRUCTURED 語意決定是否必須有 steps。Gate／lifecycle 未提高。 | Maintainer 發現＋Builder 修正 |
 | 2026-08-08 | A2：21、23、26、27、93、99、README、tools/* | **逐來源操作軸 SSOT**：新增 26（8 個 source axes）與 27（ev073／TM-F810-02 的 14 個原子步驟）；GameWith 正文手順 1–8 已實開核對並新增獨立 `CLM-PVE-TL-F810-SHIZURU`。其他來源逐一保留 `SOURCE_GAP`，未把影片區間或操作次數冒充步驟；不同來源不合併。ev073 為 JP 軸，固定 `UNVERIFIED_ON_TW`；24／25 lifecycle、team_count 與 Gate 均不提高。Validator 新增 source FK／狀態／step／coverage／跨服重現守門及對應 Mutation。 | Builder＋Maintainer 邊界稽核 |
 | 2026-08-08 | I0：92、93、99、tools/validate_project.py、tools/mutation_test.py | **Evidence→Claim closure 正規化**：依 evidence_id 逐筆將 6 筆舊 Claim 別名改綁既有 Claim，並為 ev008 新增 `CLM-TW-DEEP-A8`；新增單向 declared Claim FK 守門 ST86 與獨立 mutation M57。Evidence 正文、來源層級、信心、Gate 與 lifecycle 均未變更；未擴張為 Claim 反向 evidence_ids 完全相等檢查。 | Builder＋Maintainer 稽核 |
 | 2026-08-08 | R3i 封版稽核：22、23、25、92、93、99、tools/mutation_test.py | 兩份獨立唯讀稽核後的窄修：ev073 Source Tier 更正為 `MAJOR_GUIDE/D`；明列排除 `K=6`；TM-F810-03 補【僅供參考】、精確通關後 UI 與來源角色分工，移除 ev074 錯引；SOURCE_CONFLICT 改逐來源描述。M53–M56 除 exit code 外再要求唯一命中各自目標 FAIL，避免測試被其他守門遮蔽；未改 Validator、Gate、N=3 或 lifecycle。 | Builder＋雙人獨立稽核 |

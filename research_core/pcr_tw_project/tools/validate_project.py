@@ -268,6 +268,11 @@ def _timeline_source_link_ok(tl):
 ck("26：team／Evidence FK 與逐來源 operation mode 聲明一致", all(
     _timeline_source_link_ok(tl) for tl in t26
 ))
+ck("26：source locator 必須等於 Evidence locator 或其 # 子定位", all(
+    tl['source_locator'] == ev[tl['source_evidence_id']][loci]
+    or tl['source_locator'].startswith(ev[tl['source_evidence_id']][loci] + '#')
+    for tl in t26 if tl['source_evidence_id'] in ev
+))
 _structured_timeline_ids = [tl['timeline_id'] for tl in t26 if tl['status'] == 'STRUCTURED']
 ck("26：同隊同來源只保留一條 source axis；結構化 timeline_id 唯一", (
     len({(tl['team_id'], tl['source_id']) for tl in t26}) == len(t26)
@@ -289,7 +294,8 @@ def _timeline_state_ok(tl):
     if tl['status'] == 'STRUCTURED':
         return (tl['timeline_id'] != 'UNKNOWN'
                 and tl['clock_mode'] != 'UNKNOWN'
-                and tl['battle_duration_ms'].isdigit() and int(tl['battle_duration_ms']) > 0
+                and (tl['battle_duration_ms'] == 'UNKNOWN'
+                     or (tl['battle_duration_ms'].isdigit() and int(tl['battle_duration_ms']) > 0))
                 and tl['initial_auto_state'] != 'UNKNOWN'
                 and tl['gap_reason'] == 'NONE')
     return (tl['timeline_id'] == 'UNKNOWN'
@@ -310,15 +316,23 @@ def _timeline_step_ok(step):
     if (not step['sequence_no'].isdigit() or int(step['sequence_no']) < 1
         or not step['source_step_no'].isdigit() or int(step['source_step_no']) < 1
         or step['trigger_type'] not in CFG['enums']['pve_timeline_trigger']
+        or step['time_state'] not in CFG['enums']['pve_timeline_time_state']
         or step['action_type'] not in CFG['enums']['pve_timeline_action']
         or step['auto_state_after'] not in CFG['enums']['pve_auto_state']
         or step['criticality'] not in CFG['enums']['pve_timeline_criticality']):
         return False
-    duration = int(tl['battle_duration_ms'])
-    for value in (step['clock_from_ms'], step['clock_to_ms']):
-        if not value.isdigit() or not 0 <= int(value) <= duration:
+    if step['time_state'] == 'STATED':
+        for value in (step['clock_from_ms'], step['clock_to_ms']):
+            if not value.isdigit() or int(value) < 0:
+                return False
+        if tl['battle_duration_ms'].isdigit() and any(
+            int(value) > int(tl['battle_duration_ms'])
+            for value in (step['clock_from_ms'], step['clock_to_ms'])
+        ):
             return False
-    if tl['clock_mode'] == 'COUNTDOWN' and int(step['clock_from_ms']) < int(step['clock_to_ms']):
+        if tl['clock_mode'] == 'COUNTDOWN' and int(step['clock_from_ms']) < int(step['clock_to_ms']):
+            return False
+    elif step['clock_from_ms'] != 'UNKNOWN' or step['clock_to_ms'] != 'UNKNOWN':
         return False
     for key in ('trigger_actor_unit_key', 'actor_unit_key', 'target_unit_key'):
         if step[key] != 'NONE' and step[key] not in members:
@@ -339,23 +353,56 @@ for timeline_id, steps in _steps_by_timeline.items():
     if seq != list(range(1, len(steps) + 1)):
         _sequence_ok = False
 ck("27：每來源 sequence_no 唯一且連續", _sequence_ok)
+_source_step_grouping_ok = True
+for timeline_id, steps in _steps_by_timeline.items():
+    ordered = sorted(steps, key=lambda step: int(step['sequence_no']) if step['sequence_no'].isdigit() else 0)
+    source_numbers = [int(step['source_step_no']) for step in ordered if step['source_step_no'].isdigit()]
+    if (len(source_numbers) != len(ordered)
+        or source_numbers != sorted(source_numbers)
+        or sorted(set(source_numbers)) != list(range(1, max(source_numbers, default=0) + 1))):
+        _source_step_grouping_ok = False
+ck("27：source_step_no 依序且分組連續", _source_step_grouping_ok)
 ck("26／27：STRUCTURED 必有步驟；SOURCE_GAP 必為零步驟", all(
     (tl['status'] == 'STRUCTURED' and bool(_steps_by_timeline.get(tl['timeline_id'])))
     or (tl['status'] == 'SOURCE_GAP' and not _steps_by_timeline.get(tl['timeline_id']))
     for tl in t26
 ))
+_source_boundary_bad = []
+for source_axis_id, boundary in CFG['pve_timeline_source_boundaries'].items():
+    timeline = next((tl for tl in t26 if tl['source_axis_id'] == source_axis_id), None)
+    if not timeline or timeline['battle_duration_ms'] != boundary['battle_duration_ms']:
+        _source_boundary_bad.append(source_axis_id)
+        continue
+    unstated = set(boundary['not_stated_source_steps'])
+    expected_source_steps = set(boundary['source_step_numbers'])
+    locator_prefix = boundary['source_locator_prefix']
+    source_steps = _steps_by_timeline.get(timeline['timeline_id'], [])
+    if ({step['source_step_no'] for step in source_steps} != expected_source_steps
+        or any(step['source_locator'] != locator_prefix + step['source_step_no'] for step in source_steps)
+        or any(step['criticality'] != boundary['criticality'] for step in source_steps)
+        or any(
+            step['source_step_no'] in unstated
+            and (step['time_state'] != 'NOT_STATED'
+                 or step['clock_from_ms'] != 'UNKNOWN'
+                 or step['clock_to_ms'] != 'UNKNOWN')
+            for step in source_steps
+        )):
+        _source_boundary_bad.append(source_axis_id)
+ck("ST87：來源邊界、locator 與未載欄位不得推測", not _source_boundary_bad, ','.join(_source_boundary_bad))
 
 def _timeline_claim_coverage_ok(team):
-    if team['clear_status'] != 'VERIFIED' or team['operation_mode'] not in {'SEMI_AUTO', 'MANUAL_TIMELINE', 'SOURCE_CONFLICT'}:
+    if team['operation_mode'] not in {'SEMI_AUTO', 'MANUAL_TIMELINE', 'SOURCE_CONFLICT'}:
         return True
     req = _requirements_by_team.get(team['team_id'])
     if not req or not _pve_mode_claims_match(team, req):
         return True  # 25 JSON／mode guard owns this failure; do not mask its mutation oracle.
     expected = {(c['source_id'], c['mode']) for c in req['operation_mode_claims']}
     actual = {(tl['source_id'], tl['operation_mode']) for tl in t26 if tl['team_id'] == team['team_id']}
-    return expected == actual
+    expected_axes = {ref for ref in req['timeline_ref'].split(';') if ref}
+    actual_axes = {tl['source_axis_id'] for tl in t26 if tl['team_id'] == team['team_id']}
+    return expected == actual and expected_axes == actual_axes
 
-ck("25→26：VERIFIED 手動／半自動／衝突隊伍每個來源均有結構化軸或明示缺口", all(
+ck("25→26：手動／半自動／衝突隊伍每個來源與 timeline_ref 均有結構化軸或明示缺口", all(
     _timeline_claim_coverage_ok(team) for team in t25
 ))
 

@@ -59,7 +59,7 @@ VERIFIED effective teams（詳見 22／23／25）。相同五人多來源只計�
 | 24_PVE_GUIDE_REGISTRY.csv | PVE 關卡層 Registry（Gate SSOT，16 欄；team_count↔25） | 是 |
 | 25_PVE_TEAM_REGISTRY.csv | PVE 隊伍層 Registry（20 欄；五 slot＋requirements canonical JSON＋來源模式聲明＋台服可用性＋去重） | 是 |
 | 26_PVE_OPERATION_TIMELINES.csv | PVE 逐來源操作軸（16 欄；STRUCTURED／SOURCE_GAP 不跨來源合併） | 是 |
-| 27_PVE_TIMELINE_STEPS.csv | PVE 原子操作步驟（19 欄；時間／觸發／角色／動作／locator） | 是 |
+| 27_PVE_TIMELINE_STEPS.csv | PVE 原子操作步驟（20 欄；time_state／時間／觸發／角色／動作／locator） | 是 |
 | 23_PVE_RESEARCH_LOG.md | PVE 研究日誌（P1 前置已登錄） | 是 |
 | 30_ARENA_RESEARCH_WORKFLOW.md | 競技場研究流程 | 是 |
 | 31_ARENA_COUNTER_SCHEMA.md | 反制 Schema（雙軌制＋evidence_ids） | 是 |
