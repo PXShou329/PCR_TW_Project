@@ -193,8 +193,11 @@ jobs:
           }
           $receipt = $receiptLines[0] | ConvertFrom-Json
 
-          $checkpointRoot = Join-Path $PWD ".runtime/rp-a5-2-checkpoint"
-          $checkpointArchive = Join-Path $PWD ".runtime/rp-a5-2-checkpoint.tar"
+          if (-not $env:RUNNER_TEMP) {
+            throw "RUNNER_TEMP is required for the immutable rollback checkpoint"
+          }
+          $checkpointRoot = Join-Path $env:RUNNER_TEMP "rp-a5-2-checkpoint"
+          $checkpointArchive = Join-Path $env:RUNNER_TEMP "rp-a5-2-checkpoint.tar"
           if ((Test-Path -LiteralPath $checkpointRoot) -or (Test-Path -LiteralPath $checkpointArchive)) {
             throw "RP-A5 checkpoint target unexpectedly exists"
           }

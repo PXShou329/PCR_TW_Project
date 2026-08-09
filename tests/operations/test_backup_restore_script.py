@@ -24,11 +24,15 @@ def test_b5_ci_uses_exact_stack_backup_and_rollback_contract() -> None:
         "-ExpectedApiPort ([int]$env:API_PORT)",
         "-ExpectedWebPort ([int]$env:WEB_PORT)",
         "-ExpectedSchedulerPort ([int]$env:SCHEDULER_HEALTH_PORT)",
+        'if (-not $env:RUNNER_TEMP)',
+        'Join-Path $env:RUNNER_TEMP "rp-a5-2-checkpoint"',
+        'Join-Path $env:RUNNER_TEMP "rp-a5-2-checkpoint.tar"',
         "git archive --format=tar --output=$checkpointArchive rp-a5-2",
         "./scripts/b5_a5_rollback_drill.ps1",
     ):
         assert marker in workflow
     assert "-SeedRevisionHistory" not in workflow
+    assert 'Join-Path $PWD ".runtime/rp-a5-2-checkpoint"' not in workflow
 
 
 def test_target_identity_is_mandatory_and_precedes_database_access() -> None:
