@@ -10,8 +10,8 @@ test("首頁如實顯示紅焰 8-10 的 VERIFIED 5/5", async ({ page }) => {
   await expect(stageCard).toContainText("已驗證通關");
   await expect(stageCard).toContainText("5/5");
   await expect(page.getByText("research_core_file_ssot")).toBeVisible();
-  await expect(page.locator(".baseline-card dl")).toContainText(/Evidence\s*55/);
-  await expect(page.locator(".baseline-card dl")).toContainText(/Claims\s*53/);
+  await expect(page.locator(".baseline-card dl")).toContainText(/Evidence\s*64/);
+  await expect(page.locator(".baseline-card dl")).toContainText(/Claims\s*62/);
   await expect(page.locator(".baseline-card dl")).toContainText(/來源軸\s*15/);
   await expect(page.locator(".baseline-card dl")).toContainText(/操作步驟\s*37/);
   await expect(page.getByRole("link", { name: "查看紅焰深域 8-10" })).toBeVisible();
@@ -153,11 +153,50 @@ test("隊伍頁拒絕與 guide_id 不符的路徑", async ({ page }) => {
   await expect(page.getByText("平台不會自動建立不存在的隊伍或 Evidence")).toBeVisible();
 });
 
-test("PVP Registry 為空時顯示 no-result 而非虛構隊伍", async ({ page }) => {
+test("PVP 顯示 exact 單筆戰果且完整揭露限制與 Evidence", async ({ page }) => {
   await page.goto("/pvp");
 
-  await expect(page.getByRole("heading", { name: "競技場解陣" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "目前沒有可公開的實證反制" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "競技場精確解陣" })).toBeVisible();
   await expect(page.getByText("NO_VERIFIED_COUNTER", { exact: true })).toBeVisible();
-  await expect(page.getByText("0 筆正式案例", { exact: true })).toBeVisible();
+  await expect(page.getByText("SINGLE_REPORT_REFERENCE_ONLY", { exact: true })).toBeVisible();
+  await expect(page.getByText("目前沒有 VERIFIED counter；現有資料不會被提升為成熟結論。", { exact: true })).toBeVisible();
+  await expect(page.getByText("目前顯示的案例只有單筆來源戰果，僅供參考且不代表可重現性。", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "精確防守五人" })).toBeVisible();
+  await expect(page.getByRole("list", { name: "精確防守五人" }).getByRole("listitem")).toHaveCount(5);
+  await expect(page.getByRole("list", { name: "精確防守五人" }).getByText("台服官方名", { exact: true })).toHaveCount(5);
+
+  for (const counterId of ["TW_ARENA_20260525_01", "TW_ARENA_20260525_02"]) {
+    const card = page.locator(".arena-counter-card").filter({ hasText: counterId });
+    await expect(card.getByText("【僅供參考】", { exact: true })).toBeVisible();
+    await expect(card.getByText("SINGLE_REPORT", { exact: true })).toBeVisible();
+    await expect(card.getByText("Confidence D", { exact: true })).toBeVisible();
+    await expect(card.getByText("TW Availability PASS", { exact: true })).toBeVisible();
+    await expect(card.getByRole("listitem")).toHaveCount(5);
+    await expect(card.getByText("台服官方名", { exact: true })).toHaveCount(5);
+  }
+
+  await expect(page.getByRole("heading", { name: "Similar 未啟用" })).toBeVisible();
+
+  const firstCounter = page.locator(".arena-counter-card").filter({ hasText: "TW_ARENA_20260525_01" });
+  for (const [term, value] of [
+    ["台服可用性", "PASS"],
+    ["不可用角色", "無"],
+    ["來源等級", "SINGLE_PLAYER_REPORT"],
+    ["來源平台", "巴哈姆特"],
+    ["結果證據", "SCREENSHOT_RESULT"],
+    ["實測勝率", "樣本不足，未計算"],
+    ["RNG 風險", "UNKNOWN"],
+    ["速度條件", "UNKNOWN"],
+    ["初動備註", "UNKNOWN"],
+    ["強化條件檢查", "UNKNOWN"],
+    ["資料核對日", "2026-08-08"],
+    ["下次複核", "2026-08-23"],
+  ]) {
+    await expect(firstCounter.locator(".definition").filter({ hasText: term })).toContainText(value);
+  }
+  await firstCounter.getByRole("button").filter({ hasText: "ev114" }).click();
+  const drawer = page.getByRole("dialog", { name: "ev114" });
+  await expect(drawer.getByText("巴哈姆特回覆 B1 台服競技場勝利戰果", { exact: true })).toBeVisible();
+  await expect(drawer.getByText("單一作者單次截圖；只證明一次 exact composition 勝利，不代表穩定率或多次重現；戰果未載版本與練度", { exact: true })).toBeVisible();
+  await expect(drawer.getByText("Evidence 登錄定位：B1 憂姫 2026-05-25 10:41:38＋原圖 https://truth.bahamut.com.tw/s01/202605/forum/30861/acb01f479fdbfae7011c6eb730769599.JPG", { exact: true })).toBeVisible();
 });

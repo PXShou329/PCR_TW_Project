@@ -303,16 +303,22 @@ const typedBaselineCounts = {
   stages: 3,
   teams: 10,
   team_members: 50,
-  characters: 25,
-  evidence: 55,
-  claims: 53,
+  characters: 35,
+  evidence: 64,
+  claims: 62,
   operation_timelines: 15,
   timeline_steps: 37,
+  arena_defenses: 1,
+  arena_defense_members: 5,
+  arena_counters: 2,
+  arena_counter_members: 10,
+  arena_counter_evidence: 4,
+  arena_counter_claims: 4,
 };
 
 const baseline = envelope({
   research_core_version: "v1.5",
-  application_version: "3.0.0-a4",
+  application_version: "3.0.0-a5",
   canonical_source: "research_core_file_ssot",
   generated_at: "2026-08-08T00:00:00Z",
   counts: typedBaselineCounts,
@@ -886,6 +892,116 @@ const waterEvidenceRows = [
   ["ev106", "CLM-LOC-LABYRISTA-ALPHA", "availability", "JP", "OFFICIAL", "日服官方鏡像ラビリスタ（アルファ）登場公告", "https://dmg.priconne-redive.jp/news/detail.php?id=30360", "jp_official_mirror_30360", "2025-01-31", "官方正文列出「ラビリスタ（アルファ）」且角色劇情解鎖指向同一活動第2話與エピローグ；與ev105支撐同一角色同版本映射", "官方正文未直接聲明台日對照且採DMM官方鏡像；映射上限B"],
 ];
 
+const arenaDefenseMembers = [
+  [1, "eris_orig", "厄莉絲"],
+  [2, "presia_fallen", "普蕾西亞（墮落）"],
+  [3, "rei_ny", "怜（新年）"],
+  [4, "neya_orig", "涅婭"],
+  [5, "matsuri_orig", "茉莉"],
+].map(([slot, unit_key, display_name]) => ({
+  slot,
+  unit_key,
+  display_name,
+  display_name_source: "TW_OFFICIAL",
+}));
+
+const arenaCounterMembers = [
+  [
+    [1, "kaya_orig", "嘉夜"],
+    [2, "aira_orig", "埃拉"],
+    [3, "rem_orig", "雷姆"],
+    [4, "yuki_orig", "雪"],
+    [5, "saren_sum", "咲戀（夏日）"],
+  ],
+  [
+    [1, "kaya_orig", "嘉夜"],
+    [2, "aira_orig", "埃拉"],
+    [3, "mahiru_orig", "真陽"],
+    [4, "yuki_orig", "雪"],
+    [5, "saren_sum", "咲戀（夏日）"],
+  ],
+].map((members) => members.map(([slot, unit_key, display_name]) => ({
+  slot,
+  unit_key,
+  display_name,
+  display_name_source: "TW_OFFICIAL",
+})));
+
+const arenaCounters = arenaCounterMembers.map((counter_members, index) => ({
+  counter_id: `TW_ARENA_20260525_0${index + 1}`,
+  defense_id: "TW-2026-05-25:eris_orig;matsuri_orig;neya_orig;presia_fallen;rei_ny",
+  server: "TW",
+  environment_version: "TW-2026-05-25",
+  arena_bracket: "UNKNOWN",
+  defense_signature: "eris_orig;matsuri_orig;neya_orig;presia_fallen;rei_ny",
+  counter_signature: counter_members.map((member) => member.unit_key).sort().join(";"),
+  defense_members: arenaDefenseMembers,
+  counter_members,
+  status: "SINGLE_REPORT",
+  match_type: "EXACT",
+  outcome: "WIN",
+  verification: "SCREENSHOT_RESULT",
+  sample_size: 1,
+  wins: 1,
+  losses: 0,
+  empirical_win_rate: null,
+  randomness: "UNKNOWN（原樓主稱網站測試有贏也有輸）",
+  rng_risk: "UNKNOWN",
+  claim_confidence: "D",
+  reproducibility: "UNVERIFIED_REPEATABILITY",
+  source_tier: "SINGLE_PLAYER_REPORT",
+  source_record_count: 1,
+  source_platforms: ["Bahamut"],
+  tw_availability_check: "PASS",
+  unavailable_unit_ids: [],
+  required_upgrade_check: "UNKNOWN",
+  operation_mode: "UNKNOWN",
+  environment_match: "UNKNOWN",
+  speed_conditions: "UNKNOWN",
+  initial_action_notes: "UNKNOWN",
+  verified_date: "2026-08-08",
+  last_review_due: "2026-08-23",
+  record_date_min: "2026-05-25",
+  record_date_max: "2026-05-25",
+  notes: "單一玩家截圖戰果；只作 exact composition 參考。",
+  evidence_ids: index === 0 ? ["ev113", "ev114"] : ["ev113", "ev115"],
+  claim_ids: index === 0
+    ? ["CLM-ARENA-TW-DEF-20260525", "CLM-ARENA-TW-COUNTER-20260525-01"]
+    : ["CLM-ARENA-TW-DEF-20260525", "CLM-ARENA-TW-COUNTER-20260525-02"],
+}));
+
+function arenaEvidence(evidenceId, claimId, summary) {
+  const isCanonicalEv114 = evidenceId === "ev114";
+  return envelope({
+    evidence_id: evidenceId,
+    declared_claim_id: claimId,
+    linked_claim_id: claimId,
+    module: "arena",
+    server: "TW",
+    source_tier: "SINGLE_PLAYER_REPORT",
+    evidence_confidence: "D",
+    source_title: isCanonicalEv114
+      ? "巴哈姆特回覆 B1 台服競技場勝利戰果"
+      : "巴哈姆特 Arena 單筆戰果",
+    source_url: isCanonicalEv114
+      ? "https://forum.gamer.com.tw/Co.php?bsn=30861&sn=504930"
+      : `https://forum.gamer.com.tw/test-only/${evidenceId}`,
+    source_locator: isCanonicalEv114
+      ? "B1 憂姫 2026-05-25 10:41:38＋原圖 https://truth.bahamut.com.tw/s01/202605/forum/30861/acb01f479fdbfae7011c6eb730769599.JPG"
+      : `arena_report@${evidenceId}`,
+    published_date: "2026-05-25",
+    published_date_precision: "DAY",
+    verified_date: "2026-08-08",
+    claim_summary: isCanonicalEv114
+      ? "原始戰果圖明示攻方 Win、防方 Lose、防守五人全為 0%；攻方完整五人為嘉夜／埃拉／雷姆／雪／咲戀（夏日）"
+      : summary,
+    limitations: isCanonicalEv114
+      ? "單一作者單次截圖；只證明一次 exact composition 勝利，不代表穩定率或多次重現；戰果未載版本與練度"
+      : "單一來源、單一樣本；不代表可重現性或穩定勝率。",
+    status: "ACTIVE",
+  });
+}
+
 const evidenceFixtures = new Map([
   ["ev029", evidence029],
   ["ev050", supportingEvidence({ evidenceId: "ev050", claimId: "CLM-PVE-F810-STD", server: "JP", sourceTier: "UNKNOWN", sourceTitle: "スマホゲームNavi 紅焔の深域完全攻略（2026-01-31發布・2026-07-14更新）", sourceUrl: "https://games.appmatch.jp/gamewiki/princessconnect/1134429300-89/", sourceLocator: "appmatch_fire_deep_guide", publishedDate: "2026-01-31", verifiedDate: "2026-08-02" })],
@@ -913,6 +1029,9 @@ const evidenceFixtures = new Map([
   ["ev081", supportingEvidence({ evidenceId: "ev081", claimId: "CLM-LOC-MIO-NGS", server: "JP", sourceTier: "OFFICIAL", sourceTitle: "日服官網 2022/11/15 ミオ（デレマス）相關公告", sourceUrl: "https://priconne-redive.jp/news/information/20200/", sourceLocator: "jp_official_20200", publishedDate: "2022-11-15" })],
   ["ev082", supportingEvidence({ evidenceId: "ev082", claimId: "CLM-PVE-F810-ANNEGREA", server: "JP", sourceTier: "SINGLE_PLAYER_REPORT", sourceTitle: "YouTube 深域火 8-10 安＆古蕾婭通關實戰", sourceUrl: "https://www.youtube.com/watch?v=p95ZoBCWuYE", sourceLocator: "yt_p95ZoBCWuYE@00:00-02:35", publishedDate: "2025-12-03" })],
   ["ev083", supportingEvidence({ evidenceId: "ev083", claimId: "CLM-PVE-F810-MIO", server: "JP", sourceTier: "SINGLE_PLAYER_REPORT", sourceTitle: "YouTube 深域火 8-10 未央（NGs）半自動通關實戰", sourceUrl: "https://www.youtube.com/watch?v=Zw31omyYDKI", sourceLocator: "yt_Zw31omyYDKI@00:00-01:56", publishedDate: "2026-01-02" })],
+  ["ev113", arenaEvidence("ev113", "CLM-ARENA-TW-DEF-20260525", "正文顯示完整五人防守編成。")],
+  ["ev114", arenaEvidence("ev114", "CLM-ARENA-TW-COUNTER-20260525-01", "正文截圖顯示第一組完整五人與單次勝利結果。")],
+  ["ev115", arenaEvidence("ev115", "CLM-ARENA-TW-COUNTER-20260525-02", "正文截圖顯示第二組完整五人與單次勝利結果。")],
   ...waterEvidenceRows.map((row) => [row[0], canonicalEvidence(row)]),
 ]);
 
@@ -942,7 +1061,10 @@ const server = createServer((request, response) => {
     if (stageDetail) return send(response, 200, stageDetail);
   }
   if (url.pathname === "/api/v1/pvp/counters") {
-    return send(response, 200, envelope([], ["NO_VERIFIED_COUNTER"]));
+    return send(response, 200, envelope(arenaCounters, [
+      "NO_VERIFIED_COUNTER",
+      "SINGLE_REPORT_REFERENCE_ONLY",
+    ]));
   }
   const evidenceMatch = url.pathname.match(/^\/api\/v1\/evidence\/(ev\d+)$/);
   if (evidenceMatch && evidenceFixtures.has(evidenceMatch[1])) {

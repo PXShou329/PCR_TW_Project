@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timezone
+from collections.abc import Iterable
 from typing import Any
 
 from sqlalchemy import (
@@ -39,6 +40,24 @@ json_type = JSON().with_variant(JSONB(), "postgresql")
 nullable_json_type = JSON(none_as_null=True).with_variant(
     JSONB(none_as_null=True), "postgresql"
 )
+
+
+def arena_formation_signature(unit_keys: Iterable[str]) -> str:
+    """Return the canonical order-insensitive identity for one five-unit team.
+
+    Arena display slots remain ordered in the member tables.  Search identity is
+    deliberately independent of those slots so the same five units cannot be
+    counted twice merely because a source lists them in a different order.
+    """
+
+    normalized = [unit_key.strip() for unit_key in unit_keys]
+    if len(normalized) != 5:
+        raise ValueError("Arena formations require exactly five members")
+    if any(not unit_key for unit_key in normalized):
+        raise ValueError("Arena formation unit_key values must be non-empty")
+    if len(set(normalized)) != len(normalized):
+        raise ValueError("Arena formation members must be unique")
+    return ";".join(sorted(normalized))
 
 
 class Base(DeclarativeBase):
@@ -662,6 +681,296 @@ class ClaimEvidence(Base):
     )
     evidence_id: Mapped[str] = mapped_column(
         ForeignKey("evidence.evidence_id", ondelete="RESTRICT"), primary_key=True
+    )
+
+
+class ArenaDefense(Base):
+    """One canonical Battle Arena defense in a specific server environment."""
+
+    __tablename__ = "arena_defenses"
+
+    defense_id: Mapped[str] = mapped_column(String(140), primary_key=True)
+    server: Mapped[str] = mapped_column(String(16), nullable=False)
+    formation_signature: Mapped[str] = mapped_column(String(600), nullable=False)
+    environment_version: Mapped[str] = mapped_column(String(100), nullable=False)
+    arena_bracket: Mapped[str] = mapped_column(String(100), nullable=False)
+    core_tags: Mapped[list[str]] = mapped_column(json_type, nullable=False)
+    status: Mapped[str] = mapped_column(String(24), nullable=False)
+    review_status: Mapped[str] = mapped_column(String(32), nullable=False)
+    verified_date: Mapped[date] = mapped_column(Date, nullable=False)
+    notes: Mapped[str] = mapped_column(Text, nullable=False)
+    source_payload: Mapped[dict[str, Any]] = mapped_column(json_type, nullable=False)
+    import_run_id: Mapped[str] = mapped_column(
+        ForeignKey("import_runs.id", ondelete="RESTRICT"), nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "server",
+            "environment_version",
+            "formation_signature",
+            name="uq_arena_defenses_server_environment_signature",
+        ),
+        CheckConstraint("server IN ('TW','JP')", name="arena_defense_server"),
+        CheckConstraint(
+            "status IN ('VERIFIED','PROVISIONAL','SINGLE_REPORT','STALE','REJECTED')",
+            name="arena_defense_status",
+        ),
+        CheckConstraint(
+            "review_status IN ('CURRENT','REVALIDATE_REQUIRED','STALE')",
+            name="arena_defense_review_status",
+        ),
+        CheckConstraint(
+            "length(formation_signature) > 0",
+            name="arena_defense_signature_nonempty",
+        ),
+        Index(
+            "ix_arena_defenses_server_status",
+            "server",
+            "status",
+            "review_status",
+        ),
+    )
+
+
+class ArenaDefenseMember(Base):
+    __tablename__ = "arena_defense_members"
+
+    defense_id: Mapped[str] = mapped_column(
+        ForeignKey("arena_defenses.defense_id", ondelete="CASCADE"), primary_key=True
+    )
+    slot: Mapped[int] = mapped_column(Integer, primary_key=True)
+    unit_key: Mapped[str] = mapped_column(
+        ForeignKey("characters.unit_key", ondelete="RESTRICT"), nullable=False
+    )
+
+    __table_args__ = (
+        CheckConstraint("slot BETWEEN 1 AND 5", name="arena_defense_member_slot_range"),
+        UniqueConstraint(
+            "defense_id",
+            "unit_key",
+            name="uq_arena_defense_members_defense_unit",
+        ),
+    )
+
+
+class ArenaCounter(Base):
+    """A source-backed exact counter for one canonical Arena defense."""
+
+    __tablename__ = "arena_counters"
+
+    counter_id: Mapped[str] = mapped_column(String(140), primary_key=True)
+    defense_id: Mapped[str] = mapped_column(
+        ForeignKey("arena_defenses.defense_id", ondelete="CASCADE"), nullable=False
+    )
+    formation_signature: Mapped[str] = mapped_column(String(600), nullable=False)
+    status: Mapped[str] = mapped_column(String(24), nullable=False)
+    match_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    outcome: Mapped[str] = mapped_column(String(16), nullable=False)
+    verification: Mapped[str] = mapped_column(String(32), nullable=False)
+    sample_size: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    wins: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    losses: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    empirical_win_rate: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    randomness: Mapped[str] = mapped_column(Text, nullable=False)
+    rng_risk: Mapped[str] = mapped_column(String(16), nullable=False)
+    claim_confidence: Mapped[str] = mapped_column(String(8), nullable=False)
+    reproducibility: Mapped[str] = mapped_column(String(32), nullable=False)
+    source_tier: Mapped[str] = mapped_column(String(40), nullable=False)
+    source_record_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    source_platforms: Mapped[list[str]] = mapped_column(json_type, nullable=False)
+    tw_availability_check: Mapped[str] = mapped_column(String(20), nullable=False)
+    unavailable_unit_ids: Mapped[list[str]] = mapped_column(json_type, nullable=False)
+    required_upgrade_check: Mapped[str] = mapped_column(String(24), nullable=False)
+    operation_mode: Mapped[str] = mapped_column(String(24), nullable=False)
+    environment_match: Mapped[str] = mapped_column(String(20), nullable=False)
+    speed_conditions: Mapped[str] = mapped_column(Text, nullable=False)
+    initial_action_notes: Mapped[str] = mapped_column(Text, nullable=False)
+    verified_date: Mapped[date] = mapped_column(Date, nullable=False)
+    last_review_due: Mapped[date] = mapped_column(Date, nullable=False)
+    record_date_min: Mapped[date] = mapped_column(Date, nullable=False)
+    record_date_max: Mapped[date] = mapped_column(Date, nullable=False)
+    notes: Mapped[str] = mapped_column(Text, nullable=False)
+    source_payload: Mapped[dict[str, Any]] = mapped_column(json_type, nullable=False)
+    import_run_id: Mapped[str] = mapped_column(
+        ForeignKey("import_runs.id", ondelete="RESTRICT"), nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "defense_id",
+            "formation_signature",
+            name="uq_arena_counters_defense_signature",
+        ),
+        CheckConstraint(
+            "status IN "
+            "('VERIFIED','PROVISIONAL','SINGLE_REPORT','STALE','REJECTED')",
+            name="arena_counter_status",
+        ),
+        # A stored counter is exact for the defense it references.  Similar
+        # search is a query-time reuse of another defense's exact record and
+        # must remain visibly labelled by the API/UI.
+        CheckConstraint("match_type = 'EXACT'", name="arena_counter_match_type"),
+        CheckConstraint(
+            "outcome IN ('WIN','LOSS','MIXED','UNKNOWN')",
+            name="arena_counter_outcome",
+        ),
+        CheckConstraint(
+            "verification IN ('SCREENSHOT_RESULT','VIDEO_RESULT','TEXT_REPORT','UNKNOWN')",
+            name="arena_counter_verification",
+        ),
+        CheckConstraint(
+            "(sample_size IS NULL AND wins IS NULL AND losses IS NULL) OR "
+            "(sample_size IS NOT NULL AND wins IS NOT NULL AND losses IS NOT NULL "
+            "AND sample_size = wins + losses)",
+            name="arena_counter_sample_shape",
+        ),
+        CheckConstraint(
+            "(outcome != 'WIN' OR (wins IS NOT NULL AND wins >= 1)) AND "
+            "(outcome != 'LOSS' OR (losses IS NOT NULL AND losses >= 1))",
+            name="arena_counter_outcome_count",
+        ),
+        CheckConstraint(
+            "sample_size IS NULL OR sample_size >= 1",
+            name="arena_counter_sample_size_positive",
+        ),
+        CheckConstraint("wins IS NULL OR wins >= 0", name="arena_counter_wins_nonnegative"),
+        CheckConstraint(
+            "losses IS NULL OR losses >= 0",
+            name="arena_counter_losses_nonnegative",
+        ),
+        CheckConstraint(
+            "empirical_win_rate IS NULL OR "
+            "(sample_size IS NOT NULL AND empirical_win_rate BETWEEN 0 AND 100 "
+            "AND sample_size >= 2)",
+            name="arena_counter_empirical_rate",
+        ),
+        CheckConstraint(
+            "status != 'SINGLE_REPORT' OR empirical_win_rate IS NULL",
+            name="arena_counter_single_report_no_empirical_rate",
+        ),
+        CheckConstraint(
+            "rng_risk IN ('LOW','MEDIUM','HIGH','UNKNOWN')",
+            name="arena_counter_rng_risk",
+        ),
+        CheckConstraint(
+            "claim_confidence IN ('B','C','D','E')",
+            name="arena_counter_claim_confidence",
+        ),
+        CheckConstraint(
+            "status != 'SINGLE_REPORT' OR claim_confidence = 'D'",
+            name="arena_counter_single_report_confidence",
+        ),
+        CheckConstraint(
+            "status != 'VERIFIED' OR claim_confidence IN ('B','C')",
+            name="arena_counter_verified_confidence",
+        ),
+        CheckConstraint(
+            "reproducibility IN "
+            "('CONFIRMED','UNVERIFIED_REPEATABILITY',"
+            "'UNVERIFIED_ON_TW','UNKNOWN')",
+            name="arena_counter_reproducibility",
+        ),
+        CheckConstraint(
+            "status != 'VERIFIED' OR reproducibility = 'CONFIRMED'",
+            name="arena_counter_verified_reproducibility",
+        ),
+        CheckConstraint(
+            "status != 'VERIFIED' OR ("
+            "outcome = 'WIN' AND verification != 'UNKNOWN' "
+            "AND source_tier IN "
+            "('OFFICIAL','MAJOR_GUIDE','STRUCTURED_DB','COMMUNITY_WIKI',"
+            "'MULTI_PLAYER_REPORT') "
+            "AND source_record_count >= 2 "
+            "AND sample_size IS NOT NULL AND sample_size >= 2 "
+            "AND wins IS NOT NULL AND wins >= 2 "
+            "AND environment_match = 'EXACT')",
+            name="arena_counter_verified_multi_source_shape",
+        ),
+        CheckConstraint(
+            "length(randomness) > 0",
+            name="arena_counter_randomness_nonempty",
+        ),
+        CheckConstraint(
+            "length(source_tier) > 0",
+            name="arena_counter_source_tier_nonempty",
+        ),
+        CheckConstraint(
+            "source_record_count >= 1",
+            name="arena_counter_source_record_count_positive",
+        ),
+        CheckConstraint(
+            "tw_availability_check IN ('PASS','FAIL','UNVERIFIED')",
+            name="arena_counter_tw_availability_check",
+        ),
+        CheckConstraint(
+            "required_upgrade_check IN ('PASS','FAIL','UNKNOWN','NOT_APPLICABLE')",
+            name="arena_counter_required_upgrade_check",
+        ),
+        CheckConstraint(
+            "record_date_min <= record_date_max",
+            name="arena_counter_record_date_range",
+        ),
+        CheckConstraint(
+            "operation_mode IN ('AUTO_SYSTEM','MANUAL','UNKNOWN')",
+            name="arena_counter_operation_mode",
+        ),
+        CheckConstraint(
+            "environment_match IN ('EXACT','COMPATIBLE','MISMATCH','UNKNOWN')",
+            name="arena_counter_environment_match",
+        ),
+        CheckConstraint(
+            "length(formation_signature) > 0",
+            name="arena_counter_signature_nonempty",
+        ),
+        Index(
+            "ix_arena_counters_defense_status",
+            "defense_id",
+            "status",
+        ),
+    )
+
+
+class ArenaCounterMember(Base):
+    __tablename__ = "arena_counter_members"
+
+    counter_id: Mapped[str] = mapped_column(
+        ForeignKey("arena_counters.counter_id", ondelete="CASCADE"), primary_key=True
+    )
+    slot: Mapped[int] = mapped_column(Integer, primary_key=True)
+    unit_key: Mapped[str] = mapped_column(
+        ForeignKey("characters.unit_key", ondelete="RESTRICT"), nullable=False
+    )
+
+    __table_args__ = (
+        CheckConstraint("slot BETWEEN 1 AND 5", name="arena_counter_member_slot_range"),
+        UniqueConstraint(
+            "counter_id",
+            "unit_key",
+            name="uq_arena_counter_members_counter_unit",
+        ),
+    )
+
+
+class ArenaCounterEvidence(Base):
+    __tablename__ = "arena_counter_evidence"
+
+    counter_id: Mapped[str] = mapped_column(
+        ForeignKey("arena_counters.counter_id", ondelete="CASCADE"), primary_key=True
+    )
+    evidence_id: Mapped[str] = mapped_column(
+        ForeignKey("evidence.evidence_id", ondelete="RESTRICT"), primary_key=True
+    )
+
+
+class ArenaCounterClaim(Base):
+    __tablename__ = "arena_counter_claims"
+
+    counter_id: Mapped[str] = mapped_column(
+        ForeignKey("arena_counters.counter_id", ondelete="CASCADE"), primary_key=True
+    )
+    claim_id: Mapped[str] = mapped_column(
+        ForeignKey("claims.claim_id", ondelete="RESTRICT"), primary_key=True
     )
 
 

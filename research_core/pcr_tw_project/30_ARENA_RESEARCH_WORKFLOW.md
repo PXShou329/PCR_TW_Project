@@ -20,11 +20,12 @@
 
 1. 依 Instructions §6.1 詞庫＋敵方核心角日文名搜尋。
 2. 依 34 來源地圖選擇來源；注意 nomae arenadb 為歷史資料、pcrdfans 需逐筆確認伺服器。
-3. 多來源交叉：至少兩個彼此獨立來源一致才可標 claim_confidence B／C（單一大型攻略站最多 D），並在 92 登錄 evidence_id。
-4. 單一影片或單一留言 → status＝SINGLE_REPORT、可靠度 D、標【僅供參考】（對應 T27）。
-5. 舊環境資料（新角／專武／六星已改變環境）→ status＝STALE，不得當現行解（對應 T28）。
-6. 簡中來源 → 依 §9 排除或追溯日服原始來源（對應 T29）。
-7. **台服實裝檢查**：反制隊每名角色與關鍵強化（專武／六星）確認台服已實裝；未實裝標【日服現況】／【台服未來】並另尋台服現行替代解。
+3. 多來源交叉：至少兩個彼此獨立來源一致才可標 claim_confidence B／C（單一大型攻略站最多 D），逐筆在 92 登錄 Evidence，並由 93 通過獨立性檢查。
+4. A5 升為 `VERIFIED` 前，敵我必須是同服、`environment_match=EXACT` 的同一 exact 配對，且反制核心結論已有上述 B／C 多來源閉合；39 與 92 的 tier 必須在 canonical whitelist 內，每筆核心 Evidence 的 `source_url` 必須是具非空 hostname 的 HTTPS URL。一般 ST49 對離線 B／C Claim 的 locator／title fallback 不構成 Arena 成熟證據。`source_record_count` 只記來源紀錄數，不得取代 Evidence 獨立性；`sample_size` 只記來源明示的實戰觀測數，不得用來源筆數補值。
+5. 尚未建立 Arena 實測 run registry，因此「本人實測」或手填 `CONFIRMED` 不能單獨升為 `VERIFIED`／計入 Gate；先留 `PROVISIONAL`，若僅有單一影片或留言則為 `SINGLE_REPORT / D /【僅供參考】`（對應 T27）。
+6. 舊環境資料（新角／專武／六星已改變環境）→ status＝STALE，不得當現行解（對應 T28）。
+7. 簡中來源 → 依 §9 排除或追溯日服原始來源（對應 T29）。
+8. **台服實裝檢查**：反制隊每名角色與關鍵強化（專武／六星）確認台服已實裝；未實裝標【日服現況】／【台服未來】並另尋台服現行替代解。
 
 ## 4. 輸出
 
@@ -35,4 +36,5 @@
 ## 5. 建檔與維護
 
 - 有價值的反制 → 依 31 Schema 建檔；每次研究 → 33 記一筆。
+- Arena Gate 的計數單位是**成熟防守案例**，不是 39 的資料列數：同一 TW 環境、同一敵方五人必須至少有兩支不同的成熟 `VERIFIED` exact counters，才算一個 defense。
 - 環境變動（新角實裝、大改版）→ 更新 32 快照並重驗相關反制。

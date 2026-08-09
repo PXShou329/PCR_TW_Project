@@ -725,6 +725,111 @@ code {
   margin: 0;
 }
 
+.arena-warning,
+.arena-defense__heading,
+.arena-counter-card__heading,
+.arena-counter-card__footer,
+.arena-similar-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.arena-warning {
+  margin: 0 0 1.25rem;
+  padding: 1rem 1.2rem;
+  color: #f4ddb0;
+  background: rgba(242, 203, 109, 0.08);
+  border: 1px solid rgba(242, 203, 109, 0.22);
+  border-radius: var(--radius-sm);
+}
+
+.arena-warning p,
+.arena-warning strong,
+.arena-similar-panel h2,
+.arena-similar-panel p,
+.arena-counter-card__footer p {
+  margin-bottom: 0;
+}
+
+.arena-warning__messages {
+  display: grid;
+  margin-top: 0.25rem;
+  gap: 0.3rem;
+}
+
+.arena-defense-list,
+.arena-counter-list {
+  display: grid;
+  gap: 1rem;
+}
+
+.arena-defense {
+  padding: clamp(1.3rem, 3vw, 2rem);
+}
+
+.arena-defense h2,
+.arena-counter-card h3 {
+  margin-bottom: 0;
+}
+
+.arena-counter-list {
+  margin-top: 1.5rem;
+}
+
+.arena-counter-card {
+  padding: 1.2rem;
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+
+.arena-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  gap: 0.75rem;
+}
+
+.arena-facts .definition {
+  min-width: 0;
+  padding: 0.8rem;
+  background: rgba(0, 0, 0, 0.12);
+  border-radius: var(--radius-sm);
+}
+
+.arena-roster__source {
+  display: block;
+  margin-top: 0.2rem;
+  color: var(--muted);
+  font-size: 0.58rem;
+  font-weight: 700;
+}
+
+.arena-counter-card__footer {
+  align-items: flex-end;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  color: var(--muted);
+  border-top: 1px solid var(--line);
+}
+
+.arena-counter-card__footer > div:first-child {
+  max-width: 720px;
+}
+
+.arena-similar-panel {
+  align-items: flex-end;
+  margin-top: 1rem;
+  padding: 1.2rem;
+}
+
+.arena-similar-panel > p {
+  max-width: 620px;
+  color: var(--muted);
+  text-align: right;
+}
+
 .metadata-panel {
   margin-top: 3rem;
 }
@@ -1605,6 +1710,30 @@ code {
   .roster li > .badge {
     grid-column: auto;
     justify-self: end;
+  }
+
+  .arena-warning,
+  .arena-defense__heading,
+  .arena-counter-card__heading,
+  .arena-counter-card__footer,
+  .arena-similar-panel {
+    display: block;
+  }
+
+  .arena-warning .badge-row,
+  .arena-defense__heading .badge-row,
+  .arena-counter-card__heading .badge-row,
+  .arena-counter-card__footer .evidence-list {
+    margin-top: 0.75rem;
+  }
+
+  .arena-facts {
+    grid-template-columns: 1fr;
+  }
+
+  .arena-similar-panel > p {
+    margin-top: 0.75rem;
+    text-align: left;
   }
 
   .requirement-card:last-child:nth-child(odd) {

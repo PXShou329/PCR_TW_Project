@@ -118,3 +118,12 @@ CLM-LOC-NANAKA-SUMMER,availability,CROSS_SERVER_MAPPING,台服「七七香（夏
 CLM-LOC-MISORA-XMAS,availability,CROSS_SERVER_MAPPING,台服「美空（聖誕節）」＝日服「ミソラ（クリスマス）」為同一角色聖誕版本,ANALYTICAL_JUDGMENT,B,ev101;ev102,YES,YES,ACTIVE,2026-08-08,2026-09-30,03;18;23;25,以兩個官方host的角色名及聖誕節／クリスマス版本後綴交叉比對；無官方跨服對照聲明故上限B
 CLM-LOC-VIOLET-ISANAMI,availability,CROSS_SERVER_MAPPING,台服「薇歐莉特（黃泉鯨命）」＝日服「ヴァイオレット（イサナミ）」為同一角色同版本,ANALYTICAL_JUDGMENT,B,ev103;ev104,YES,YES,ACTIVE,2026-08-08,2026-09-30,03;18;23;25,以台服與日服官方host的角色名、版本後綴及限定登場資料交叉比對；水堇僅為社群俗稱，無官方跨服聲明故上限B
 CLM-LOC-LABYRISTA-ALPHA,availability,CROSS_SERVER_MAPPING,台服「拉比林斯達（始源）」＝日服「ラビリスタ（アルファ）」為同一角色同版本,ANALYTICAL_JUDGMENT,B,ev105;ev106,YES,YES,ACTIVE,2026-08-08,2026-09-30,03;18;23;25,兩服官方正文同指角色劇情解鎖之同一活動第2話與終幕／エピローグ，並有相符角色名與限定版本；無官方跨服聲明故上限B
+CLM-TW-ERIS-AVAILABLE,availability,TW,台服官方公告將厄莉絲列為公主祭典限定角色，證明台服官方名稱與已實裝,SOURCE_FACT,A,ev107,N_A,YES,ACTIVE,2026-08-08,2026-09-30,18;39;92,此 Claim 不推定厄莉絲首次實裝日、日文名或逐項強化
+CLM-TW-PRESIA-FALLEN-REL,availability,TW,台服「普蕾西亞（墮落）」於 2024/03/20 16:00 在精選轉蛋登場,SOURCE_FACT,A,ev108,N_A,YES,ACTIVE,2026-08-08,2026-09-30,18;39;92,只包含台服官方正文直接支持的名稱與實裝事實
+CLM-TW-ARENA-LEGACY-AVAILABLE,availability,TW,台服官方公告明列怜（新年）／茉莉／雪／真陽／嘉夜為交換目標角色，證明其官方名稱與已實裝,SOURCE_FACT,A,ev109,N_A,YES,ACTIVE,2026-08-08,2026-09-30,18;39;92,不是各角色首次實裝公告；日期與逐項強化維持 UNKNOWN
+CLM-TW-AIRA-REL,availability,TW,台服「埃拉」於 2026/01/01 16:00 在公主祭典轉蛋登場,SOURCE_FACT,A,ev110,N_A,YES,ACTIVE,2026-08-08,2026-09-30,18;39;92,官方名為埃拉；Arena 戰果第二格不得誤辨為秋乃
+CLM-TW-REM-AVAILABLE,availability,TW,台服官方公告列出雷姆及其★6純淨記憶碎片，證明台服官方名稱與角色已實裝,SOURCE_FACT,A,ev111,N_A,YES,ACTIVE,2026-08-08,2026-09-30,18;39;92,不是首次實裝或復刻轉蛋公告；不推定當期可抽取性
+CLM-TW-SAREN-SUMMER-AVAILABLE,availability,TW,台服官方公告將咲戀（夏日）列為 Limited Select 選擇角色候補，證明官方名稱與已實裝,SOURCE_FACT,A,ev112,N_A,YES,ACTIVE,2026-08-08,2026-09-30,18;39;92,不是首次實裝公告故 release date 留空
+CLM-ARENA-TW-DEF-20260525,arena,TW,巴哈主文及兩張回覆戰果顯示同一組台服防守五人：厄莉絲／普蕾西亞（墮落）／怜（新年）／涅婭／茉莉,SOURCE_FACT,D,ev113,NO,UNKNOWN,ACTIVE,2026-08-08,2026-08-23,33;39;46;92,角色順序依傷害報告列保存；主文未載版本與練度且明稱有贏有輸
+CLM-ARENA-TW-COUNTER-20260525-01,arena,TW,單一巴哈戰果圖顯示嘉夜／埃拉／雷姆／雪／咲戀（夏日）對指定完整防守取得一次 Win,SOURCE_FACT,D,ev114,NO,UNKNOWN,ACTIVE,2026-08-08,2026-08-23,33;39;46;92,EXACT_SCREENSHOT_WIN；sample_size=1；同一作者；empirical win rate=NULL；不得升為 VERIFIED
+CLM-ARENA-TW-COUNTER-20260525-02,arena,TW,單一巴哈戰果圖與正文顯示嘉夜／埃拉／真陽／雪／咲戀（夏日）對指定完整防守取得一次 Win,SOURCE_FACT,D,ev115,NO,UNKNOWN,ACTIVE,2026-08-08,2026-08-23,33;39;46;92,EXACT_SCREENSHOT_WIN；sample_size=1；與前筆同一作者；empirical win rate=NULL；不得作獨立交叉驗證

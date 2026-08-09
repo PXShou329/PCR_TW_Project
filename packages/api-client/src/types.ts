@@ -62,6 +62,12 @@ export interface BaselineCounts {
   claims: number;
   operation_timelines: number;
   timeline_steps: number;
+  arena_defenses: number;
+  arena_defense_members: number;
+  arena_counters: number;
+  arena_counter_members: number;
+  arena_counter_evidence: number;
+  arena_counter_claims: number;
 }
 
 export interface Coverage {
@@ -285,8 +291,73 @@ export interface Evidence {
   status: string;
 }
 
+export type ArenaStatus =
+  | "VERIFIED"
+  | "PROVISIONAL"
+  | "SINGLE_REPORT"
+  | "STALE"
+  | "REJECTED";
+export type ArenaOutcome = "WIN" | "LOSS" | "MIXED" | "UNKNOWN";
+export type ArenaVerification =
+  | "SCREENSHOT_RESULT"
+  | "VIDEO_RESULT"
+  | "TEXT_REPORT"
+  | "UNKNOWN";
+export type ArenaRngRisk = "LOW" | "MEDIUM" | "HIGH" | "UNKNOWN";
+export type ArenaReproducibility =
+  | "CONFIRMED"
+  | "UNVERIFIED_REPEATABILITY"
+  | "UNVERIFIED_ON_TW"
+  | "UNKNOWN";
+export type ArenaOperationMode = "AUTO_SYSTEM" | "MANUAL" | "UNKNOWN";
+export type ArenaEnvironmentMatch = "EXACT" | "COMPATIBLE" | "MISMATCH" | "UNKNOWN";
+
+export interface ArenaMember {
+  slot: number;
+  unit_key: string;
+  display_name: string;
+  display_name_source: "TW_OFFICIAL" | "JP_OFFICIAL";
+}
+
 export interface PvpCounter {
   counter_id: string;
+  defense_id: string;
+  server: "TW" | "JP";
+  environment_version: string;
+  arena_bracket: string;
+  defense_signature: string;
+  counter_signature: string;
+  defense_members: ArenaMember[];
+  counter_members: ArenaMember[];
+  status: ArenaStatus;
+  match_type: "EXACT";
+  outcome: ArenaOutcome;
+  verification: ArenaVerification;
+  sample_size: number | null;
+  wins: number | null;
+  losses: number | null;
+  empirical_win_rate: number | null;
+  randomness: string;
+  rng_risk: ArenaRngRisk;
+  claim_confidence: "B" | "C" | "D" | "E";
+  reproducibility: ArenaReproducibility;
+  source_tier: string;
+  source_record_count: number;
+  source_platforms: string[];
+  tw_availability_check: "PASS" | "FAIL" | "UNVERIFIED";
+  unavailable_unit_ids: string[];
+  required_upgrade_check: "PASS" | "FAIL" | "UNKNOWN" | "NOT_APPLICABLE";
+  operation_mode: ArenaOperationMode;
+  environment_match: ArenaEnvironmentMatch;
+  speed_conditions: string;
+  initial_action_notes: string;
+  verified_date: string;
+  last_review_due: string | null;
+  record_date_min: string | null;
+  record_date_max: string | null;
+  notes: string;
+  evidence_ids: string[];
+  claim_ids: string[];
 }
 
 export interface Claim {

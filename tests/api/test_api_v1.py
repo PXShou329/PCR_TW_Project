@@ -34,7 +34,7 @@ from .conftest import make_factory
 
 GUIDE_ID = "TW_DEEP_FIRE_08_10_20260802"
 WATER_GUIDE_ID = "TW_DEEP_WATER_08_10_20260808"
-APPLICATION_VERSION = "3.0.0-a4"
+APPLICATION_VERSION = "3.0.0-a5"
 
 
 def test_postgresql_engine_uses_repeatable_read_for_route_snapshot(
@@ -608,16 +608,22 @@ def test_baseline_reports_real_counts_and_research_gates(client: TestClient) -> 
     assert_meta(payload)
     data = payload["data"]
     assert data["research_core_version"] == "v1.5"
-    assert data["application_version"] == "3.0.0-a4"
+    assert data["application_version"] == "3.0.0-a5"
     assert data["counts"] == {
         "stages": 3,
         "teams": 10,
         "team_members": 50,
-        "characters": 25,
-        "evidence": 55,
-        "claims": 53,
+        "characters": 35,
+        "evidence": 64,
+        "claims": 62,
         "operation_timelines": 15,
         "timeline_steps": 37,
+        "arena_defenses": 1,
+        "arena_defense_members": 5,
+        "arena_counters": 2,
+        "arena_counter_members": 10,
+        "arena_counter_evidence": 4,
+        "arena_counter_claims": 4,
     }
     assert data["gates"]["gate_a"] is False
     assert data["gates"]["gate_b"] is False
@@ -891,7 +897,7 @@ def test_source_text_only_timeline_does_not_invent_actions(client: TestClient) -
     assert all(step["criticality"] == "UNKNOWN" for step in source["steps"])
 
 
-def test_evidence_claim_drawer_and_pvp_no_result(client: TestClient) -> None:
+def test_evidence_claim_drawer_and_pvp_single_reports(client: TestClient) -> None:
     evidence = client.get("/api/v1/evidence/ev050")
     assert evidence.status_code == 200
     evidence_data = evidence.json()["data"]
@@ -903,10 +909,15 @@ def test_evidence_claim_drawer_and_pvp_no_result(client: TestClient) -> None:
     assert claim.status_code == 200
     assert "ev050" in claim.json()["data"]["evidence_ids"]
 
-    no_result = client.get("/api/v1/pvp/counters")
-    assert no_result.status_code == 200
-    assert no_result.json()["data"] == []
-    assert "NO_VERIFIED_COUNTER" in no_result.json()["meta"]["warnings"]
+    pvp = client.get("/api/v1/pvp/counters")
+    assert pvp.status_code == 200
+    assert [row["counter_id"] for row in pvp.json()["data"]] == [
+        "TW_ARENA_20260525_01",
+        "TW_ARENA_20260525_02",
+    ]
+    assert all(row["tw_availability_check"] == "PASS" for row in pvp.json()["data"])
+    assert "NO_VERIFIED_COUNTER" in pvp.json()["meta"]["warnings"]
+    assert "SINGLE_REPORT_REFERENCE_ONLY" in pvp.json()["meta"]["warnings"]
 
 
 def test_unknown_resource_is_structured_404(client: TestClient) -> None:

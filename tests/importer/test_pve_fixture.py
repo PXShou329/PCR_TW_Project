@@ -13,7 +13,14 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 import pcr_pipeline.pve_fixture as fixture_module
+from pcr_api.repository import arena_counter_results
 from pcr_database.models import (
+    ArenaCounter,
+    ArenaCounterClaim,
+    ArenaCounterEvidence,
+    ArenaCounterMember,
+    ArenaDefense,
+    ArenaDefenseMember,
     Base,
     Character,
     Claim,
@@ -39,7 +46,9 @@ from pcr_pipeline.pve_fixture import (
 )
 from pcr_pipeline.research_core_snapshot import (
     EXPECTED_CSV_ROW_COUNT,
-    EXPECTED_MANIFEST_SHA256,
+    RP_A5_MANIFEST_SHA256,
+    RP_A4_MANIFEST_SHA256,
+    RP_A4_SNAPSHOT_CONTRACT,
     RP_A3_MANIFEST_SHA256,
     RP_A3_SNAPSHOT_CONTRACT,
     RP_A2_MANIFEST_SHA256,
@@ -53,6 +62,7 @@ from pcr_pipeline.research_core_snapshot import (
 ROOT = Path(__file__).resolve().parents[2]
 RESEARCH_CORE = ROOT / "research_core" / "pcr_tw_project"
 A4_MANIFEST = ROOT / "scripts" / "research_core_rp_a4_manifest.sha256"
+A5_MANIFEST = ROOT / "scripts" / "research_core_rp_a5_manifest.sha256"
 A3_MANIFEST = ROOT / "scripts" / "research_core_rp_a3_manifest.sha256"
 RP_A2_MANIFEST = ROOT / "scripts" / "research_core_rp_a2_manifest.sha256"
 SYNTHETIC_GUIDE_ID = "TW_DEEP_FIRE_09_10_SYNTHETIC"
@@ -246,12 +256,30 @@ def test_loader_builds_all_pve_closure_without_strengthening_unknowns() -> None:
         "TM-W810-04",
         "TM-W810-05",
     ]
-    assert len(closure.characters) == 25
-    assert len(closure.evidence) == 55
-    assert len(closure.claims) == 53
+    assert len(closure.characters) == 35
+    assert len(closure.evidence) == 64
+    assert len(closure.claims) == 62
     assert len(closure.timelines) == 15
     assert len(closure.timeline_steps) == 37
     assert closure.dangling_claim_ids == ()
+    assert [row["counter_id"] for row in closure.arena_rows] == [
+        "TW_ARENA_20260525_01",
+        "TW_ARENA_20260525_02",
+    ]
+    assert closure.arena_evidence_ids_by_counter == {
+        "TW_ARENA_20260525_01": ("ev113", "ev114"),
+        "TW_ARENA_20260525_02": ("ev113", "ev115"),
+    }
+    assert closure.arena_claim_ids_by_counter == {
+        "TW_ARENA_20260525_01": (
+            "CLM-ARENA-TW-DEF-20260525",
+            "CLM-ARENA-TW-COUNTER-20260525-01",
+        ),
+        "TW_ARENA_20260525_02": (
+            "CLM-ARENA-TW-DEF-20260525",
+            "CLM-ARENA-TW-COUNTER-20260525-02",
+        ),
+    }
 
     first = closure.teams[0]
     assert first["operation_mode"] == "SOURCE_CONFLICT"
@@ -348,6 +376,310 @@ def test_water_8_10_closure_preserves_five_verified_teams_and_source_axes() -> N
     assert {"ev084", "ev085", "ev086", "ev087", "ev088"} <= selected_evidence_ids
     assert {"ev089", "ev090"}.isdisjoint(selected_evidence_ids)
     assert all(row["status"] == "ACTIVE" for row in closure.evidence)
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        (
+            "counter_team_ids",
+            "kaya_orig;kaya_orig;rem_orig;yuki_orig;saren_sum",
+            "five distinct",
+        ),
+        ("empirical_win_rate", "100", "SINGLE_REPORT"),
+        ("evidence_ids", "ev001", "Arena Evidence/Claim closure"),
+        ("operation_mode", "AUTO", "operation_mode"),
+    ],
+)
+def test_arena_source_truth_mutations_fail_closed(
+    tmp_path: Path,
+    field: str,
+    value: str,
+    message: str,
+) -> None:
+    core = tmp_path / "pcr_tw_project"
+    shutil.copytree(RESEARCH_CORE, core)
+
+    def mutate(rows):
+        rows[0][field] = value
+
+    rewrite_csv(core / "39_ARENA_COUNTER_REGISTRY.csv", mutate)
+
+    with pytest.raises(FixtureValidationError, match=message):
+        load_pve_closure(core)
+
+
+def test_single_report_metadata_cannot_self_upgrade_to_verified(tmp_path: Path) -> None:
+    core = tmp_path / "pcr_tw_project"
+    shutil.copytree(RESEARCH_CORE, core)
+
+    def self_upgrade(rows):
+        for row in rows:
+            row["status"] = "VERIFIED"
+            row["reproducibility"] = "CONFIRMED"
+
+    rewrite_csv(core / "39_ARENA_COUNTER_REGISTRY.csv", self_upgrade)
+
+    with pytest.raises(
+        FixtureValidationError,
+        match="VERIFIED requires independent multi-source wins",
+    ):
+        load_pve_closure(core)
+
+
+def _independent_multi_source_arena_core(tmp_path: Path) -> Path:
+    core = tmp_path / "pcr_tw_project"
+    shutil.copytree(RESEARCH_CORE, core)
+    result_claim_id = "CLM-ARENA-TW-COUNTER-20260525-01"
+    second_evidence_id = "ev115"
+
+    def mature_counter(rows):
+        row = rows[0]
+        row.update(
+            {
+                "status": "VERIFIED",
+                "source_tier": "MULTI_PLAYER_REPORT",
+                "claim_confidence": "C",
+                "evidence_ids": f"ev114;{second_evidence_id}",
+                "claim_ids": result_claim_id,
+                "sample_size": "2",
+                "wins": "2",
+                "losses": "0",
+                "source_record_count": "2",
+                "source_platforms": "Bahamut;IndependentTest",
+                "environment_match": "EXACT",
+                "reproducibility": "CONFIRMED",
+            }
+        )
+        rows[1]["claim_ids"] = result_claim_id
+        rows[1]["evidence_ids"] = second_evidence_id
+
+    def mature_claim(rows):
+        claim = next(row for row in rows if row["claim_id"] == result_claim_id)
+        claim.update(
+            {
+                "claim_confidence": "C",
+                "evidence_ids": f"ev114;{second_evidence_id}",
+                "independence_check": "YES",
+                "version_match": "YES",
+            }
+        )
+        next(
+            row
+            for row in rows
+            if row["claim_id"] == "CLM-ARENA-TW-COUNTER-20260525-02"
+        )["evidence_ids"] = ""
+
+    def reuse_independent_evidence(rows):
+        evidence = next(row for row in rows if row["evidence_id"] == second_evidence_id)
+        evidence.update(
+            {
+                "claim_id": result_claim_id,
+                "source_title": "TEST_ONLY independent Arena result",
+                "source_url": "https://gamewith.jp/pricone-re/article/show/999999",
+                "source_locator": "TEST_ONLY result record 2",
+            }
+        )
+
+    rewrite_csv(core / "39_ARENA_COUNTER_REGISTRY.csv", mature_counter)
+    rewrite_csv(core / "93_CLAIM_REGISTER.csv", mature_claim)
+    rewrite_csv(core / "92_EVIDENCE_LEDGER.csv", reuse_independent_evidence)
+    return core
+
+
+def test_independent_multi_source_arena_result_is_importable(tmp_path: Path) -> None:
+    core = _independent_multi_source_arena_core(tmp_path)
+    closure = load_pve_closure(core)
+    row = next(
+        item for item in closure.arena_rows if item["counter_id"] == "TW_ARENA_20260525_01"
+    )
+    assert row["status"] == "VERIFIED"
+    assert closure.arena_evidence_ids_by_counter[row["counter_id"]] == (
+        "ev114",
+        "ev115",
+    )
+    assert closure.arena_claim_ids_by_counter[row["counter_id"]] == (
+        "CLM-ARENA-TW-COUNTER-20260525-01",
+    )
+
+
+def test_verified_arena_survives_importer_to_api_serving_closure(
+    tmp_path: Path,
+) -> None:
+    core = _independent_multi_source_arena_core(tmp_path)
+    manifest = tmp_path / "verified-arena.sha256"
+    manifest_sha256 = write_tree_manifest(core, manifest)
+    engine = sqlite_engine()
+
+    with Session(engine) as session:
+        import_pve_projection(
+            session,
+            core,
+            manifest_path=manifest,
+            expected_manifest_sha256=manifest_sha256,
+        )
+        session.commit()
+
+        counters = arena_counter_results(session)
+        verified = next(row for row in counters if row["status"] == "VERIFIED")
+        assert verified["counter_id"] == "TW_ARENA_20260525_01"
+        assert set(verified["evidence_ids"]) == {
+            "ev114",
+            "ev115",
+        }
+        assert verified["claim_ids"] == ["CLM-ARENA-TW-COUNTER-20260525-01"]
+        assert {
+            session.get(Evidence, evidence_id).module
+            for evidence_id in verified["evidence_ids"]
+        } == {"arena"}
+        assert session.get(Claim, verified["claim_ids"][0]).module == "arena"
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "expected_message"),
+    [
+        ("source_tier", "FAKE_STRONG", "source_tier is invalid"),
+        (
+            "source_tier",
+            "SINGLE_PLAYER_REPORT",
+            "VERIFIED requires independent multi-source wins",
+        ),
+        (
+            "environment_match",
+            "MISMATCH",
+            "VERIFIED requires independent multi-source wins",
+        ),
+    ],
+)
+def test_verified_arena_rejects_weak_tier_or_environment_mismatch(
+    tmp_path: Path,
+    field: str,
+    value: str,
+    expected_message: str,
+) -> None:
+    core = _independent_multi_source_arena_core(tmp_path)
+
+    def mutate(rows):
+        rows[0][field] = value
+
+    rewrite_csv(core / "39_ARENA_COUNTER_REGISTRY.csv", mutate)
+    with pytest.raises(
+        FixtureValidationError,
+        match=expected_message,
+    ):
+        load_pve_closure(core)
+
+
+def test_verified_arena_rejects_invented_evidence_tier(tmp_path: Path) -> None:
+    core = _independent_multi_source_arena_core(tmp_path)
+
+    def mutate(rows):
+        next(
+            row for row in rows if row["evidence_id"] == "ev115"
+        )["source_tier"] = "FAKE_STRONG"
+
+    rewrite_csv(core / "92_EVIDENCE_LEDGER.csv", mutate)
+    with pytest.raises(
+        FixtureValidationError,
+        match="VERIFIED requires one independent B/C result Claim",
+    ):
+        load_pve_closure(core)
+
+
+def test_verified_arena_same_hostname_different_ports_is_not_independent(
+    tmp_path: Path,
+) -> None:
+    core = _independent_multi_source_arena_core(tmp_path)
+
+    def mutate(rows):
+        next(row for row in rows if row["evidence_id"] == "ev114")[
+            "source_url"
+        ] = "https://forum.gamer.com.tw:443/result-a"
+        next(
+            row for row in rows if row["evidence_id"] == "ev115"
+        )["source_url"] = "https://forum.gamer.com.tw:444/result-b"
+
+    rewrite_csv(core / "92_EVIDENCE_LEDGER.csv", mutate)
+    with pytest.raises(
+        FixtureValidationError,
+        match="VERIFIED requires one independent B/C result Claim",
+    ):
+        load_pve_closure(core)
+
+
+def test_duplicate_exact_arena_pair_is_rejected(tmp_path: Path) -> None:
+    core = tmp_path / "pcr_tw_project"
+    shutil.copytree(RESEARCH_CORE, core)
+
+    def mutate(rows):
+        duplicate = dict(rows[0])
+        duplicate["counter_id"] = "TW_ARENA_DUPLICATE_PAIR"
+        rows.append(duplicate)
+
+    rewrite_csv(core / "39_ARENA_COUNTER_REGISTRY.csv", mutate)
+
+    with pytest.raises(FixtureValidationError, match="duplicate exact Arena pair"):
+        load_pve_closure(core)
+
+
+def test_arena_defense_id_uses_full_sha256() -> None:
+    closure = load_pve_closure(RESEARCH_CORE)
+    specs = fixture_module._arena_defense_specs(closure.arena_rows)
+
+    assert len(specs) == 1
+    defense_id = specs[0]["defense_id"]
+    assert defense_id.startswith("AD-")
+    assert len(defense_id) == 67
+    assert set(defense_id[3:]) <= set("0123456789abcdef")
+
+
+def test_arena_fail_check_cannot_hide_all_available_members(tmp_path: Path) -> None:
+    core = tmp_path / "pcr_tw_project"
+    shutil.copytree(RESEARCH_CORE, core)
+
+    rewrite_csv(
+        core / "39_ARENA_COUNTER_REGISTRY.csv",
+        lambda rows: rows[0].update({"tw_availability_check": "FAIL"}),
+    )
+
+    with pytest.raises(FixtureValidationError, match="availability closure must be PASS"):
+        load_pve_closure(core)
+
+
+def test_arena_unverified_member_is_not_invented_as_unavailable(tmp_path: Path) -> None:
+    core = tmp_path / "pcr_tw_project"
+    shutil.copytree(RESEARCH_CORE, core)
+
+    def mark_character_unverified(rows):
+        next(row for row in rows if row["unit_key"] == "kaya_orig")[
+            "availability_status"
+        ] = "UNVERIFIED"
+
+    def mark_counters_unverified(rows):
+        for row in rows:
+            row["tw_availability_check"] = "UNVERIFIED"
+            row["unavailable_unit_ids"] = "kaya_orig"
+
+    rewrite_csv(core / "18_TW_CHARACTER_AVAILABILITY.csv", mark_character_unverified)
+    rewrite_csv(core / "39_ARENA_COUNTER_REGISTRY.csv", mark_counters_unverified)
+
+    with pytest.raises(FixtureValidationError, match="unavailable_unit_ids"):
+        load_pve_closure(core)
+
+
+def test_arena_pass_member_requires_tw_official_name_and_evidence(tmp_path: Path) -> None:
+    core = tmp_path / "pcr_tw_project"
+    shutil.copytree(RESEARCH_CORE, core)
+
+    def remove_official_name(rows):
+        next(row for row in rows if row["unit_key"] == "yuki_orig")["tw_name"] = (
+            "【待查證】"
+        )
+
+    rewrite_csv(core / "18_TW_CHARACTER_AVAILABILITY.csv", remove_official_name)
+
+    with pytest.raises(FixtureValidationError, match="TW official display name"):
+        load_pve_closure(core)
 
 
 def test_borrowed_member_projection_is_tri_state() -> None:
@@ -455,24 +787,36 @@ def test_import_is_atomic_idempotent_and_preserves_fk_closure(tmp_path: Path) ->
         assert first.revision_id == first.raw_tree_sha256
         assert first.file_count == 48
         assert first.csv_file_count == 13
-        assert first.csv_row_count == 325
+        assert first.csv_row_count == 356
         assert first.row_counts == {
             "stages": 3,
             "teams": 10,
             "team_members": 50,
-            "characters": 25,
-            "evidence": 55,
-            "claims": 53,
+            "characters": 35,
+            "evidence": 64,
+            "claims": 62,
             "operation_timelines": 15,
             "timeline_steps": 37,
+            "arena_defenses": 1,
+            "arena_defense_members": 5,
+            "arena_counters": 2,
+            "arena_counter_members": 10,
+            "arena_counter_evidence": 4,
+            "arena_counter_claims": 4,
         }
         assert session.scalar(select(func.count()).select_from(ImportRun)) == 1
         assert session.scalar(select(func.count()).select_from(Stage)) == 3
         assert session.scalar(select(func.count()).select_from(Team)) == 10
         assert session.scalar(select(func.count()).select_from(TeamMember)) == 50
-        assert session.scalar(select(func.count()).select_from(Character)) == 25
+        assert session.scalar(select(func.count()).select_from(Character)) == 35
         assert session.scalar(select(func.count()).select_from(OperationTimeline)) == 15
         assert session.scalar(select(func.count()).select_from(TimelineStep)) == 37
+        assert session.scalar(select(func.count()).select_from(ArenaDefense)) == 1
+        assert session.scalar(select(func.count()).select_from(ArenaDefenseMember)) == 5
+        assert session.scalar(select(func.count()).select_from(ArenaCounter)) == 2
+        assert session.scalar(select(func.count()).select_from(ArenaCounterMember)) == 10
+        assert session.scalar(select(func.count()).select_from(ArenaCounterEvidence)) == 4
+        assert session.scalar(select(func.count()).select_from(ArenaCounterClaim)) == 4
         stage = session.get(Stage, TARGET_GUIDE_ID)
         assert stage is not None
         assert stage.team_count == 5
@@ -489,6 +833,31 @@ def test_import_is_atomic_idempotent_and_preserves_fk_closure(tmp_path: Path) ->
         assert state.active_import_run_id == first.import_run_id
         assert state.materialization_sha256 == revision.materialization_sha256
         assert session.scalar(select(func.count()).select_from(RevisionActivation)) == 1
+        for table_name in (
+            "arena_defenses",
+            "arena_defense_members",
+            "arena_counters",
+            "arena_counter_members",
+            "arena_counter_evidence",
+            "arena_counter_claims",
+        ):
+            assert state.serving_counts[table_name] == first.row_counts[table_name]
+        run = session.get(ImportRun, first.import_run_id)
+        assert run is not None
+        assert run.manifest["materialization"]["schema_version"] == 3
+
+        arena_counter = session.get(ArenaCounter, "TW_ARENA_20260525_01")
+        assert arena_counter is not None
+        assert arena_counter.status == "SINGLE_REPORT"
+        assert arena_counter.claim_confidence == "D"
+        assert arena_counter.sample_size == 1
+        assert arena_counter.wins == 1
+        assert arena_counter.losses == 0
+        assert arena_counter.empirical_win_rate is None
+        assert arena_counter.randomness == "UNKNOWN（原樓主稱網站測試有贏也有輸）"
+        assert arena_counter.reproducibility == "UNVERIFIED_REPEATABILITY"
+        assert arena_counter.source_platforms == ["Bahamut"]
+        assert arena_counter.source_payload["counter_id"] == arena_counter.counter_id
 
         imported_claim_ids = set(session.scalars(select(Claim.claim_id)).all())
         for evidence in session.scalars(select(Evidence)).all():
@@ -553,11 +922,17 @@ def test_synthetic_multi_stage_projection_retains_provisional_team_without_count
             "stages": 4,
             "teams": 11,
             "team_members": 55,
-            "characters": 25,
-            "evidence": 55,
-            "claims": 53,
+            "characters": 35,
+            "evidence": 64,
+            "claims": 62,
             "operation_timelines": 16,
             "timeline_steps": 37,
+            "arena_defenses": 1,
+            "arena_defense_members": 5,
+            "arena_counters": 2,
+            "arena_counter_members": 10,
+            "arena_counter_evidence": 4,
+            "arena_counter_claims": 4,
         }
         stored_stage = session.get(Stage, SYNTHETIC_GUIDE_ID)
         stored_team = session.get(Team, SYNTHETIC_TEAM_ID)
@@ -890,6 +1265,100 @@ def test_idempotent_replay_detects_materialized_row_drift(tmp_path: Path) -> Non
             )
 
 
+def test_idempotent_replay_detects_arena_source_truth_drift(tmp_path: Path) -> None:
+    core, manifest, manifest_sha256 = build_manifested_core(
+        tmp_path,
+        name="arena-drift",
+    )
+    engine = sqlite_engine()
+    with Session(engine) as session:
+        import_pve_projection(
+            session,
+            core,
+            manifest_path=manifest,
+            expected_manifest_sha256=manifest_sha256,
+        )
+        counter = session.get(ArenaCounter, "TW_ARENA_20260525_01")
+        assert counter is not None
+        counter.randomness = "tampered"
+        session.commit()
+
+        with pytest.raises(
+            MirrorDriftError,
+            match="Arena counter TW_ARENA_20260525_01 drifted",
+        ):
+            import_pve_projection(
+                session,
+                core,
+                manifest_path=manifest,
+                expected_manifest_sha256=manifest_sha256,
+            )
+
+
+@pytest.mark.parametrize(
+    ("target", "message"),
+    [
+        ("defense", "Arena defense .* drifted"),
+        ("defense_member", "Arena defense members drifted"),
+        ("counter_member", "Arena counter members drifted"),
+        ("counter_evidence", "Arena counter Evidence links drifted"),
+        ("counter_claim", "Arena counter Claim links drifted"),
+    ],
+)
+def test_idempotent_replay_detects_each_arena_table_tamper(
+    tmp_path: Path,
+    target: str,
+    message: str,
+) -> None:
+    core, manifest, manifest_sha256 = build_manifested_core(
+        tmp_path,
+        name=f"arena-{target}-drift",
+    )
+    engine = sqlite_engine()
+    with Session(engine) as session:
+        import_pve_projection(
+            session,
+            core,
+            manifest_path=manifest,
+            expected_manifest_sha256=manifest_sha256,
+        )
+        counter_id = "TW_ARENA_20260525_01"
+        defense_id = session.scalar(select(ArenaDefense.defense_id))
+        assert defense_id is not None
+        if target == "defense":
+            stored = session.get(ArenaDefense, defense_id)
+            assert stored is not None
+            stored.notes = "tampered"
+        elif target == "defense_member":
+            stored = session.get(ArenaDefenseMember, (defense_id, 1))
+            assert stored is not None
+            session.delete(stored)
+        elif target == "counter_member":
+            stored = session.get(ArenaCounterMember, (counter_id, 1))
+            assert stored is not None
+            session.delete(stored)
+        elif target == "counter_evidence":
+            stored = session.get(ArenaCounterEvidence, (counter_id, "ev113"))
+            assert stored is not None
+            session.delete(stored)
+        else:
+            stored = session.get(
+                ArenaCounterClaim,
+                (counter_id, "CLM-ARENA-TW-DEF-20260525"),
+            )
+            assert stored is not None
+            session.delete(stored)
+        session.commit()
+
+        with pytest.raises(MirrorDriftError, match=message):
+            import_pve_projection(
+                session,
+                core,
+                manifest_path=manifest,
+                expected_manifest_sha256=manifest_sha256,
+            )
+
+
 def test_idempotent_replay_detects_timeline_materialization_drift(
     tmp_path: Path,
 ) -> None:
@@ -1122,8 +1591,12 @@ def test_a3_checkpoint_rolls_back_from_a4_and_reactivates_water_projection(
     tmp_path: Path,
 ) -> None:
     a3_core = export_checkpoint_core(tmp_path, "rp-a3-1")
+    a4_core = export_checkpoint_core(tmp_path, "rp-a4-1")
     assert snapshot_contract_for_manifest(RP_A3_MANIFEST_SHA256) == (
         RP_A3_SNAPSHOT_CONTRACT
+    )
+    assert snapshot_contract_for_manifest(RP_A4_MANIFEST_SHA256) == (
+        RP_A4_SNAPSHOT_CONTRACT
     )
 
     engine = sqlite_engine()
@@ -1190,9 +1663,9 @@ def test_a3_checkpoint_rolls_back_from_a4_and_reactivates_water_projection(
 
         a4 = import_pve_projection(
             session,
-            RESEARCH_CORE,
+            a4_core,
             manifest_path=A4_MANIFEST,
-            expected_manifest_sha256=EXPECTED_MANIFEST_SHA256,
+            expected_manifest_sha256=RP_A4_MANIFEST_SHA256,
         )
         assert a4.row_counts == {
             "stages": 3,
@@ -1250,9 +1723,9 @@ def test_a3_checkpoint_rolls_back_from_a4_and_reactivates_water_projection(
 
         reactivate = import_pve_projection(
             session,
-            RESEARCH_CORE,
+            a4_core,
             manifest_path=A4_MANIFEST,
-            expected_manifest_sha256=EXPECTED_MANIFEST_SHA256,
+            expected_manifest_sha256=RP_A4_MANIFEST_SHA256,
         )
         assert reactivate.created is False
         assert reactivate.activated is True
@@ -1278,10 +1751,152 @@ def test_a3_checkpoint_rolls_back_from_a4_and_reactivates_water_projection(
         assert session.scalar(select(func.count()).select_from(CoreRevision)) == 2
 
 
+def test_a4_pve_v2_rolls_back_from_a5_strategy_v3_and_reactivates_exactly(
+    tmp_path: Path,
+) -> None:
+    a4_core = export_checkpoint_core(tmp_path, "rp-a4-1")
+    engine = sqlite_engine()
+
+    with Session(engine) as session:
+        a4 = import_pve_projection(
+            session,
+            a4_core,
+            manifest_path=A4_MANIFEST,
+            expected_manifest_sha256=RP_A4_MANIFEST_SHA256,
+            application_version="3.0.0-a4",
+        )
+        a4_run = session.get(ImportRun, a4.import_run_id)
+        assert a4_run is not None
+        assert a4_run.manifest["projection"] == fixture_module.FULL_PVE_PROJECTION
+        assert a4_run.manifest["materialization"]["schema_version"] == 2
+        assert a4.row_counts == {
+            "stages": 3,
+            "teams": 10,
+            "team_members": 50,
+            "characters": 25,
+            "evidence": 55,
+            "claims": 53,
+            "operation_timelines": 15,
+            "timeline_steps": 37,
+        }
+        assert session.scalar(select(func.count()).select_from(ArenaDefense)) == 0
+        assert session.scalar(select(func.count()).select_from(ArenaCounter)) == 0
+        session.rollback()
+
+        a5 = import_pve_projection(
+            session,
+            RESEARCH_CORE,
+            manifest_path=A5_MANIFEST,
+            expected_manifest_sha256=RP_A5_MANIFEST_SHA256,
+        )
+        a5_run = session.get(ImportRun, a5.import_run_id)
+        assert a5_run is not None
+        assert a5_run.manifest["projection"] == fixture_module.FULL_STRATEGY_PROJECTION
+        assert a5_run.manifest["materialization"]["schema_version"] == 3
+        assert a5.row_counts["arena_defenses"] == 1
+        assert a5.row_counts["arena_counters"] == 2
+        assert session.scalar(select(func.count()).select_from(ArenaDefense)) == 1
+        assert session.scalar(select(func.count()).select_from(ArenaCounter)) == 2
+        session.rollback()
+
+        rollback = import_pve_projection(
+            session,
+            a4_core,
+            manifest_path=A4_MANIFEST,
+            expected_manifest_sha256=RP_A4_MANIFEST_SHA256,
+        )
+        assert rollback.created is False
+        assert rollback.activated is True
+        assert rollback.row_counts == a4.row_counts
+        assert session.scalar(select(func.count()).select_from(ArenaDefense)) == 0
+        assert session.scalar(select(func.count()).select_from(ArenaDefenseMember)) == 0
+        assert session.scalar(select(func.count()).select_from(ArenaCounter)) == 0
+        assert session.scalar(select(func.count()).select_from(ArenaCounterMember)) == 0
+        assert session.scalar(select(func.count()).select_from(ArenaCounterEvidence)) == 0
+        assert session.scalar(select(func.count()).select_from(ArenaCounterClaim)) == 0
+        a4_run = session.get(ImportRun, a4.import_run_id)
+        assert a4_run is not None
+        assert a4_run.manifest["materialization"]["schema_version"] == 2
+        session.rollback()
+
+        reactivate = import_pve_projection(
+            session,
+            RESEARCH_CORE,
+            manifest_path=A5_MANIFEST,
+            expected_manifest_sha256=RP_A5_MANIFEST_SHA256,
+        )
+        assert reactivate.created is False
+        assert reactivate.activated is True
+        assert reactivate.row_counts == a5.row_counts
+        assert session.scalar(select(func.count()).select_from(ArenaDefense)) == 1
+        assert session.scalar(select(func.count()).select_from(ArenaCounter)) == 2
+        activations = session.scalars(
+            select(RevisionActivation).order_by(RevisionActivation.sequence_no)
+        ).all()
+        assert [activation.kind for activation in activations] == [
+            "IMPORT",
+            "IMPORT",
+            "ROLLBACK",
+            "REACTIVATE",
+        ]
+
+
+def test_fresh_a5_first_load_of_a4_keeps_rollback_audit_semantics(
+    tmp_path: Path,
+) -> None:
+    a4_core = export_checkpoint_core(tmp_path, "rp-a4-1")
+    engine = sqlite_engine()
+
+    with Session(engine) as session:
+        a5 = import_pve_projection(
+            session,
+            RESEARCH_CORE,
+            manifest_path=A5_MANIFEST,
+            expected_manifest_sha256=RP_A5_MANIFEST_SHA256,
+        )
+        rollback = import_pve_projection(
+            session,
+            a4_core,
+            manifest_path=A4_MANIFEST,
+            expected_manifest_sha256=RP_A4_MANIFEST_SHA256,
+        )
+        reactivate = import_pve_projection(
+            session,
+            RESEARCH_CORE,
+            manifest_path=A5_MANIFEST,
+            expected_manifest_sha256=RP_A5_MANIFEST_SHA256,
+        )
+
+        assert a5.created is True
+        assert rollback.created is True
+        assert rollback.activated is True
+        assert reactivate.created is False
+        assert reactivate.activated is True
+        activations = session.scalars(
+            select(RevisionActivation).order_by(RevisionActivation.sequence_no)
+        ).all()
+        assert [activation.kind for activation in activations] == [
+            "IMPORT",
+            "ROLLBACK",
+            "REACTIVATE",
+        ]
+        assert [activation.from_revision_id for activation in activations] == [
+            None,
+            a5.revision_id,
+            rollback.revision_id,
+        ]
+        assert [activation.to_revision_id for activation in activations] == [
+            a5.revision_id,
+            rollback.revision_id,
+            a5.revision_id,
+        ]
+
+
 def test_legacy_b1_manifest_rolls_back_and_reactivates_without_projection_drift(
     tmp_path: Path,
 ) -> None:
     first_core = export_checkpoint_core(tmp_path)
+    a4_core = export_checkpoint_core(tmp_path, "rp-a4-1")
     assert snapshot_contract_for_manifest(RP_A2_MANIFEST_SHA256) == (
         RP_A2_SNAPSHOT_CONTRACT
     )
@@ -1325,9 +1940,9 @@ def test_legacy_b1_manifest_rolls_back_and_reactivates_without_projection_drift(
 
         second = import_pve_projection(
             session,
-            RESEARCH_CORE,
+            a4_core,
             manifest_path=A4_MANIFEST,
-            expected_manifest_sha256=EXPECTED_MANIFEST_SHA256,
+            expected_manifest_sha256=RP_A4_MANIFEST_SHA256,
         )
         assert second.row_counts["stages"] == 3
         assert second.row_counts["teams"] == 10
@@ -1363,9 +1978,9 @@ def test_legacy_b1_manifest_rolls_back_and_reactivates_without_projection_drift(
 
         reactivate = import_pve_projection(
             session,
-            RESEARCH_CORE,
+            a4_core,
             manifest_path=A4_MANIFEST,
-            expected_manifest_sha256=EXPECTED_MANIFEST_SHA256,
+            expected_manifest_sha256=RP_A4_MANIFEST_SHA256,
         )
         assert reactivate.created is False
         assert reactivate.activated is True

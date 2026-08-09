@@ -31,6 +31,12 @@ TYPED_SERVING_TABLES = (
     "claim_evidence",
     "operation_timelines",
     "timeline_steps",
+    "arena_defenses",
+    "arena_defense_members",
+    "arena_counters",
+    "arena_counter_members",
+    "arena_counter_evidence",
+    "arena_counter_claims",
 )
 CORE_MIRROR_TABLES = (
     "core_revisions",

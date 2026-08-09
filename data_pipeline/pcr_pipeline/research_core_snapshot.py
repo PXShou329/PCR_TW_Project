@@ -29,24 +29,35 @@ class SnapshotContract:
     claim_to_evidence_count: int
 
 
-# RP-A4 是 Water read-mirror 的輸入契約；歷史 RP-A2／RP-A3 pins 與
+# RP-A5 是 Arena read-mirror 的輸入契約；歷史 RP-A2／RP-A3／RP-A4 pins 與
 # manifests 保留供 version-aware rollback 測試，不覆寫 immutable checkpoints。
-EXPECTED_MANIFEST_SHA256 = "3daf2ab7c212b4f11c58883980d0ada3862400923c81a9bdedcc0500e59b1a9e"
-EXPECTED_FILE_COUNT = 48
-EXPECTED_CSV_FILE_COUNT = 13
-EXPECTED_CSV_ROW_COUNT = 325
-EXPECTED_EVIDENCE_TO_CLAIM_COUNT = 102
-EXPECTED_CLAIM_TO_EVIDENCE_COUNT = 268
-TREE_SERIALIZATION_VERSION = 1
-
+RP_A5_MANIFEST_SHA256 = "1826c8493d40f71a6d0bb9096f57b92fe4e839d52bddf021b0c51e0186dcbda7"
+RP_A4_MANIFEST_SHA256 = "3daf2ab7c212b4f11c58883980d0ada3862400923c81a9bdedcc0500e59b1a9e"
 RP_A3_MANIFEST_SHA256 = "ab62e07483dfea07c992b950b9c05c74fa0e3767fa0b3bce64b20193a1860333"
 RP_A2_MANIFEST_SHA256 = "3a242b521d830af12ce8559d88b733068fb1b6cb503219395d2986b89e5dc352"
-CURRENT_SNAPSHOT_CONTRACT = SnapshotContract(
+
+EXPECTED_MANIFEST_SHA256 = RP_A5_MANIFEST_SHA256
+EXPECTED_FILE_COUNT = 48
+EXPECTED_CSV_FILE_COUNT = 13
+EXPECTED_CSV_ROW_COUNT = 356
+EXPECTED_EVIDENCE_TO_CLAIM_COUNT = 111
+EXPECTED_CLAIM_TO_EVIDENCE_COUNT = 277
+TREE_SERIALIZATION_VERSION = 1
+
+RP_A5_SNAPSHOT_CONTRACT = SnapshotContract(
     file_count=EXPECTED_FILE_COUNT,
     csv_file_count=EXPECTED_CSV_FILE_COUNT,
     csv_row_count=EXPECTED_CSV_ROW_COUNT,
     evidence_to_claim_count=EXPECTED_EVIDENCE_TO_CLAIM_COUNT,
     claim_to_evidence_count=EXPECTED_CLAIM_TO_EVIDENCE_COUNT,
+)
+CURRENT_SNAPSHOT_CONTRACT = RP_A5_SNAPSHOT_CONTRACT
+RP_A4_SNAPSHOT_CONTRACT = SnapshotContract(
+    file_count=48,
+    csv_file_count=13,
+    csv_row_count=325,
+    evidence_to_claim_count=102,
+    claim_to_evidence_count=268,
 )
 RP_A3_SNAPSHOT_CONTRACT = SnapshotContract(
     file_count=48,
@@ -63,14 +74,15 @@ RP_A2_SNAPSHOT_CONTRACT = SnapshotContract(
     claim_to_evidence_count=162,
 )
 PINNED_SNAPSHOT_CONTRACTS: Mapping[str, SnapshotContract] = {
-    EXPECTED_MANIFEST_SHA256: CURRENT_SNAPSHOT_CONTRACT,
+    RP_A5_MANIFEST_SHA256: RP_A5_SNAPSHOT_CONTRACT,
+    RP_A4_MANIFEST_SHA256: RP_A4_SNAPSHOT_CONTRACT,
     RP_A3_MANIFEST_SHA256: RP_A3_SNAPSHOT_CONTRACT,
     RP_A2_MANIFEST_SHA256: RP_A2_SNAPSHOT_CONTRACT,
 }
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_RESEARCH_CORE = REPOSITORY_ROOT / "research_core" / "pcr_tw_project"
-DEFAULT_MANIFEST = REPOSITORY_ROOT / "scripts" / "research_core_rp_a4_manifest.sha256"
+DEFAULT_MANIFEST = REPOSITORY_ROOT / "scripts" / "research_core_rp_a5_manifest.sha256"
 
 CSV_NATURAL_KEYS: Mapping[str, str] = {
     "17_TEST_EXECUTION_LOG.csv": "run_id",
@@ -595,6 +607,27 @@ def _walk_regular_files(root: Path) -> dict[str, Path]:
 
     _reject_path_collisions(files, label="research-core")
     return files
+
+
+def research_core_file_inventory(root: Path) -> dict[str, Path]:
+    """Return the production-safe canonical research-core inventory.
+
+    Release tooling must share this boundary with the importer so a candidate
+    manifest can never silently ignore a symlink, junction, non-regular file,
+    case/Unicode collision, or extra cache artifact that production rejects.
+    """
+
+    return dict(_walk_regular_files(root))
+
+
+def candidate_manifest_lines(root: Path) -> tuple[str, ...]:
+    """Build sorted candidate manifest lines without mutating release pins."""
+
+    files = research_core_file_inventory(root)
+    return tuple(
+        f"{sha256_bytes(files[relative_path].read_bytes())}  {relative_path}"
+        for relative_path in sorted(files)
+    )
 
 
 def _load_csv(

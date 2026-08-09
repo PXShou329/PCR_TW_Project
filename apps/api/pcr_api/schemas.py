@@ -22,6 +22,34 @@ StrategyStatusValue: TypeAlias = Literal[
     "PENDING",
 ]
 GuideReproducibilityValue: TypeAlias = Literal["CONFIRMED", "PENDING"]
+ArenaStatusValue: TypeAlias = Literal[
+    "VERIFIED",
+    "PROVISIONAL",
+    "SINGLE_REPORT",
+    "STALE",
+    "REJECTED",
+]
+ArenaOutcomeValue: TypeAlias = Literal["WIN", "LOSS", "MIXED", "UNKNOWN"]
+ArenaVerificationValue: TypeAlias = Literal[
+    "SCREENSHOT_RESULT",
+    "VIDEO_RESULT",
+    "TEXT_REPORT",
+    "UNKNOWN",
+]
+ArenaRngRiskValue: TypeAlias = Literal["LOW", "MEDIUM", "HIGH", "UNKNOWN"]
+ArenaReproducibilityValue: TypeAlias = Literal[
+    "CONFIRMED",
+    "UNVERIFIED_REPEATABILITY",
+    "UNVERIFIED_ON_TW",
+    "UNKNOWN",
+]
+ArenaOperationModeValue: TypeAlias = Literal["AUTO_SYSTEM", "MANUAL", "UNKNOWN"]
+ArenaEnvironmentMatchValue: TypeAlias = Literal[
+    "EXACT",
+    "COMPATIBLE",
+    "MISMATCH",
+    "UNKNOWN",
+]
 
 
 class SourceMeta(BaseModel):
@@ -304,6 +332,60 @@ class EvidenceData(BaseModel):
     status: str
 
 
+class ArenaMemberData(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    slot: int = Field(ge=1, le=5)
+    unit_key: str
+    display_name: str
+    display_name_source: Literal["TW_OFFICIAL", "JP_OFFICIAL"]
+
+
+class ArenaCounterData(BaseModel):
+    """One exact, source-backed Arena counter and its complete 5v5 formation."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    counter_id: str
+    defense_id: str
+    server: Literal["TW", "JP"]
+    environment_version: str
+    arena_bracket: str
+    defense_signature: str
+    counter_signature: str
+    defense_members: list[ArenaMemberData] = Field(min_length=5, max_length=5)
+    counter_members: list[ArenaMemberData] = Field(min_length=5, max_length=5)
+    status: ArenaStatusValue
+    match_type: Literal["EXACT"]
+    outcome: ArenaOutcomeValue
+    verification: ArenaVerificationValue
+    sample_size: int | None = Field(ge=1)
+    wins: int | None = Field(ge=0)
+    losses: int | None = Field(ge=0)
+    empirical_win_rate: int | None = Field(ge=0, le=100)
+    randomness: str
+    rng_risk: ArenaRngRiskValue
+    claim_confidence: Literal["B", "C", "D", "E"]
+    reproducibility: ArenaReproducibilityValue
+    source_tier: str
+    source_record_count: int = Field(ge=1)
+    source_platforms: list[str]
+    tw_availability_check: Literal["PASS", "FAIL", "UNVERIFIED"]
+    unavailable_unit_ids: list[str]
+    required_upgrade_check: Literal["PASS", "FAIL", "UNKNOWN", "NOT_APPLICABLE"]
+    operation_mode: ArenaOperationModeValue
+    environment_match: ArenaEnvironmentMatchValue
+    speed_conditions: str
+    initial_action_notes: str
+    verified_date: date
+    last_review_due: date | None
+    record_date_min: date | None
+    record_date_max: date | None
+    notes: str
+    evidence_ids: list[str]
+    claim_ids: list[str]
+
+
 class ClaimData(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -333,6 +415,12 @@ class BaselineCounts(BaseModel):
     claims: int
     operation_timelines: int
     timeline_steps: int
+    arena_defenses: int
+    arena_defense_members: int
+    arena_counters: int
+    arena_counter_members: int
+    arena_counter_evidence: int
+    arena_counter_claims: int
 
 
 class GateSummary(BaseModel):

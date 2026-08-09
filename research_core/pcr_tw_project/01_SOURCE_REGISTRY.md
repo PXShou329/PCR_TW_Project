@@ -24,12 +24,15 @@ OFFICIAL／MAJOR_GUIDE／STRUCTURED_DB／COMMUNITY_WIKI／MULTI_PLAYER_REPORT／
 - 不得以來源網站名直接決定結論可靠度。
 - **分工**：`92` 只記證據（Evidence，欄名 `evidence_confidence`＝該筆證據自身的可信度）、`93_CLAIM_REGISTER.csv` 只記結論（唯一的 `claim_confidence`，並以 `claim_type` 區分 SOURCE_FACT／DERIVED_CALCULATION／ANALYTICAL_JUDGMENT／FORECAST）；Source Tier 分布從 92 計、Claim Confidence 分布從 93 計，不得混算（15 由 validator 輸出同步）。B／C 級結論在 93 至少列兩筆 evidence_id 並通過獨立性檢查。
 - 本檔來源表的「等級」欄自 v1.4 起讀作 Source Tier：官方列＝OFFICIAL；攻略站＝MAJOR_GUIDE；蘭德索爾圖書館・pcrdfans＝STRUCTURED_DB（pcrdfans 同時為 RESTRICTED）；wiki＝COMMUNITY_WIKI；巴哈整理串＝MULTI_PLAYER_REPORT；單篇心得／影片＝SINGLE_PLAYER_REPORT。
+- **Arena A5 成熟度**：`VERIFIED` 暫只接受 B／C 的可機械驗證多來源結論；至少兩筆同服、`environment_match=EXACT`、同一 exact 配對的 Evidence 必須可追溯，並由 93 的獨立性檢查證明來源彼此獨立。39 只接受 canonical 強來源 tier，92 只接受本檔既定八種 tier 且成熟閉合不得使用 UNKNOWN／RESTRICTED；成熟閉合內每筆 Evidence 的 `source_url` 另須為具非空 hostname 的 HTTPS URL。ST49 為一般 B／C Claim 保留 locator／title 的離線 fallback，但不能以此替代 Arena 成熟 Evidence URL。單一 scalar `source_tier`、`source_record_count` 或 `source_platforms` 不構成獨立性證明。
+- `source_record_count` 記來源紀錄數；`sample_size` 記來源明示的實戰觀測數。兩者不得互相代填，來源沒有試驗分母時 `sample_size` 保持 NULL。
+- `SELF_TESTED` 尚無獨立 run registry；在 run ID、環境、結果 Evidence、樣本與 reviewer closure 可追溯前，本人實測不得升為 Arena `VERIFIED` 或進 Gate。
 
 ## 統一欄位標準（所有動態資料通用）
 
 - 日期欄：`published_date`／`verified_date`／`last_checked`／`next_review_due`（不得只寫模糊的「日期」）
 - 伺服器欄：`TW`／`JP`／`CROSS_SERVER_FORECAST`／`UNKNOWN`
-- 攻略狀態：`VERIFIED`／`PROVISIONAL`／`SINGLE_REPORT`／`STALE`／`REJECTED`
+- 攻略狀態：`VERIFIED`／`PROVISIONAL`／`SINGLE_REPORT`／`STALE`／`REJECTED`；Arena 的 A5 `VERIFIED` 另受上述多來源暫行邊界限制
 - 測試狀態：`PASS`／`FAIL`／`PARTIAL`／`NOT_RUN`（Guide-Only，全部為公共測試）
 
 ## 官方來源（Source Tier＝OFFICIAL）

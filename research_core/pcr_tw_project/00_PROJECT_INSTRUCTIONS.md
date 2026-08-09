@@ -70,6 +70,10 @@
 
 只有單次成功影片或單一玩家留言時，必須標示【僅供參考】及可靠度 D，不得描述為穩定反制。只有標題或縮圖、未確認完整戰鬥的 YouTube 影片，不算完整 Evidence。
 
+**A5 VERIFIED 暫行邊界**：競技場 `VERIFIED` 只承認可機械驗證的多來源閉合——同服、`environment_match=EXACT` 與同一 exact 敵我編成，至少兩個彼此獨立且可追溯的來源一致，對應的 93 結論為 B／C 並通過獨立性檢查。39 的 `source_tier` 必須是 canonical 非弱來源類型，92 Evidence 也不得使用 UNKNOWN／RESTRICTED 或自造 tier；每筆成熟核心 Evidence 的 `source_url` 必須是具非空 hostname 的 HTTPS URL。一般 B／C Claim 的 ST49 仍可為離線資料沿用 locator／title fallback，但該 fallback 不足以讓 Arena 列成熟或進 Gate。`source_record_count` 只是來源紀錄筆數，scalar 欄位不能單獨證明獨立性或成熟度。
+
+在建立獨立、可追溯的 Arena 實測 run registry 前，任何「本人實測」「編輯者實測」或手填 `reproducibility=CONFIRMED` 都不得走 `SELF_TESTED` 捷徑升為 `VERIFIED` 或計入 Gate；此類資料最多留在 `PROVISIONAL`／`SINGLE_REPORT` 研究層。`sample_size` 只記來源明示的實戰觀測次數，與 `source_record_count` 分離；來源未提供分母時維持 NULL，不得為通過 Gate 補值。
+
 ### 6.3 競技場輸出規則
 
 使用者給出完整敵方五人時，輸出**候選反制 1～10 支**（不足時只列實際數量，不得湊滿）。排序：台服完全可用 → 多來源 → 最近日期 → 高樣本或影片完整 → 低隨機 → 練度要求清楚。每支必須標：敵方五人、進攻五人、**台服可用性（TW_AVAILABLE／JP_ONLY）**、來源數、紀錄日期、初動、風險、信心；若為日服原解，說明台服替代差異。JP_ONLY 隊伍不得作為台服最終推薦。
@@ -97,6 +101,7 @@
 - **雙軌制**：來源類型（Source Tier：OFFICIAL／MAJOR_GUIDE／STRUCTURED_DB／COMMUNITY_WIKI／MULTI_PLAYER_REPORT／SINGLE_PLAYER_REPORT／UNKNOWN／RESTRICTED）與結論可靠度（Claim Confidence：A 官方證實／B 兩個獨立大型來源一致且版本相符／C 兩個獨立玩家紀錄一致／D 單一非官方來源／E 推測或版本不明）分開標示，不得混用。
 - **單一大型攻略站支持的結論最多 D 級**；升 B 需兩個彼此獨立的大型來源一致。**社群整理與影片來源（45／46 登錄者）單一來源最多 D，兩個獨立來源方向一致最多 C，永不得標 OFFICIAL／A**。
 - 每個關鍵結論附上：來源（含 Tier）、發布或查證日期、適用伺服器。**結論層唯一登錄點為 `93_CLAIM_REGISTER.csv`**；B／C 級結論須在 93 列出至少兩筆可追溯的 `92` evidence_id 且通過獨立性檢查。
+- 競技場 A5 的 `VERIFIED` 必須沿用上述 B／C 獨立來源閉合；單一來源不因 Tier、來源內多筆紀錄、聲稱已重現或有多張同作者圖片而升級。
 - 官方事實與玩家推測必須分開標示。優先序：台服官方公告 ＞ 日服官方 ＞ 多個大型攻略站 ＞ 玩家實戰 ＞ 推測。
 - 常用來源與使用注意事項見 `01_SOURCE_REGISTRY.md`。
 

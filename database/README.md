@@ -55,3 +55,23 @@ downgrade transaction without updating or deleting rows, so the database stays
 at V0005. Never turn an unknown into `false` merely to cross the migration
 boundary; restore a verified pre-V0005 backup or resolve the fact from
 admissible evidence and re-run the full validation and restore drill.
+
+`V0006` additively creates normalized Battle Arena defenses, counters, their
+ordered five-slot members, and counter-to-Evidence/Claim relations. Defense and
+counter identities retain an order-insensitive five-unit signature while the
+member tables preserve source display order. A single observed win may record
+`sample_size=1`, `wins=1`, and `losses=0`, but its empirical win-rate field must
+remain `NULL`; the database rejects a percentage inferred from a one-match
+sample.
+Arena claim confidence is limited to `B/C/D/E`: `SINGLE_REPORT` is exactly
+`D`, while `VERIFIED` accepts `B/C/D` only and also requires
+`reproducibility=CONFIRMED`. Arena reproducibility deliberately excludes the
+Timeline-only `TW_REPRODUCED` vocabulary.
+
+Materialization manifest version 3 hashes all six Arena tables. Previously
+finalized rp-a4 runs retain their version-2 manifest and can still be replayed:
+the materializer projects the exact legacy table set only when every Arena
+table is empty. Any Arena row outside that legacy hash forces current-closure
+drift instead of being ignored. For the same reason, the V0006 downgrade
+transaction refuses to drop non-empty Arena tables; reactivate and verify the
+legacy closure first, then downgrade.

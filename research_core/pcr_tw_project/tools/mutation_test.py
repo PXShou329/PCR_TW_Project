@@ -41,6 +41,22 @@ def mutate(name, fn, expect, mode=None, check_repair=False, write=False, target_
     print(f"{'PASS' if ok else 'FAIL'}  {name}: {v}")
     return ok
 
+def mutate_gate_count(name, fn, expected_arena_formal):
+    """Run a valid mutation and assert the derived Arena Gate count, not only exit code."""
+    tmp = tempfile.mkdtemp(); d = os.path.join(tmp, 'p')
+    shutil.copytree(ROOT, d)
+    fn(d)
+    proc = run(d, mode='PRE_SUITE', write=True)
+    try:
+        stats = json.load(open(os.path.join(d, 'tools', 'stats.json'), encoding='utf-8'))
+        actual = stats['gate']['arena_formal']
+    except (OSError, KeyError, json.JSONDecodeError):
+        actual = 'UNREADABLE'
+    ok = proc.returncode == 0 and actual == expected_arena_formal
+    shutil.rmtree(tmp)
+    print(f"{'PASS' if ok else 'FAIL'}  {name}: exit {proc.returncode}＋Arena {actual}（預期 {expected_arena_formal}）")
+    return ok
+
 def P(d, n): return os.path.join(d, n)
 def rd(p): return open(p, encoding='utf-8').read()
 def wr(p, s): open(p, 'w', encoding='utf-8').write(s)
@@ -56,6 +72,117 @@ def pve_requirements(claims):
         "failure_conditions": ["UNKNOWN"],
     }
     return json.dumps(obj, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+ARENA_ENEMY = ['shiori_win', 'wakana_win', 'grace_bunny', 'neya_orig', 'pecorine_ny']
+ARENA_COUNTER_A = ['kokkoro_ny', 'kyaru_ny', 'luisemarie_orig', 'croce_aerial', 'lailael_xmas']
+ARENA_COUNTER_B = ['kokkoro_ny', 'kyaru_ny', 'luisemarie_orig', 'croce_aerial', 'lind_orig']
+
+def add_arena_provenance(d, suffix='TW', server='TW', evidence_status='ACTIVE',
+                         claim_status='ACTIVE', module='arena'):
+    evidence_id = f'ev-arena-mut-{suffix.lower()}'
+    claim_id = f'CLM-ARENA-MUT-{suffix}'
+    evidence_path = P(d, '92_EVIDENCE_LEDGER.csv')
+    with open(evidence_path, encoding='utf-8', newline='') as f:
+        rows = list(csv.DictReader(f)); fields = list(rows[0].keys())
+    rows.append({
+        'evidence_id': evidence_id, 'claim_id': claim_id, 'module': module, 'server': server,
+        'source_tier': 'MULTI_PLAYER_REPORT', 'evidence_confidence': 'D',
+        'source_title': 'TEST_ONLY Arena mutation fixture',
+        'source_url': 'https://example.com/arena-mutation',
+        'source_locator': f'test_only_arena_{suffix.lower()}', 'published_date': '2026-08-08',
+        'published_date_precision': 'DAY', 'verified_date': '2026-08-08',
+        'claim_summary': 'TEST_ONLY exact Arena pairing', 'limitations': 'TEST_ONLY synthetic fixture',
+        'affected_files': '39;92;93', 'status': evidence_status,
+    })
+    with open(evidence_path, 'w', encoding='utf-8', newline='') as f:
+        writer = csv.DictWriter(f, fieldnames=fields); writer.writeheader(); writer.writerows(rows)
+
+    claim_path = P(d, '93_CLAIM_REGISTER.csv')
+    with open(claim_path, encoding='utf-8', newline='') as f:
+        rows = list(csv.DictReader(f)); fields = list(rows[0].keys())
+    rows.append({
+        'claim_id': claim_id, 'module': module, 'server': server,
+        'claim_text': 'TEST_ONLY exact Arena counter was reported as a clear',
+        'claim_type': 'SOURCE_FACT', 'claim_confidence': 'D', 'evidence_ids': evidence_id,
+        'independence_check': 'NO', 'version_match': 'YES', 'status': claim_status,
+        'verified_date': '2026-08-08', 'next_review_due': '2026-12-31',
+        'affected_files': '39;92;93', 'notes': 'TEST_ONLY synthetic mutation fixture',
+    })
+    with open(claim_path, 'w', encoding='utf-8', newline='') as f:
+        writer = csv.DictWriter(f, fieldnames=fields); writer.writeheader(); writer.writerows(rows)
+    return evidence_id, claim_id
+
+def add_verified_arena_provenance(d, suffix='TW', server='TW', evidence_status='ACTIVE',
+                                  claim_status='ACTIVE', module='arena'):
+    """Create the minimum independently sourced closure accepted for VERIFIED rows."""
+    claim_id = f'CLM-ARENA-VERIFIED-MUT-{suffix}'
+    evidence_ids = [
+        f'ev-arena-verified-mut-{suffix.lower()}-a',
+        f'ev-arena-verified-mut-{suffix.lower()}-b',
+    ]
+    evidence_path = P(d, '92_EVIDENCE_LEDGER.csv')
+    with open(evidence_path, encoding='utf-8', newline='') as f:
+        rows = list(csv.DictReader(f)); fields = list(rows[0].keys())
+    for index, evidence_id in enumerate(evidence_ids):
+        host = 'arena-source-a.example' if index == 0 else 'arena-source-b.example'
+        rows.append({
+            'evidence_id': evidence_id, 'claim_id': claim_id, 'module': module, 'server': server,
+            'source_tier': 'MULTI_PLAYER_REPORT', 'evidence_confidence': 'D',
+            'source_title': f'TEST_ONLY independent Arena source {index + 1}',
+            'source_url': f'https://{host}/arena/{suffix.lower()}',
+            'source_locator': f'test_only_verified_arena_{suffix.lower()}_{index + 1}',
+            'published_date': '2026-08-08', 'published_date_precision': 'DAY',
+            'verified_date': '2026-08-08',
+            'claim_summary': 'TEST_ONLY exact Arena pairing independently reported as a win',
+            'limitations': 'TEST_ONLY synthetic fixture', 'affected_files': '39;92;93',
+            'status': evidence_status,
+        })
+    with open(evidence_path, 'w', encoding='utf-8', newline='') as f:
+        writer = csv.DictWriter(f, fieldnames=fields); writer.writeheader(); writer.writerows(rows)
+
+    claim_path = P(d, '93_CLAIM_REGISTER.csv')
+    with open(claim_path, encoding='utf-8', newline='') as f:
+        rows = list(csv.DictReader(f)); fields = list(rows[0].keys())
+    rows.append({
+        'claim_id': claim_id, 'module': module, 'server': server,
+        'claim_text': 'TEST_ONLY exact Arena counter was independently reported as a win',
+        'claim_type': 'SOURCE_FACT', 'claim_confidence': 'B',
+        'evidence_ids': ';'.join(evidence_ids), 'independence_check': 'YES',
+        'version_match': 'YES', 'status': claim_status, 'verified_date': '2026-08-08',
+        'next_review_due': '2026-12-31', 'affected_files': '39;92;93',
+        'notes': 'TEST_ONLY two independent-host mutation fixture',
+    })
+    with open(claim_path, 'w', encoding='utf-8', newline='') as f:
+        writer = csv.DictWriter(f, fieldnames=fields); writer.writeheader(); writer.writerows(rows)
+    return ';'.join(evidence_ids), claim_id
+
+def add_arena_row(d, counter_id, enemy=ARENA_ENEMY, counter=ARENA_COUNTER_A,
+                  server='TW', environment='TW-2026-08-08', evidence_id='ev-arena-mut-tw',
+                  claim_id='CLM-ARENA-MUT-TW', reproducibility='CONFIRMED',
+                  claim_confidence='D'):
+    path = P(d, '39_ARENA_COUNTER_REGISTRY.csv')
+    with open(path, encoding='utf-8', newline='') as f:
+        reader = csv.DictReader(f); fields = list(reader.fieldnames or []); rows = list(reader)
+    rows.append({
+        'counter_id': counter_id, 'server': server, 'environment_version': environment,
+        'enemy_team_ids': ';'.join(enemy), 'counter_team_ids': ';'.join(counter),
+        'status': 'VERIFIED', 'verified_date': '2026-08-08',
+        'source_tier': 'MULTI_PLAYER_REPORT', 'claim_confidence': claim_confidence,
+        'evidence_ids': evidence_id, 'claim_ids': claim_id, 'sample_size': '2',
+        'randomness': 'UNKNOWN', 'reproducibility': reproducibility,
+        'last_review_due': '2026-12-31', 'notes': 'TEST_ONLY mutation fixture',
+        'source_record_count': '2', 'source_platforms': 'TEST_ONLY',
+        'tw_availability_check': 'PASS', 'unavailable_unit_ids': '',
+        'required_upgrade_check': 'PASS', 'record_date_min': '2026-08-08',
+        'record_date_max': '2026-08-08',
+        'match_type': 'EXACT', 'outcome': 'WIN', 'verification': 'TEXT_REPORT',
+        'wins': '2', 'losses': '0', 'empirical_win_rate': '100',
+        'rng_risk': 'UNKNOWN', 'operation_mode': 'UNKNOWN',
+        'environment_match': 'EXACT', 'arena_bracket': 'UNKNOWN',
+        'speed_conditions': 'UNKNOWN', 'initial_action_notes': 'UNKNOWN',
+    })
+    with open(path, 'w', encoding='utf-8', newline='') as f:
+        writer = csv.DictWriter(f, fieldnames=fields); writer.writeheader(); writer.writerows(rows)
 
 EXEC_HDR = "run_id,test_id,suite,fixture_id,fixture_version,exact_prompt,execution_date,model,observed_result,evidence_ids,status,defect_id,retest_of,supersedes_run_id,is_current,reviewer,reviewed_at,review_method,expectation_checklist,response_reference,notes"
 def row(**kw):
@@ -633,6 +760,7 @@ results.append(mutate("M68 Inferred Timeline Criticality", m68, "FAIL", mode="PR
                       target_fail="ST87：來源邊界、locator 與未載欄位不得推測"))
 # M69: Arena 的 PASS 不得只信任旗標；敵我十名都必須存在於 18 且 AVAILABLE。
 def m69(d):
+    evidence_id, claim_id = add_arena_provenance(d, suffix='M69')
     def fn(rows):
         h = rows[0]
         row = [""] * len(h)
@@ -646,8 +774,8 @@ def m69(d):
             "verified_date": "2026-08-08",
             "source_tier": "SINGLE_PLAYER_REPORT",
             "claim_confidence": "D",
-            "evidence_ids": "ev001",
-            "claim_ids": "CLM-TW-WAKANA-WINTER-REL",
+            "evidence_ids": evidence_id,
+            "claim_ids": claim_id,
             "sample_size": "1",
             "randomness": "UNKNOWN",
             "reproducibility": "UNVERIFIED_ON_TW",
@@ -660,6 +788,18 @@ def m69(d):
             "required_upgrade_check": "UNKNOWN",
             "record_date_min": "2026-08-08",
             "record_date_max": "2026-08-08",
+            "match_type": "EXACT",
+            "outcome": "WIN",
+            "verification": "TEXT_REPORT",
+            "wins": "1",
+            "losses": "0",
+            "empirical_win_rate": "",
+            "rng_risk": "UNKNOWN",
+            "operation_mode": "UNKNOWN",
+            "environment_match": "UNKNOWN",
+            "arena_bracket": "UNKNOWN",
+            "speed_conditions": "UNKNOWN",
+            "initial_action_notes": "UNKNOWN",
         }
         for field, value in values.items():
             row[h.index(field)] = value
@@ -775,5 +915,319 @@ def m77(d):
     rewrite_csv(P(d, "24_PVE_GUIDE_REGISTRY.csv"), guide_fn)
 results.append(mutate("M77 Stage Alias Duplicate Same-Five Team", m77, "FAIL", mode="PRE_SUITE",
                       target_fail="25：同關卡相同五人不得重複列（多來源合併）"))
+
+# M78: Arena counter_id is a registry identity and must be unique.
+def m78(d):
+    evidence_a, claim_a = add_verified_arena_provenance(d, suffix='M78-A')
+    evidence_b, claim_b = add_verified_arena_provenance(d, suffix='M78-B')
+    add_arena_row(d, 'AR-MUT-DUP-ID', counter=ARENA_COUNTER_A,
+                  evidence_id=evidence_a, claim_id=claim_a, claim_confidence='B')
+    add_arena_row(d, 'AR-MUT-DUP-ID', counter=ARENA_COUNTER_B,
+                  evidence_id=evidence_b, claim_id=claim_b, claim_confidence='B')
+results.append(mutate("M78 Duplicate Arena Counter ID", m78, "FAIL", mode="PRE_SUITE",
+                      target_fail="ID 唯一"))
+
+# M79: Reordering the same five units must not manufacture a second exact pairing.
+def m79(d):
+    evidence_a, claim_a = add_verified_arena_provenance(d, suffix='M79-A')
+    evidence_b, claim_b = add_verified_arena_provenance(d, suffix='M79-B')
+    add_arena_row(d, 'AR-MUT-PAIR-1', enemy=ARENA_ENEMY, counter=ARENA_COUNTER_A,
+                  evidence_id=evidence_a, claim_id=claim_a, claim_confidence='B')
+    add_arena_row(d, 'AR-MUT-PAIR-2', enemy=list(reversed(ARENA_ENEMY)),
+                  counter=list(reversed(ARENA_COUNTER_A)), evidence_id=evidence_b,
+                  claim_id=claim_b, claim_confidence='B')
+results.append(mutate("M79 Duplicate Exact Arena Pairing", m79, "FAIL", mode="PRE_SUITE",
+                      target_fail="39：同 server／environment 的相同敵我五人配對不得重複"))
+
+# M80: A rejected page can remain historical evidence, but cannot mature a VERIFIED Arena row.
+def m80(d):
+    evidence_id, claim_id = add_verified_arena_provenance(d, suffix='M80',
+                                                           evidence_status='REJECTED')
+    add_arena_row(d, 'AR-MUT-REJECTED-EVIDENCE', evidence_id=evidence_id,
+                  claim_id=claim_id, claim_confidence='B')
+results.append(mutate("M80 Rejected Arena Evidence Still Counts", m80, "FAIL", mode="PRE_SUITE",
+                      target_fail=[
+                          "39：publishable Arena closure 僅引用同服 arena ACTIVE Evidence／Claim",
+                          "39：VERIFIED Arena 僅承認獨立多來源 WIN Evidence／Claim closure",
+                      ]))
+
+# M81: Superseded claims cannot remain in a VERIFIED Arena closure.
+def m81(d):
+    evidence_id, claim_id = add_verified_arena_provenance(d, suffix='M81',
+                                                           claim_status='SUPERSEDED')
+    add_arena_row(d, 'AR-MUT-SUPERSEDED-CLAIM', evidence_id=evidence_id,
+                  claim_id=claim_id, claim_confidence='B')
+results.append(mutate("M81 Superseded Arena Claim Still Counts", m81, "FAIL", mode="PRE_SUITE",
+                      target_fail=[
+                          "39：publishable Arena closure 僅引用同服 arena ACTIVE Evidence／Claim",
+                          "39：VERIFIED Arena 僅承認獨立多來源 WIN Evidence／Claim closure",
+                      ]))
+
+# M82: Any non-empty reproducibility label is not enough for a VERIFIED exact counter.
+def m82(d):
+    evidence_id, claim_id = add_verified_arena_provenance(d, suffix='M82')
+    add_arena_row(d, 'AR-MUT-WEAK-REPRO', reproducibility='UNVERIFIED_ON_TW',
+                  evidence_id=evidence_id, claim_id=claim_id, claim_confidence='B')
+results.append(mutate("M82 Arena VERIFIED Without Confirmed Reproduction", m82, "FAIL", mode="PRE_SUITE",
+                      target_fail="39：VERIFIED Arena 列需 CONFIRMED reproducibility"))
+
+# M83: Counters from different environment snapshots cannot combine into one mature defense.
+def m83(d):
+    evidence_a, claim_a = add_verified_arena_provenance(d, suffix='M83-A')
+    evidence_b, claim_b = add_verified_arena_provenance(d, suffix='M83-B')
+    add_arena_row(d, 'AR-MUT-ENV-1', counter=ARENA_COUNTER_A, environment='TW-ENV-A',
+                  evidence_id=evidence_a, claim_id=claim_a, claim_confidence='B')
+    add_arena_row(d, 'AR-MUT-ENV-2', counter=ARENA_COUNTER_B, environment='TW-ENV-B',
+                  evidence_id=evidence_b, claim_id=claim_b, claim_confidence='B')
+results.append(mutate_gate_count("M83 Arena Cross-Environment Gate Isolation", m83, 0))
+
+# M84: JP research rows may be retained, but must not satisfy the formal TW Arena Gate.
+def m84(d):
+    evidence_a, claim_a = add_verified_arena_provenance(d, suffix='M84-A', server='JP')
+    evidence_b, claim_b = add_verified_arena_provenance(d, suffix='M84-B', server='JP')
+    add_arena_row(d, 'AR-MUT-JP-1', counter=ARENA_COUNTER_A, server='JP', environment='JP-ENV',
+                  evidence_id=evidence_a, claim_id=claim_a, claim_confidence='B')
+    add_arena_row(d, 'AR-MUT-JP-2', counter=ARENA_COUNTER_B, server='JP', environment='JP-ENV',
+                  evidence_id=evidence_b, claim_id=claim_b, claim_confidence='B')
+results.append(mutate_gate_count("M84 JP Arena Rows Do Not Count TW Gate", m84, 0))
+
+# M85: Two distinct exact counters in the same TW environment are the minimal positive Gate unit.
+def m85(d):
+    evidence_a, claim_a = add_verified_arena_provenance(d, suffix='M85-A')
+    evidence_b, claim_b = add_verified_arena_provenance(d, suffix='M85-B')
+    add_arena_row(d, 'AR-MUT-TW-1', counter=ARENA_COUNTER_A,
+                  evidence_id=evidence_a, claim_id=claim_a, claim_confidence='B')
+    add_arena_row(d, 'AR-MUT-TW-2', counter=ARENA_COUNTER_B,
+                  evidence_id=evidence_b, claim_id=claim_b, claim_confidence='B')
+results.append(mutate_gate_count("M85 TW Arena Same-Environment Positive Control", m85, 1))
+
+# M86: Active provenance from another module must not mature an Arena registry row.
+def m86(d):
+    evidence_id, claim_id = add_verified_arena_provenance(d, suffix='M86', module='pve')
+    add_arena_row(d, 'AR-MUT-WRONG-MODULE', evidence_id=evidence_id,
+                  claim_id=claim_id, claim_confidence='B')
+results.append(mutate("M86 Arena Row Uses Non-Arena Provenance", m86, "FAIL", mode="PRE_SUITE",
+                      target_fail=[
+                          "39：publishable Arena closure 僅引用同服 arena ACTIVE Evidence／Claim",
+                          "39：VERIFIED Arena 僅承認獨立多來源 WIN Evidence／Claim closure",
+                      ]))
+
+# M87: A TW Arena row must be supported by TW, not merely JP, provenance.
+def m87(d):
+    evidence_id, claim_id = add_verified_arena_provenance(d, suffix='M87', server='JP')
+    add_arena_row(d, 'AR-MUT-CROSS-SERVER', evidence_id=evidence_id, claim_id=claim_id,
+                  claim_confidence='B')
+results.append(mutate("M87 TW Arena Row Uses JP Provenance", m87, "FAIL", mode="PRE_SUITE",
+                      target_fail=[
+                          "39：publishable Arena closure 僅引用同服 arena ACTIVE Evidence／Claim",
+                          "39：VERIFIED Arena 僅承認獨立多來源 WIN Evidence／Claim closure",
+                      ]))
+
+# M88: Evidence's declared Claim must be present in the registry row's claim closure.
+def m88(d):
+    evidence_id, _ = add_verified_arena_provenance(d, suffix='M88-A')
+    _, other_claim_id = add_verified_arena_provenance(d, suffix='M88-B')
+    add_arena_row(d, 'AR-MUT-DECLARED-CLAIM', evidence_id=evidence_id,
+                  claim_id=other_claim_id, claim_confidence='B')
+results.append(mutate("M88 Arena Evidence Declared Claim Omitted", m88, "FAIL", mode="PRE_SUITE",
+                      target_fail=[
+                          "39：publishable Arena closure 僅引用同服 arena ACTIVE Evidence／Claim",
+                          "39：VERIFIED Arena 僅承認獨立多來源 WIN Evidence／Claim closure",
+                      ]))
+
+# M89: A single observed screenshot has no repeat-trial denominator; 100% would overclaim.
+def m89(d):
+    def fn(rows):
+        h = rows[0]
+        rows[1][h.index('empirical_win_rate')] = '100'
+    rewrite_csv(P(d, '39_ARENA_COUNTER_REGISTRY.csv'), fn)
+results.append(mutate("M89 Single Arena Report Invents Win Rate", m89, "FAIL", mode="PRE_SUITE",
+                      target_fail="39：單筆 Arena 戰果不得宣稱 empirical win rate"))
+
+# M90: sample_size must equal explicit wins + losses when outcome counts are present.
+def m90(d):
+    def fn(rows):
+        h = rows[0]
+        rows[1][h.index('losses')] = '1'
+    rewrite_csv(P(d, '39_ARENA_COUNTER_REGISTRY.csv'), fn)
+results.append(mutate("M90 Arena Sample Shape Drift", m90, "FAIL", mode="PRE_SUITE",
+                      target_fail="39：Arena sample_size＝wins＋losses 且皆為非負整數"))
+
+# M91: Similar defense matches belong to a separate query result, never the exact registry.
+def m91(d):
+    def fn(rows):
+        h = rows[0]
+        rows[1][h.index('match_type')] = 'SIMILAR'
+    rewrite_csv(P(d, '39_ARENA_COUNTER_REGISTRY.csv'), fn)
+results.append(mutate("M91 Similar Arena Match Stored As Exact", m91, "FAIL", mode="PRE_SUITE",
+                      target_fail="39：canonical Arena registry 僅保存 EXACT 配對"))
+
+# M92: An unstated player control mode must remain UNKNOWN.
+def m92(d):
+    def fn(rows):
+        h = rows[0]
+        rows[1][h.index('operation_mode')] = 'AUTO'
+    rewrite_csv(P(d, '39_ARENA_COUNTER_REGISTRY.csv'), fn)
+results.append(mutate("M92 Arena Operation Mode Invented", m92, "FAIL", mode="PRE_SUITE",
+                      target_fail="39：Arena operation_mode Enum"))
+
+# M93: Arena reproducibility is a separate vocabulary from PVE timelines.
+def m93(d):
+    def fn(rows):
+        h = rows[0]
+        rows[1][h.index('reproducibility')] = 'TW_REPRODUCED'
+    rewrite_csv(P(d, '39_ARENA_COUNTER_REGISTRY.csv'), fn)
+results.append(mutate("M93 Arena Timeline Repro Vocabulary Leak", m93, "FAIL", mode="PRE_SUITE",
+                      target_fail="39：Arena status／source tier／confidence／reproducibility enums"))
+
+# M94: A publishable single report still needs a traceable Evidence/Claim closure.
+def m94(d):
+    def fn(rows):
+        h = rows[0]
+        rows[1][h.index('evidence_ids')] = 'ev-does-not-exist'
+    rewrite_csv(P(d, '39_ARENA_COUNTER_REGISTRY.csv'), fn)
+results.append(mutate("M94 Single Arena Report Missing Evidence", m94, "FAIL", mode="PRE_SUITE",
+                      target_fail="39：publishable Arena closure 僅引用同服 arena ACTIVE Evidence／Claim"))
+
+# M95: SINGLE_REPORT is explicitly a D-confidence reference, never an upgraded claim.
+def m95(d):
+    def fn(rows):
+        h = rows[0]
+        rows[1][h.index('claim_confidence')] = 'B'
+    rewrite_csv(P(d, '39_ARENA_COUNTER_REGISTRY.csv'), fn)
+results.append(mutate("M95 Single Arena Report Confidence Upgrade", m95, "FAIL", mode="PRE_SUITE",
+                      target_fail="39：SINGLE_REPORT claim_confidence 固定 D"))
+
+# M96: Unknown source details must use an explicit sentinel rather than disappear.
+def m96(d):
+    def fn(rows):
+        h = rows[0]
+        rows[1][h.index('randomness')] = ''
+    rewrite_csv(P(d, '39_ARENA_COUNTER_REGISTRY.csv'), fn)
+results.append(mutate("M96 Arena Randomness Silently Blank", m96, "FAIL", mode="PRE_SUITE",
+                      target_fail="39：Arena source-truth metadata 不得留白"))
+
+# M97: all-AVAILABLE exact teams cannot be mislabeled FAIL to hide serving truth.
+def m97(d):
+    def fn(rows):
+        h = rows[0]
+        rows[1][h.index('tw_availability_check')] = 'FAIL'
+    rewrite_csv(P(d, '39_ARENA_COUNTER_REGISTRY.csv'), fn)
+results.append(mutate("M97 Arena Availability False FAIL", m97, "FAIL", mode="PRE_SUITE",
+                      target_fail="39：Arena TW availability 三態須與 18 雙向一致"))
+
+# M98: UNVERIFIED is unknown, not proof that the unit is unavailable.
+def m98(d):
+    def chars(rows):
+        h = rows[0]
+        for row in rows[1:]:
+            if row[h.index('unit_key')] == 'yuki_orig':
+                row[h.index('availability_status')] = 'UNVERIFIED'
+    def arena(rows):
+        h = rows[0]
+        for row in rows[1:]:
+            row[h.index('tw_availability_check')] = 'UNVERIFIED'
+            row[h.index('unavailable_unit_ids')] = 'yuki_orig'
+    rewrite_csv(P(d, '18_TW_CHARACTER_AVAILABILITY.csv'), chars)
+    rewrite_csv(P(d, '39_ARENA_COUNTER_REGISTRY.csv'), arena)
+results.append(mutate("M98 Arena Unknown Invented As Unavailable", m98, "FAIL", mode="PRE_SUITE",
+                      target_fail="39：unavailable_unit_ids 精確列出 18 NOT_RELEASED 成員"))
+
+# M99: a PASS serving row must not expose a placeholder as a Taiwanese name.
+def m99(d):
+    def fn(rows):
+        h = rows[0]
+        for row in rows[1:]:
+            if row[h.index('unit_key')] == 'yuki_orig':
+                row[h.index('tw_name')] = '【待查證】'
+    rewrite_csv(P(d, '18_TW_CHARACTER_AVAILABILITY.csv'), fn)
+results.append(mutate("M99 Arena PASS Placeholder TW Name", m99, "FAIL", mode="PRE_SUITE",
+                      target_fail="39：PASS 成員皆有台服官方名與 ACTIVE TW OFFICIAL／A Evidence"))
+
+# M100: Changing labels alone cannot promote current single reports into VERIFIED counters.
+def m100(d):
+    def fn(rows):
+        h = rows[0]
+        for row in rows[1:]:
+            row[h.index('status')] = 'VERIFIED'
+            row[h.index('reproducibility')] = 'CONFIRMED'
+    rewrite_csv(P(d, '39_ARENA_COUNTER_REGISTRY.csv'), fn)
+results.append(mutate("M100 Arena Label-Only VERIFIED Self-Promotion", m100, "FAIL",
+                      mode="PRE_SUITE",
+                      target_fail="39：VERIFIED Arena 僅承認獨立多來源 WIN Evidence／Claim closure"))
+
+# M101: different ports do not make the same hostname an independent source.
+def m101(d):
+    evidence_ids, claim_id = add_verified_arena_provenance(d, suffix='PORTS')
+    add_arena_row(d, 'AR-MUT-SAME-HOST-PORTS', evidence_id=evidence_ids,
+                  claim_id=claim_id, claim_confidence='B')
+    def fn(rows):
+        h = rows[0]
+        selected = [row for row in rows[1:]
+                    if row[h.index('evidence_id')].startswith('ev-arena-verified-mut-ports-')]
+        selected[0][h.index('source_url')] = 'https://arena-shared.example:443/result-a'
+        selected[1][h.index('source_url')] = 'https://arena-shared.example:444/result-b'
+    rewrite_csv(P(d, '92_EVIDENCE_LEDGER.csv'), fn)
+results.append(mutate("M101 Arena Same Host Different Port Independence", m101, "FAIL",
+                      mode="PRE_SUITE",
+                      target_fail=["ST49：B／C 證據唯一＋來源獨立",
+                                   "39：VERIFIED Arena 僅承認獨立多來源 WIN Evidence／Claim closure"]))
+
+# M102: a scalar weak source tier cannot contradict a multi-source VERIFIED closure.
+def m102(d):
+    evidence_ids, claim_id = add_verified_arena_provenance(d, suffix='WEAK-TIER')
+    add_arena_row(d, 'AR-MUT-WEAK-TIER', evidence_id=evidence_ids,
+                  claim_id=claim_id, claim_confidence='B')
+    def fn(rows):
+        h = rows[0]
+        rows[-1][h.index('source_tier')] = 'SINGLE_PLAYER_REPORT'
+    rewrite_csv(P(d, '39_ARENA_COUNTER_REGISTRY.csv'), fn)
+results.append(mutate("M102 Arena VERIFIED Weak Source Tier", m102, "FAIL",
+                      mode="PRE_SUITE",
+                      target_fail="39：VERIFIED Arena 僅承認獨立多來源 WIN Evidence／Claim closure"))
+
+# M103: a mismatched environment cannot be published as an exact VERIFIED counter.
+def m103(d):
+    evidence_ids, claim_id = add_verified_arena_provenance(d, suffix='ENV-MISMATCH')
+    add_arena_row(d, 'AR-MUT-ENV-MISMATCH', evidence_id=evidence_ids,
+                  claim_id=claim_id, claim_confidence='B')
+    def fn(rows):
+        h = rows[0]
+        rows[-1][h.index('environment_match')] = 'MISMATCH'
+    rewrite_csv(P(d, '39_ARENA_COUNTER_REGISTRY.csv'), fn)
+results.append(mutate("M103 Arena VERIFIED Environment Mismatch", m103, "FAIL",
+                      mode="PRE_SUITE",
+                      target_fail="39：VERIFIED Arena 僅承認獨立多來源 WIN Evidence／Claim closure"))
+
+# M104: an invented Evidence tier cannot masquerade as a strong canonical source.
+def m104(d):
+    evidence_ids, claim_id = add_verified_arena_provenance(d, suffix='FAKE-TIER')
+    add_arena_row(d, 'AR-MUT-FAKE-EVIDENCE-TIER', evidence_id=evidence_ids,
+                  claim_id=claim_id, claim_confidence='B')
+    def fn(rows):
+        h = rows[0]
+        for row in rows[1:]:
+            if row[h.index('evidence_id')].startswith('ev-arena-verified-mut-fake-tier-'):
+                row[h.index('source_tier')] = 'FAKE_STRONG'
+    rewrite_csv(P(d, '92_EVIDENCE_LEDGER.csv'), fn)
+results.append(mutate("M104 Arena Invented Evidence Tier", m104, "FAIL",
+                      mode="PRE_SUITE",
+                      target_fail=["92：source_tier Enum",
+                                   "39：VERIFIED Arena 僅承認獨立多來源 WIN Evidence／Claim closure"]))
+
+# M105: offline locator/title fallbacks remain valid for ST49, but not Arena maturity.
+def m105(d):
+    evidence_ids, claim_id = add_verified_arena_provenance(d, suffix='EMPTY-URL')
+    add_arena_row(d, 'AR-MUT-EMPTY-EVIDENCE-URL', evidence_id=evidence_ids,
+                  claim_id=claim_id, claim_confidence='B')
+    def fn(rows):
+        h = rows[0]
+        for row in rows[1:]:
+            if row[h.index('evidence_id')].startswith('ev-arena-verified-mut-empty-url-'):
+                row[h.index('source_url')] = ''
+    rewrite_csv(P(d, '92_EVIDENCE_LEDGER.csv'), fn)
+results.append(mutate("M105 Arena VERIFIED Offline Evidence Fallback", m105, "FAIL",
+                      mode="PRE_SUITE",
+                      target_fail="39：VERIFIED Arena 成熟 Evidence 皆須具 nonempty HTTPS hostname"))
 print('MUTATION_TESTS', 'ALL_OK' if all(results) else 'FAILED', f'| active_scenarios={len(results)}')
 sys.exit(0 if all(results) else 1)

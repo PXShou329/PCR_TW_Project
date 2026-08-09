@@ -1,8 +1,9 @@
 # 33 競技場研究日誌（ARENA COUNTER LOG）
 
 > 每次競技場／反制研究記一筆（研究過程）。**正式反制 SSOT 自 v1.4.1.5 起為 `39_ARENA_COUNTER_REGISTRY.csv`**；
-> Gate 的 Arena VERIFIED 數量只由 39 中符合成熟條件（status=VERIFIED＋敵我各恰 5 名＋角色 ID 無重複＋
-> evidence/claim FK＋reproducibility 已標＋未過期）的列計算，本日誌不計入 Gate。
+> Gate 計算的是 39 派生的**成熟防守案例**，不是 VERIFIED 資料列數：同一 TW 環境與同一敵方五人須至少有兩支
+> 不同反制五人，且每支均符合 A5 多來源 `VERIFIED`（B／C 獨立來源閉合＋`CONFIRMED`＋台服可用＋同服 ACTIVE
+> Evidence／Claim＋未過期）才計一個 defense，本日誌不計入 Gate。SELF_TESTED 在獨立 run registry 建立前不得成熟。
 
 ## v1.4 停止條件回報（依計畫 §17 第 3／8 條）
 
@@ -36,4 +37,23 @@
 
 ## 日誌
 
-（尚無完成紀錄；簡報 1–8 待 Project 內執行）
+## 2026-08-09 — 巴哈樓層 2198：兩支 exact Win 候選（DEFERRED_NOT_CANONICAL）
+
+- 已實際開啟討論串頁 `https://forum.gamer.com.tw/C.php?bsn=30861&snA=674&page=110`、樓層直頁 `https://forum.gamer.com.tw/Co.php?bsn=30861&sn=480801&subbsn=3&bPage=0`，以及防守與兩張戰果原圖：
+  - 防守：`https://truth.bahamut.com.tw/s01/202501/26eb8fb8772264e340b4c12ef169b75d.JPG`
+  - 反制 1 Win：`https://truth.bahamut.com.tw/s01/202501/forum/30861/fea6b8b9eb636fbcb65c497d4b2ef1fc.JPG`
+  - 反制 2 Win：`https://truth.bahamut.com.tw/s01/202501/forum/30861/5c885a0592381a5d87429df2024bc0f3.JPG`
+- 防守圖辨識：艾姬多娜（夏日）／凱留／璃乃／惠理子（情人節）／宮子。`エキドナ（サマー）` 已由實開台服官方公告 #3721 與 #3728 確認官方名為「艾姬多娜（夏日）」及已實裝；此處仍只保存研究轉錄，不代表 18 的逐角可用性／Evidence 已閉合。
+- 候選反制 1：杏奈／禊（夏日）／優花梨／似似花（新年）／依里（聖誕節）；不同回覆者的原圖顯示完整五人及 Win，正文另載「開場讓中二炸場」，但不足以推導可驗證操作軸，故 `operation_mode=UNKNOWN`。
+- 候選反制 2：杏奈／凱留／祈梨／優花梨／依里（聖誕節）；另一回覆者的原圖顯示完整五人及 Win，操作方式未載，故 `operation_mode=UNKNOWN`。另有一張僅三名角色的回覆圖，因不滿足完整五人而排除。
+- **停止／延後原因**：敵我合計 11 個不同角色 role key 目前均不在 18；其中 10 角已取得實開台服官方正文核名，但「禊（夏日）」仍缺可實開的台服官方正文，且 11 角尚未逐筆完成可用性與 ACTIVE OFFICIAL/A Evidence 閉合。因此本案固定為 `DEFERRED_NOT_CANONICAL`，**不寫入 39、不建立 Evidence／Claim，也不計 Arena Gate**；待 11 角 Registry 閉合後才逐筆重審。
+
+## 2026-08-08 — 台服 2026-05-25 exact 防守：首個可追溯垂直切片
+
+- 輸入防守：厄莉絲／普蕾西亞（墮落）／怜（新年）／涅婭／茉莉；五圖完整，原始主文與防守圖已實開。
+- 採用來源：`ARENA-SRC-006` 巴哈台服問答串（`SINGLE_PLAYER_REPORT / D`）；主文、B1、B2 與三張原圖均逐一開啟。搜尋摘要、工單轉述與 AppMedia 日服同防守候選均未作台服勝利 Evidence。
+- `TW_ARENA_20260525_01`：嘉夜／埃拉／雷姆／雪／咲戀（夏日），原圖明示攻方 Win、防方 Lose、防方 0%。
+- `TW_ARENA_20260525_02`：嘉夜／埃拉／真陽／雪／咲戀（夏日），同作者另張原圖明示 Win／Lose；正文直接寫「沒雷姆可換真陽」。
+- 名稱裁決：戰果第 2 格以原始圖示並排確認為台服官方「埃拉」，不是秋乃；`ユキ` 依台服官方 #3488 使用「雪」，不採非官方譯名「優希」。
+- 台服可用性：敵我使用的 11 個不同角色皆在 18 為 `AVAILABLE`；新增角色只以實開台服官方正文確立名稱／已實裝，首次實裝日與逐項強化沒有正文時保持 UNKNOWN。
+- 結果邊界：兩隊各 `sample_size=1`，且同一回覆者，不構成獨立交叉驗證；均為 `SINGLE_REPORT`，`empirical win rate=NULL`，Arena Gate 仍為 0。等級、Rank、裝備、競技場區間與精確 patch 皆 UNKNOWN。
