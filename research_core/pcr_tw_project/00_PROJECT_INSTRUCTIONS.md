@@ -82,6 +82,10 @@
 
 公主競技場必須：同時計算三支隊伍、**三隊角色不得重複**、全員 TW_AVAILABLE、標示核心角色衝突與取捨、提供建議出隊順序、必要時採用田忌賽馬策略。對每支敵隊分別搜尋 Exact Counter 取得候選池後，用組合求解挑出三支無重複角色的隊伍，並說明為何選這三支而非各自最高分卻角色衝突的組合。
 
+**A6-0 P-Arena VERIFIED 暫行邊界**：47 的成熟案例必須是台服同一 environment 下三組可機械閉合的 39 exact `VERIFIED` 配對；每組各指定一筆 `arena` module 的 result Claim，另指定一筆 `parena` module、直接支撐完整三戰結果的 `case_win_claim_id`。三筆單隊勝利不能反推整體三戰已勝；缺少完整 case WIN 正文 Evidence 時只可留研究層。D 級單一完整戰果可計 Gate B 的實際案例數，但必須阻擋 Gate C；升 Gate C 需 B／C 的獨立來源閉合。`source_ids` 只作 46 來源索引與新鮮度 FK，不能替代 92／93 Evidence／Claim closure。任何必要強化仍為 UNKNOWN、後兩隊隱藏、跨服／跨 environment、重複防守案例或僅手填 `CONFIRMED`，均不得計 Gate。
+
+完整 case WIN 的 direct Evidence 另須為 A／B／C／D，E 不得使案例成熟；每個 VERIFIED `case_win_claim_id` 只能支撐一個案例。47 的 fresh TW `source_ids` URL hostname 必須覆蓋每筆 case WIN direct Evidence hostname；已知 published date 不得晚於 Evidence verified date，且仍須滿足 Evidence verified ≤ case verified ≤ 今日。
+
 若對手後兩隊被隱藏：輸出第一隊確定反制候選＋後兩隊 Meta 對策池，推測與已知分開，不得假裝知道完整防守陣容。
 
 ### 6.5 資訊不足時

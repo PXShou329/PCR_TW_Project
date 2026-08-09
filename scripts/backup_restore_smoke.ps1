@@ -24,7 +24,7 @@ param(
     [string]$SourceDatabase,
     [switch]$SeedRevisionHistory,
     [switch]$KeepBackup,
-    [Parameter(HelpMessage = "Keep the full restored B5 database. The destructive empty-Gacha downgrade probe always uses a separate disposable database.")]
+    [Parameter(HelpMessage = "Keep the full restored A6 database. The destructive empty-Gacha downgrade probe always uses a separate disposable database.")]
     [switch]$KeepRestoredDatabase
 )
 
@@ -63,7 +63,7 @@ function Get-Setting {
     return $Default
 }
 
-if ($ProjectName -in @("pcr-tw-a5-arena", "pcr-tw-a4-water", "pcr-tw-b1")) {
+if ($ProjectName -in @("pcr-tw-b5-gacha", "pcr-tw-a5-arena", "pcr-tw-a4-water", "pcr-tw-b1")) {
     throw "ProjectName is reserved for an existing or legacy stack"
 }
 if (-not $PostgresUser) {
@@ -94,12 +94,13 @@ foreach ($required in @(
 }
 $encodedApiPassword = [Uri]::EscapeDataString($apiPassword)
 $encodedImporterPassword = [Uri]::EscapeDataString($importerPassword)
-$b5ManifestSha256 = "e74814d6433ee327611f10322937bdfa9687b9887f139ba6e6158a291dd12989"
-$b5Revision = "d117be193802d459102708424c4b7f2a7e852b793ff38356e1977f44d507466d"
-$b5Semantic = "a7467a838c2a9cfdfe48bda4a3b158fb374dd023caa3478a84c07678532ea9f4"
-$b5EvidenceToClaimSha256 = "a2fa8f263d612cd393bbd25d29d01f9ffde4015ed924e7b28a8ed909b99c67af"
-$b5ClaimToEvidenceSha256 = "24c1cbce3588926d4efe657c8da94b968aa25dd288e764ebbed0f18c1203d43c"
-$b5RowCounts = [ordered]@{
+$a6ManifestSha256 = "fbcac9cb9aadcd1569f881469189dc791c68a4a329637cc9db2c0d7263d68ed1"
+$a6Revision = "3f5e738a6a7f0463583b38d0fc2ca1ae35bdc563f3815cf436dfc10913764d97"
+$a6Semantic = "82495781cca66b9ca3fc221e609a3cb6c06ebaa823f7a8613c9d5d1d01d9e1ee"
+$a6ArtifactMirrorSha256 = "e44a9fa38a89a5672d00c0a58d8b8946fecd41e541c08c9733fb3d06fbc1b88a"
+$a6EvidenceToClaimSha256 = "a2fa8f263d612cd393bbd25d29d01f9ffde4015ed924e7b28a8ed909b99c67af"
+$a6ClaimToEvidenceSha256 = "24c1cbce3588926d4efe657c8da94b968aa25dd288e764ebbed0f18c1203d43c"
+$a6RowCounts = [ordered]@{
     stages = 3; teams = 10; team_members = 50; characters = 35
     evidence = 73; claims = 69; operation_timelines = 15; timeline_steps = 37
     arena_defenses = 1; arena_defense_members = 5; arena_counters = 2
@@ -107,7 +108,7 @@ $b5RowCounts = [ordered]@{
     gacha_timeline_events = 5; gacha_timeline_evidence = 10; gacha_timeline_claims = 8
     gacha_community_sources = 4; gacha_timeline_community_sources = 0
 }
-$b5ServingCounts = [ordered]@{
+$a6ServingCounts = [ordered]@{
     stages = 3; teams = 10; team_members = 50; characters = 35
     evidence = 73; claims = 69; stage_evidence = 47; stage_claims = 46
     team_evidence = 95; claim_evidence = 159; operation_timelines = 15; timeline_steps = 37
@@ -262,7 +263,7 @@ function Assert-ComposePreflight {
     if (-not [bool]$config.networks.backend.internal) {
         throw "Resolved backend network must remain internal"
     }
-    Write-Host "B5_COMPOSE_PREFLIGHT_OK project=$ProjectName api_image=$ExpectedApiImage scheduler_image=$ExpectedSchedulerImage api_port=$ExpectedApiPort web_port=$ExpectedWebPort scheduler_port=$ExpectedSchedulerPort"
+    Write-Host "A6_COMPOSE_PREFLIGHT_OK project=$ProjectName api_image=$ExpectedApiImage scheduler_image=$ExpectedSchedulerImage api_port=$ExpectedApiPort web_port=$ExpectedWebPort scheduler_port=$ExpectedSchedulerPort"
 }
 
 function Assert-RunningDbIdentity {
@@ -291,7 +292,7 @@ function Assert-RunningDbIdentity {
     ) {
         throw "Running database does not use the expected isolated project volume"
     }
-    Write-Host "B5_DB_TARGET_OK project=$ProjectName container=$containerId volume=$($dataMounts[0].Name)"
+    Write-Host "A6_DB_TARGET_OK project=$ProjectName container=$containerId volume=$($dataMounts[0].Name)"
     return $containerId
 }
 
@@ -373,7 +374,7 @@ function Assert-CountObject {
     }
 }
 
-function Assert-B5DatabaseIdentity {
+function Assert-A6DatabaseIdentity {
     param(
         [Parameter(Mandatory = $true)][string]$Database,
         [Parameter(Mandatory = $true)][string]$Label
@@ -385,32 +386,36 @@ function Assert-B5DatabaseIdentity {
     $epoch = [long](Get-Scalar -Database $Database -Sql "SELECT epoch FROM materialization_state WHERE id=1")
     if (
         $alembic -ne "v0007_gacha_timeline_slice" -or
-        $activeRevision -ne $b5Revision -or
+        $activeRevision -ne $a6Revision -or
         $activeRun -notmatch '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' -or
         $activeMaterialization -notmatch '^[0-9a-f]{64}$' -or
         $epoch -le 0
     ) {
-        throw "$Label active B5 state is invalid"
+        throw "$Label active A6 state is invalid"
     }
-    $revisionValues = Get-Scalar -Database $Database -Sql "SELECT manifest_sha256 || '|' || raw_tree_sha256 || '|' || semantic_tree_sha256 || '|' || status || '|' || file_count || '|' || csv_file_count || '|' || csv_row_count || '|' || evidence_to_claim_count || '|' || evidence_to_claim_sha256 || '|' || claim_to_evidence_count || '|' || claim_to_evidence_sha256 || '|' || COALESCE(materialization_sha256, '') || '|' || COALESCE(import_run_id::text, '') FROM core_revisions WHERE revision_id='$b5Revision'"
-    $expectedRevisionValues = "$b5ManifestSha256|$b5Revision|$b5Semantic|SUCCEEDED|48|13|376|120|$b5EvidenceToClaimSha256|298|$b5ClaimToEvidenceSha256|$activeMaterialization|$activeRun"
+    $revisionValues = Get-Scalar -Database $Database -Sql "SELECT manifest_sha256 || '|' || raw_tree_sha256 || '|' || semantic_tree_sha256 || '|' || status || '|' || file_count || '|' || csv_file_count || '|' || csv_row_count || '|' || evidence_to_claim_count || '|' || evidence_to_claim_sha256 || '|' || claim_to_evidence_count || '|' || claim_to_evidence_sha256 || '|' || COALESCE(materialization_sha256, '') || '|' || COALESCE(import_run_id::text, '') FROM core_revisions WHERE revision_id='$a6Revision'"
+    $expectedRevisionValues = "$a6ManifestSha256|$a6Revision|$a6Semantic|SUCCEEDED|48|13|376|120|$a6EvidenceToClaimSha256|298|$a6ClaimToEvidenceSha256|$activeMaterialization|$activeRun"
     if ($revisionValues -ne $expectedRevisionValues) {
         throw "$Label portable or instance CoreRevision identity drifted"
     }
     $runValues = Get-Scalar -Database $Database -Sql "SELECT status || '|' || fixture_sha256 || '|' || canonical_source || '|' || COALESCE(manifest#>>'{materialization,schema_version}', '') || '|' || COALESCE(manifest#>>'{materialization,sha256}', '') || '|' || (SELECT count(*) FROM jsonb_object_keys(CASE WHEN jsonb_typeof(manifest#>'{materialization,tables}')='object' THEN manifest#>'{materialization,tables}' ELSE '{}'::jsonb END)) FROM import_runs WHERE id='$activeRun'"
-    if ($runValues -ne "SUCCEEDED|$b5Revision|research_core_file_ssot|4|$activeMaterialization|23") {
+    if ($runValues -ne "SUCCEEDED|$a6Revision|research_core_file_ssot|4|$activeMaterialization|23") {
         throw "$Label active ImportRun identity drifted"
     }
     $runCounts = (Get-Scalar -Database $Database -Sql "SELECT row_counts::text FROM import_runs WHERE id='$activeRun'") | ConvertFrom-Json
     $servingCounts = (Get-Scalar -Database $Database -Sql "SELECT serving_counts::text FROM materialization_state WHERE id=1") | ConvertFrom-Json
-    Assert-CountObject -Actual $runCounts -Expected $b5RowCounts -Label "$Label ImportRun"
-    Assert-CountObject -Actual $servingCounts -Expected $b5ServingCounts -Label "$Label MaterializationState"
-    foreach ($table in $b5ServingCounts.Keys) {
+    Assert-CountObject -Actual $runCounts -Expected $a6RowCounts -Label "$Label ImportRun"
+    Assert-CountObject -Actual $servingCounts -Expected $a6ServingCounts -Label "$Label MaterializationState"
+    foreach ($table in $a6ServingCounts.Keys) {
         $actual = [int](Get-Scalar -Database $Database -Sql "SELECT COUNT(*) FROM $table")
-        if ($actual -ne [int]$b5ServingCounts[$table]) {
+        if ($actual -ne [int]$a6ServingCounts[$table]) {
             throw "$Label database count mismatch for $table"
         }
     }
+    # This diagnostic is intentionally not used as portable revision identity.
+    # The exact portable manifest, edge closures, and typed materialization above
+    # are the release gates; this hash identifies the full source artifact mirror.
+    Write-Host "A6_ARTIFACT_DIAGNOSTIC_PINNED sha256=$a6ArtifactMirrorSha256"
     return [pscustomobject]@{
         Alembic = $alembic
         Revision = $activeRevision
@@ -433,7 +438,7 @@ function Assert-DbPrivilegeContract {
     )
     $expectedMarker = "DB_PRIVILEGES_OK matrix_checks=651 actual_denials=23 allowed_smokes=10"
     if ($privilegeExit -ne 0 -or @($privilegeLines | Where-Object { $_ -ceq $expectedMarker }).Count -ne 1) {
-        throw "Database privilege verifier did not emit the exact 7-privilege B5 contract"
+        throw "Database privilege verifier did not emit the exact 7-privilege A6 contract"
     }
     $privilegeLines | ForEach-Object { Write-Host $_ }
 }
@@ -469,7 +474,7 @@ try {
             --env "PCR_DATABASE_URL=$sourceImporterUrl" `
             revision-history-smoke
     }
-    $sourceIdentity = Assert-B5DatabaseIdentity -Database $SourceDatabase -Label "Source"
+    $sourceIdentity = Assert-A6DatabaseIdentity -Database $SourceDatabase -Label "Source"
     $sourceRevisionCount = [int](Get-Scalar -Database $SourceDatabase -Sql "SELECT COUNT(*) FROM core_revisions")
     $sourceActivationCount = [int](Get-Scalar -Database $SourceDatabase -Sql "SELECT COUNT(*) FROM revision_activations")
     $verifyRevisionHistory = $sourceRevisionCount -ge 2 -and $sourceActivationCount -ge 3
@@ -490,9 +495,9 @@ try {
     }
     if (
         $sourceHistory.active_revision_id -and
-        $sourceHistory.active_revision_id -ne $b5Revision
+        $sourceHistory.active_revision_id -ne $a6Revision
     ) {
-        throw "Source history verifier reported a non-B5 active revision"
+        throw "Source history verifier reported a non-A6 active revision"
     }
 
     Invoke-DockerChecked exec -T db pg_dump `
@@ -501,7 +506,7 @@ try {
         --format=custom `
         --compress=9 `
         --file="/backups/$backupName"
-    $sourceIdentityAfterDump = Assert-B5DatabaseIdentity -Database $SourceDatabase -Label "Source after dump"
+    $sourceIdentityAfterDump = Assert-A6DatabaseIdentity -Database $SourceDatabase -Label "Source after dump"
     if (
         $sourceIdentityAfterDump.ImportRun -ne $sourceIdentity.ImportRun -or
         $sourceIdentityAfterDump.Materialization -ne $sourceIdentity.Materialization -or
@@ -594,13 +599,13 @@ try {
     if ($sourceRevision -ne $restoreRevision) {
         throw "Alembic revision mismatch (source=$sourceRevision restore=$restoreRevision)"
     }
-    $restoreIdentity = Assert-B5DatabaseIdentity -Database $restoreDatabase -Label "Restored"
+    $restoreIdentity = Assert-A6DatabaseIdentity -Database $restoreDatabase -Label "Restored"
     if (
         $restoreIdentity.ImportRun -ne $sourceIdentity.ImportRun -or
         $restoreIdentity.Materialization -ne $sourceIdentity.Materialization -or
         $restoreIdentity.Epoch -ne $sourceIdentity.Epoch
     ) {
-        throw "Restored active B5 instance identity differs from source"
+        throw "Restored active A6 instance identity differs from source"
     }
 
     $encodedOwnerPassword = [Uri]::EscapeDataString($ownerPassword)
@@ -658,17 +663,17 @@ try {
     $baseline = Invoke-RestMethod -Uri "http://127.0.0.1:${apiPort}/api/v1/baseline" -TimeoutSec 5
     if (
         $baseline.meta.source.canonical_source -ne "research_core_file_ssot" -or
-        $baseline.meta.source.fixture_sha256 -ne $b5Revision -or
+        $baseline.meta.source.fixture_sha256 -ne $a6Revision -or
         $baseline.meta.source.import_run_id -ne $sourceIdentity.ImportRun -or
-        $baseline.meta.source.revision_id -ne $b5Revision -or
-        $baseline.meta.source.raw_tree_sha256 -ne $b5Revision -or
-        $baseline.meta.source.semantic_tree_sha256 -ne $b5Semantic -or
+        $baseline.meta.source.revision_id -ne $a6Revision -or
+        $baseline.meta.source.raw_tree_sha256 -ne $a6Revision -or
+        $baseline.meta.source.semantic_tree_sha256 -ne $a6Semantic -or
         $baseline.meta.source.materialization_sha256 -ne $sourceIdentity.Materialization
     ) {
         throw "Restored API revision metadata contract failed"
     }
-    Assert-CountObject -Actual $baseline.data.counts -Expected $b5RowCounts -Label "Restored API"
-    if ($baseline.data.application_version -ne "3.0.0-b5") {
+    Assert-CountObject -Actual $baseline.data.counts -Expected $a6RowCounts -Label "Restored API"
+    if ($baseline.data.application_version -ne "3.0.0-a6") {
         throw "Restored API application version mismatch"
     }
     $stage = Invoke-RestMethod -Uri "http://127.0.0.1:${apiPort}/api/v1/stages/TW_DEEP_FIRE_08_10_20260802" -TimeoutSec 5
@@ -845,7 +850,7 @@ try {
         --no-owner `
         --no-privileges `
         "/backups/$backupName"
-    $probeIdentity = Assert-B5DatabaseIdentity -Database $probeDatabase -Label "V0007 probe"
+    $probeIdentity = Assert-A6DatabaseIdentity -Database $probeDatabase -Label "V0007 probe"
     Get-Scalar -Database $probeDatabase -Sql "TRUNCATE TABLE gacha_timeline_community_sources, gacha_timeline_claims, gacha_timeline_evidence, gacha_community_sources, gacha_timeline_events"
     $probeGachaRows = [int](Get-Scalar -Database $probeDatabase -Sql "SELECT (SELECT COUNT(*) FROM gacha_timeline_events) + (SELECT COUNT(*) FROM gacha_timeline_evidence) + (SELECT COUNT(*) FROM gacha_timeline_claims) + (SELECT COUNT(*) FROM gacha_community_sources) + (SELECT COUNT(*) FROM gacha_timeline_community_sources)")
     $probeNonGachaRows = [int](Get-Scalar -Database $probeDatabase -Sql "SELECT (SELECT COUNT(*) FROM stages) + (SELECT COUNT(*) FROM teams) + (SELECT COUNT(*) FROM team_members) + (SELECT COUNT(*) FROM characters) + (SELECT COUNT(*) FROM evidence) + (SELECT COUNT(*) FROM claims) + (SELECT COUNT(*) FROM stage_evidence) + (SELECT COUNT(*) FROM stage_claims) + (SELECT COUNT(*) FROM team_evidence) + (SELECT COUNT(*) FROM claim_evidence) + (SELECT COUNT(*) FROM operation_timelines) + (SELECT COUNT(*) FROM timeline_steps) + (SELECT COUNT(*) FROM arena_defenses) + (SELECT COUNT(*) FROM arena_defense_members) + (SELECT COUNT(*) FROM arena_counters) + (SELECT COUNT(*) FROM arena_counter_members) + (SELECT COUNT(*) FROM arena_counter_evidence) + (SELECT COUNT(*) FROM arena_counter_claims)")
@@ -881,7 +886,7 @@ try {
     }
     Write-Host "GACHA_DOWNGRADE_BLOCKED_OK alembic=$postDowngradeRevision gacha_rows=0 gacha_tables=$postDowngradeGachaTables active_revision=$postDowngradeActiveRevision"
 
-    $finalSourceIdentity = Assert-B5DatabaseIdentity -Database $SourceDatabase -Label "Source after restore drill"
+    $finalSourceIdentity = Assert-A6DatabaseIdentity -Database $SourceDatabase -Label "Source after restore drill"
     if (
         $finalSourceIdentity.ImportRun -ne $sourceIdentity.ImportRun -or
         $finalSourceIdentity.Materialization -ne $sourceIdentity.Materialization -or
@@ -900,6 +905,7 @@ try {
         revision_id = $sourceIdentity.Revision
         import_run_id = $sourceIdentity.ImportRun
         materialization_sha256 = $sourceIdentity.Materialization
+        artifact_mirror_diagnostic_sha256 = $a6ArtifactMirrorSha256
         source_epoch = $sourceIdentity.Epoch
         backup_retained = [bool]$KeepBackup
         restore_database_retained = [bool]$KeepRestoredDatabase

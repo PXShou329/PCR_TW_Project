@@ -82,7 +82,7 @@
    "min_rows": 2
   },
   "47_PRINCESS_ARENA_CASE_REGISTRY.csv": {
-   "cols": 20,
+   "cols": 24,
    "min_rows": 0
   }
  },
@@ -111,6 +111,13 @@
    "FORECAST"
   ],
   "confidence": [
+   "A",
+   "B",
+   "C",
+   "D",
+   "E"
+  ],
+  "evidence_confidence": [
    "A",
    "B",
    "C",
@@ -180,6 +187,22 @@
    "CONFIRMED",
    "UNVERIFIED_REPEATABILITY",
    "UNVERIFIED_ON_TW",
+   "UNKNOWN"
+  ],
+  "arena_required_upgrade_check": [
+   "PASS",
+   "FAIL",
+   "UNKNOWN",
+   "NOT_APPLICABLE"
+  ],
+  "parena_non_overlap_check": [
+   "PASS",
+   "FAIL",
+   "UNKNOWN"
+  ],
+  "parena_hidden_team_mode": [
+   "NONE",
+   "TEAMS_2_3_HIDDEN",
    "UNKNOWN"
   ],
   "pve_operation_mode": [
@@ -827,6 +850,28 @@
   "required_evidence_url_scheme": "https",
   "self_tested_run_registry_available": false
  },
+ "parena_gate_row": {
+  "status": "VERIFIED",
+  "server": "TW",
+  "team_count": 3,
+  "team_size": 5,
+  "hidden_team_mode": "NONE",
+  "tw_availability_check": "PASS",
+  "non_overlap_check": "PASS",
+  "reproducibility": "CONFIRMED",
+  "team_result_claim_count": 3,
+  "case_win_claim_count": 1,
+  "team_result_claim_module": "arena",
+  "case_win_claim_module": "parena",
+  "case_win_claim_type": "SOURCE_FACT",
+  "allowed_case_win_claim_confidence": ["B", "C", "D"],
+  "allowed_case_win_evidence_confidence": ["A", "B", "C", "D"],
+  "require_source_hostname_coverage": true,
+  "require_case_win_evidence_published_not_after_verified": true,
+  "required_source_access_status": "ACTIVE",
+  "required_source_server": "TW",
+  "required_evidence_url_scheme": "https"
+ },
  "timeline_gate_row": {
   "status": "ACTIVE",
   "maturity": "MATURE"
@@ -985,6 +1030,10 @@
   "counter_team1",
   "counter_team2",
   "counter_team3",
+  "team1_result_claim_id",
+  "team2_result_claim_id",
+  "team3_result_claim_id",
+  "case_win_claim_id",
   "hidden_team_mode",
   "status",
   "verified_date",

@@ -23,6 +23,7 @@
 | claim_id | 關鍵結論登錄於 93 後回填 |
 | source_record_count／source_platforms | 來源紀錄筆數與平台集合；只描述來源涵蓋，不等於來源獨立性或實戰樣本 |
 | sample_size | 來源明示的實戰觀測次數；與 source_record_count 分離，無分母時保持 NULL |
+| required_upgrade_check | PASS／FAIL／UNKNOWN／NOT_APPLICABLE；`VERIFIED` 與任何 P-Arena 成熟子配對必須為 PASS |
 | sources | 來源＋日期，逐條 |
 | status | VERIFIED／PROVISIONAL／SINGLE_REPORT／STALE／REJECTED |
 | stale_conditions | 何種環境變動觸發重驗 |
@@ -41,6 +42,7 @@
 - `SINGLE_REPORT` 可在 UI 作【僅供參考】的可追溯研究資料，但不得計入 Arena Gate，亦不得使用「穩定解」「已驗證反制」等文案。
 - A5 的 `VERIFIED` 暫只接受可機械驗證的多來源閉合：39 列及其反制核心 Claim 為 B／C，`environment_match=EXACT`，至少兩筆同服、同一 exact 配對的 ACTIVE Arena Evidence 可追溯，且 93 已通過以 hostname 判定的來源獨立性檢查（不同 port 不算不同來源）；每筆核心 Evidence 的 `source_url` 必須是具非空 hostname 的 HTTPS URL。一般 ST49 可為離線 B／C Claim 使用 locator／title fallback，但該 fallback 不得使 Arena 列成熟。39 的 source tier 必須為 OFFICIAL／MAJOR_GUIDE／STRUCTURED_DB／COMMUNITY_WIKI／MULTI_PLAYER_REPORT，92 Evidence tier 另可為 SINGLE_PLAYER_REPORT，但不得 UNKNOWN／RESTRICTED／自造值。`source_record_count>=2` 仍只是必要 metadata，不能取代 Evidence closure。
 - `VERIFIED` 另須使用 `reproducibility=CONFIRMED`；但在獨立 Arena run registry 建立前，手填 CONFIRMED 或聲稱本人實測都不能作為 `SELF_TESTED` 捷徑。`SINGLE_REPORT` 固定為 D，且仍須有同服 `arena` module 的 ACTIVE Evidence／Claim closure。
+- `VERIFIED` 另須 `required_upgrade_check=PASS`；必要專武、六星或其他強化仍為 UNKNOWN 時只能留研究層，不得成為 Arena Gate 或 P-Arena exact 子配對。
 - `sample_size` 只保存明示戰果觀測；不得把兩個來源當成兩次試驗。未取得分母時保持 NULL；有明示計數時才保存 wins／losses，單筆不計 empirical win rate。
 
 ## Arena Gate 成熟防守定義

@@ -34,7 +34,7 @@ from .conftest import make_factory
 
 GUIDE_ID = "TW_DEEP_FIRE_08_10_20260802"
 WATER_GUIDE_ID = "TW_DEEP_WATER_08_10_20260808"
-APPLICATION_VERSION = "3.0.0-b5"
+APPLICATION_VERSION = "3.0.0-a6"
 
 
 def test_postgresql_engine_uses_repeatable_read_for_route_snapshot(
@@ -619,7 +619,7 @@ def test_baseline_reports_real_counts_and_research_gates(client: TestClient) -> 
     assert_meta(payload)
     data = payload["data"]
     assert data["research_core_version"] == "v1.5"
-    assert data["application_version"] == "3.0.0-b5"
+    assert data["application_version"] == "3.0.0-a6"
     assert data["counts"] == {
         "stages": 3,
         "teams": 10,

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import csv
 import hashlib
 import shutil
@@ -51,6 +52,8 @@ from pcr_pipeline.pve_fixture import (
 )
 from pcr_pipeline.research_core_snapshot import (
     EXPECTED_CSV_ROW_COUNT,
+    RP_A6_0_MANIFEST_SHA256,
+    RP_B5_1_MANIFEST_SHA256,
     RP_A5_MANIFEST_SHA256,
     RP_A4_MANIFEST_SHA256,
     RP_A4_SNAPSHOT_CONTRACT,
@@ -66,6 +69,8 @@ from pcr_pipeline.research_core_snapshot import (
 
 ROOT = Path(__file__).resolve().parents[2]
 RESEARCH_CORE = ROOT / "research_core" / "pcr_tw_project"
+A6_MANIFEST = ROOT / "scripts" / "research_core_rp_a6_0_manifest.sha256"
+B5_MANIFEST = ROOT / "scripts" / "research_core_rp_b5_1_manifest.sha256"
 A4_MANIFEST = ROOT / "scripts" / "research_core_rp_a4_manifest.sha256"
 A5_MANIFEST = ROOT / "scripts" / "research_core_rp_a5_manifest.sha256"
 A3_MANIFEST = ROOT / "scripts" / "research_core_rp_a3_manifest.sha256"
@@ -1959,6 +1964,100 @@ def test_fresh_a5_first_load_of_a4_keeps_rollback_audit_semantics(
             a5.revision_id,
             rollback.revision_id,
             a5.revision_id,
+        ]
+
+
+def test_b5_full_platform_checkpoint_is_immutable_and_replays_across_a6(
+    tmp_path: Path,
+) -> None:
+    b5_core = export_checkpoint_core(tmp_path, "rp-b5-1")
+    engine = sqlite_engine()
+
+    assert fixture_module.CHECKPOINT_LINEAGE_ORDER[RP_B5_1_MANIFEST_SHA256] == 6
+    assert fixture_module.CHECKPOINT_LINEAGE_ORDER[RP_A6_0_MANIFEST_SHA256] == 7
+
+    with Session(engine) as session:
+        b5 = import_pve_projection(
+            session,
+            b5_core,
+            manifest_path=B5_MANIFEST,
+            expected_manifest_sha256=RP_B5_1_MANIFEST_SHA256,
+            application_version="3.0.0-b5",
+        )
+        b5_run = session.get(ImportRun, b5.import_run_id)
+        assert b5_run is not None
+        frozen_b5_manifest = copy.deepcopy(b5_run.manifest)
+        assert b5_run.application_version == "3.0.0-b5"
+        assert b5_run.manifest["projection"] == fixture_module.FULL_PLATFORM_PROJECTION
+        assert b5_run.manifest["materialization"]["schema_version"] == 4
+        assert b5.row_counts["gacha_timeline_events"] == 5
+        assert b5.row_counts["gacha_community_sources"] == 4
+        b5_revision = session.get(CoreRevision, b5.revision_id)
+        assert b5_revision is not None
+        b5_edge_pins = (
+            b5_revision.evidence_to_claim_count,
+            b5_revision.evidence_to_claim_sha256,
+            b5_revision.claim_to_evidence_count,
+            b5_revision.claim_to_evidence_sha256,
+        )
+        assert b5_edge_pins[0] == 120
+        assert b5_edge_pins[2] == 298
+        session.rollback()
+
+        a6 = import_pve_projection(
+            session,
+            RESEARCH_CORE,
+            manifest_path=A6_MANIFEST,
+            expected_manifest_sha256=RP_A6_0_MANIFEST_SHA256,
+        )
+        a6_run = session.get(ImportRun, a6.import_run_id)
+        assert a6_run is not None
+        assert a6_run.application_version == "3.0.0-a6"
+        assert a6_run.manifest["projection"] == fixture_module.FULL_PLATFORM_PROJECTION
+        a6_revision = session.get(CoreRevision, a6.revision_id)
+        assert a6_revision is not None
+        assert (
+            a6_revision.evidence_to_claim_count,
+            a6_revision.evidence_to_claim_sha256,
+            a6_revision.claim_to_evidence_count,
+            a6_revision.claim_to_evidence_sha256,
+        ) == b5_edge_pins
+        session.rollback()
+
+        rollback = import_pve_projection(
+            session,
+            b5_core,
+            manifest_path=B5_MANIFEST,
+            expected_manifest_sha256=RP_B5_1_MANIFEST_SHA256,
+            application_version="3.0.0-b5",
+        )
+        assert rollback.created is False
+        assert rollback.activated is True
+        assert rollback.row_counts == b5.row_counts
+        assert session.get(ImportRun, b5.import_run_id).manifest == frozen_b5_manifest
+        assert session.scalar(select(func.count()).select_from(GachaTimelineEvent)) == 5
+        assert session.scalar(select(func.count()).select_from(GachaCommunitySource)) == 4
+        session.rollback()
+
+        reactivate = import_pve_projection(
+            session,
+            RESEARCH_CORE,
+            manifest_path=A6_MANIFEST,
+            expected_manifest_sha256=RP_A6_0_MANIFEST_SHA256,
+        )
+        assert reactivate.created is False
+        assert reactivate.activated is True
+        state = session.get(MaterializationState, 1)
+        assert state is not None
+        assert state.active_revision_id == a6.revision_id
+        activations = session.scalars(
+            select(RevisionActivation).order_by(RevisionActivation.sequence_no)
+        ).all()
+        assert [activation.kind for activation in activations] == [
+            "IMPORT",
+            "IMPORT",
+            "ROLLBACK",
+            "REACTIVATE",
         ]
 
 

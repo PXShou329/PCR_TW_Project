@@ -27,6 +27,8 @@ OFFICIAL／MAJOR_GUIDE／STRUCTURED_DB／COMMUNITY_WIKI／MULTI_PLAYER_REPORT／
 - **Arena A5 成熟度**：`VERIFIED` 暫只接受 B／C 的可機械驗證多來源結論；至少兩筆同服、`environment_match=EXACT`、同一 exact 配對的 Evidence 必須可追溯，並由 93 的獨立性檢查證明來源彼此獨立。39 只接受 canonical 強來源 tier，92 只接受本檔既定八種 tier 且成熟閉合不得使用 UNKNOWN／RESTRICTED；成熟閉合內每筆 Evidence 的 `source_url` 另須為具非空 hostname 的 HTTPS URL。ST49 為一般 B／C Claim 保留 locator／title 的離線 fallback，但不能以此替代 Arena 成熟 Evidence URL。單一 scalar `source_tier`、`source_record_count` 或 `source_platforms` 不構成獨立性證明。
 - `source_record_count` 記來源紀錄數；`sample_size` 記來源明示的實戰觀測數。兩者不得互相代填，來源沒有試驗分母時 `sample_size` 保持 NULL。
 - `SELF_TESTED` 尚無獨立 run registry；在 run ID、環境、結果 Evidence、樣本與 reviewer closure 可追溯前，本人實測不得升為 Arena `VERIFIED` 或進 Gate。
+- **P-Arena A6-0 成熟度**：47 的三筆 `team*_result_claim_id` 必須各自閉合至同服、同 environment、相同無序敵我五人的唯一成熟 39 列；`case_win_claim_id` 另須由 `parena` module 的完整三戰 WIN 正文直接支持。三筆單隊戰果、來源索引 scalar 或手填 `CONFIRMED` 都不能取代完整 case WIN Evidence。D 級完整單一戰果只可讓實際案例進 Gate B，並會阻擋 Gate C。
+- 92 的 `evidence_confidence` 是封閉 A–E enum；P-Arena 完整 case WIN direct Evidence 進一步只接受 A–D。每個 VERIFIED case WIN Claim 不得跨案例重用，46 source URL hostname 必須覆蓋 direct Evidence hostname，且已知發布日不得晚於 Evidence 驗證日。
 
 ## 統一欄位標準（所有動態資料通用）
 

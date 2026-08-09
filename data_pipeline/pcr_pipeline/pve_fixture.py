@@ -61,6 +61,8 @@ from pcr_pipeline.research_core_snapshot import (
     RP_A3_MANIFEST_SHA256,
     RP_A4_MANIFEST_SHA256,
     RP_A5_MANIFEST_SHA256,
+    RP_A6_0_MANIFEST_SHA256,
+    RP_B5_1_MANIFEST_SHA256,
     ResearchCoreSnapshot,
     assert_materialized_snapshot,
     finalize_materialized_snapshot,
@@ -72,7 +74,7 @@ from pcr_pipeline.research_core_snapshot import (
 # Compatibility identifier for the original B0 vertical-slice API.  The typed
 # projection itself is no longer restricted to this guide.
 TARGET_GUIDE_ID = "TW_DEEP_FIRE_08_10_20260802"
-APPLICATION_VERSION = "3.0.0-b5"
+APPLICATION_VERSION = "3.0.0-a6"
 CANONICAL_SOURCE = "research_core_file_ssot"
 IMPORT_LOCK_KEY = 0x5043524231
 FULL_PVE_PROJECTION = "pve_18_24_25_26_27_closure_v2"
@@ -93,7 +95,8 @@ CHECKPOINT_LINEAGE_ORDER = {
     RP_A3_MANIFEST_SHA256: 3,
     RP_A4_MANIFEST_SHA256: 4,
     RP_A5_MANIFEST_SHA256: 5,
-    EXPECTED_MANIFEST_SHA256: 6,
+    RP_B5_1_MANIFEST_SHA256: 6,
+    RP_A6_0_MANIFEST_SHA256: 7,
 }
 # rp-b1-1 / rp-a2 raw tree.  Its historical ImportRun materialized only the
 # Fire 8-10 vertical slice.  Keeping this identity code-owned makes a clean
@@ -3438,6 +3441,8 @@ def import_pve_projection(
         RP_A4_MANIFEST_SHA256,
         RP_A5_MANIFEST_SHA256,
     }
+    # RP-B5-1 已是 full-platform Gacha checkpoint；雖為 historical pin，
+    # 不得誤走 pre-gacha projection。
     full_closure = load_pve_closure(
         research_core,
         include_gacha=not historical_pre_gacha_manifest,

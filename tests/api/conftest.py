@@ -49,7 +49,7 @@ def make_factory(*, imported: bool = True) -> sessionmaker[Session]:
 def client() -> TestClient:
     factory = make_factory()
     app = create_app(
-        settings=Settings(database_url="sqlite://", application_version="3.0.0-b5"),
+        settings=Settings(database_url="sqlite://", application_version="3.0.0-a6"),
         session_factory=factory,
     )
     with TestClient(app) as test_client:
