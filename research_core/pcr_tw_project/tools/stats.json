@@ -1,0 +1,115 @@
+{
+ "generated_date": "2026-08-10",
+ "release_date": "2026-08-09",
+ "project_version": "v1.5",
+ "mode": "PRE_SUITE",
+ "files": 44,
+ "numbered": 43,
+ "knowledge": 42,
+ "tools": 4,
+ "tools_files": [
+  "mutation_test.py",
+  "stats.json",
+  "validate_project.py",
+  "validation_config.json"
+ ],
+ "tier": {
+  "OFFICIAL": 82,
+  "MAJOR_GUIDE": 10,
+  "SINGLE_PLAYER_REPORT": 21,
+  "MULTI_PLAYER_REPORT": 5,
+  "STRUCTURED_DB": 1,
+  "UNKNOWN": 3
+ },
+ "evc": {
+  "A": 82,
+  "D": 40
+ },
+ "cc": {
+  "A": 75,
+  "D": 35,
+  "C": 2,
+  "B": 25
+ },
+ "ct": {
+  "SOURCE_FACT": 92,
+  "DERIVED_CALCULATION": 6,
+  "ANALYTICAL_JUDGMENT": 39
+ },
+ "claims": 137,
+ "evidence": 122,
+ "fixtures": 37,
+ "public_covered": 41,
+ "anchors_n": 8,
+ "anchor_tracks": {
+  "LIMITED": {
+   "values": [
+    122,
+    123,
+    123,
+    123,
+    124
+   ],
+   "n": 5,
+   "median": 123,
+   "min": 122,
+   "max": 124,
+   "range": 2
+  },
+  "PERMANENT": {
+   "values": [
+    122,
+    123
+   ],
+   "n": 2,
+   "median": 122.5,
+   "min": 122,
+   "max": 123,
+   "range": 1
+  },
+  "ALL_NEW": {
+   "values": [
+    122,
+    122,
+    123,
+    123,
+    123,
+    123,
+    124
+   ],
+   "n": 7,
+   "median": 123,
+   "min": 122,
+   "max": 124,
+   "range": 2
+  },
+  "SYSTEM": {
+   "values": [
+    75
+   ],
+   "n": 1,
+   "median": 75,
+   "min": 75,
+   "max": 75,
+   "range": 0
+  }
+ },
+ "timeline_rows": 2,
+ "checks": 156,
+ "fail": 0,
+ "warn": 22,
+ "exec_rows": 0,
+ "gate": {
+  "pve_verified": 2,
+  "arena_formal": 0,
+  "arena_verified_counter_rows": 0,
+  "arena_mature_defenses": 0,
+  "parena": 0,
+  "timeline": 2,
+  "gate_a": false,
+  "gate_b": false,
+  "gate_c": false,
+  "blocking_c": 14
+ },
+ "blocking_gate_c_warnings": 14
+}

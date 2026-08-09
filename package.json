@@ -1,0 +1,24 @@
+{
+  "name": "pcr-tw-strategy-platform",
+  "version": "3.0.0-b5",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:web": "npm run dev --workspace @pcr-tw/web",
+    "build:web": "npm run build --workspace @pcr-tw/web",
+    "check:contract": "node scripts/check-openapi-contract.mjs",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test:e2e": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.62.1",
+    "typescript": "5.9.3"
+  },
+  "engines": {
+    "node": ">=24.0.0",
+    "npm": ">=11.0.0"
+  }
+}

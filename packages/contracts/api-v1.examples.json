@@ -1,0 +1,140 @@
+{
+  "baseline": {
+    "data": {
+      "research_core_version": "v1.5",
+      "application_version": "3.0.0-b5",
+      "canonical_source": "research_core_file_ssot",
+      "generated_at": "2026-08-09T00:00:00Z",
+      "counts": {
+        "stages": 3,
+        "teams": 10,
+        "team_members": 50,
+        "characters": 35,
+        "evidence": 73,
+        "claims": 69,
+        "operation_timelines": 15,
+        "timeline_steps": 37,
+        "arena_defenses": 1,
+        "arena_defense_members": 5,
+        "arena_counters": 2,
+        "arena_counter_members": 10,
+        "arena_counter_evidence": 4,
+        "arena_counter_claims": 4,
+        "gacha_timeline_events": 5,
+        "gacha_timeline_evidence": 10,
+        "gacha_timeline_claims": 8,
+        "gacha_community_sources": 4,
+        "gacha_timeline_community_sources": 0
+      },
+      "gates": {
+        "gate_a": false,
+        "gate_b": false,
+        "gate_c": false
+      },
+      "featured_stage": {
+        "guide_id": "TW_DEEP_FIRE_08_10_20260802",
+        "server": "TW",
+        "mode": "DEEP",
+        "area": "紅焰",
+        "stage": "8-10",
+        "status": "VERIFIED",
+        "team_count": 5,
+        "reproducibility": "CONFIRMED",
+        "verified_date": "2026-08-08"
+      }
+    }
+  },
+  "team_timeline_gap": {
+    "status": "SOURCE_GAP",
+    "structured_sources": 0,
+    "registered_sources": 1,
+    "sources": [
+      {
+        "source_axis_id": "AX-F810-03-EV051",
+        "source_id": "yt_ZXUDJm_AsSA",
+        "source_evidence_id": "ev051",
+        "source_locator": "yt_ZXUDJm_AsSA@00:12-03:15",
+        "timeline_variant_name": "無露易絲瑪莉實戰來源",
+        "operation_mode": "SEMI_AUTO",
+        "reproducibility": "UNKNOWN",
+        "last_verified_at": "2026-08-08",
+        "notes": "影片可定位隊伍與通關且操作需 AUTO／SET 切換；未取得完整逐步操作軸",
+        "status": "SOURCE_GAP",
+        "timeline_id": null,
+        "clock_mode": null,
+        "battle_duration_ms": null,
+        "initial_auto_state": null,
+        "gap_reason": "INSUFFICIENT_SOURCE_DETAIL",
+        "steps": []
+      }
+    ],
+    "references": [
+      {
+        "source_id": "AX-F810-03-EV051",
+        "locator": "UNKNOWN",
+        "raw": "AX-F810-03-EV051"
+      }
+    ],
+    "steps": []
+  },
+  "team_timeline_partial": {
+    "status": "PARTIAL",
+    "structured_sources": 1,
+    "registered_sources": 4,
+    "structured_source_example": {
+      "source_axis_id": "AX-F810-02-EV073",
+      "timeline_id": "TL-F810-02-EV073",
+      "source_id": "gamewith_fire_8_10",
+      "source_evidence_id": "ev073",
+      "status": "STRUCTURED",
+      "operation_mode": "SEMI_AUTO",
+      "clock_mode": "COUNTDOWN",
+      "battle_duration_ms": null,
+      "initial_auto_state": "ON",
+      "reproducibility": "UNVERIFIED_ON_TW",
+      "gap_reason": null,
+      "first_step": {
+        "timeline_step_id": "TLS-F810-02-001",
+        "timeline_id": "TL-F810-02-EV073",
+        "sequence_no": 1,
+        "source_step_no": 1,
+        "trigger_type": "WAVE_START",
+        "trigger_actor_unit_key": "NONE",
+        "time_state": "NOT_STATED",
+        "clock_from_ms": null,
+        "clock_to_ms": null,
+        "actor_unit_key": "luisemarie_orig",
+        "action_type": "SET_ON",
+        "target_unit_key": "NONE",
+        "auto_state_after": "ON",
+        "animation_cue": "戰鬥開始",
+        "hp_threshold": "UNKNOWN",
+        "tolerance_ms": null,
+        "criticality": "UNKNOWN",
+        "instruction_zh_tw": "開場將露易絲瑪莉設為 SET。",
+        "failure_if_missed": "UNKNOWN",
+        "source_locator": "2025年9月魔法半自動／手順1"
+      }
+    },
+    "deprecated_top_level_steps": []
+  },
+  "pvp_no_result": {
+    "data": [],
+    "meta_warning": "NO_VERIFIED_COUNTER"
+  },
+  "gacha_research_event": {
+    "event_id": "JP_20260823_tia",
+    "source_server": "JP",
+    "target_server": "TW",
+    "character_name_jp": "ティア",
+    "tw_name": null,
+    "limited_status": "UNKNOWN",
+    "limited_claim_id": null,
+    "maturity": "RESEARCH",
+    "arena_value": "NOT_EVALUATED",
+    "p_arena_value": "NOT_EVALUATED",
+    "pve_value": "NOT_EVALUATED",
+    "clan_value": "NOT_EVALUATED",
+    "community_source_ids": []
+  }
+}

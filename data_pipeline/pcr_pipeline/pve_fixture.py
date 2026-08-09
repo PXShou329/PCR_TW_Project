@@ -1,0 +1,4043 @@
+from __future__ import annotations
+
+import csv
+import calendar
+import hashlib
+import io
+import json
+import re
+from dataclasses import dataclass, replace
+from datetime import date, datetime, timezone
+from pathlib import Path
+from typing import Any, Iterable
+from urllib.parse import urlsplit
+from uuid import uuid4
+
+from sqlalchemy import delete, func, select, text
+from sqlalchemy.orm import Session
+
+from pcr_database.models import (
+    ArenaCounter,
+    ArenaCounterClaim,
+    ArenaCounterEvidence,
+    ArenaCounterMember,
+    ArenaDefense,
+    ArenaDefenseMember,
+    Character,
+    Claim,
+    ClaimEvidence,
+    Evidence,
+    GachaCommunitySource,
+    GachaTimelineClaim,
+    GachaTimelineCommunitySource,
+    GachaTimelineEvent,
+    GachaTimelineEvidence,
+    CoreRevision,
+    ImportRun,
+    MaterializationState,
+    OperationTimeline,
+    RevisionActivation,
+    Stage,
+    StageClaim,
+    StageEvidence,
+    Team,
+    TeamEvidence,
+    TeamMember,
+    TimelineStep,
+    arena_formation_signature,
+)
+from pcr_database.materialization import (
+    ARENA_MATERIALIZATION_MANIFEST_VERSION,
+    ARENA_MATERIALIZATION_SERVING_MODELS,
+    LEGACY_MATERIALIZATION_MANIFEST_VERSION,
+    LEGACY_SERVING_MODELS,
+    build_materialization_manifest,
+    materialization_drift_reason,
+)
+from pcr_pipeline.research_core_snapshot import (
+    DEFAULT_MANIFEST,
+    EXPECTED_MANIFEST_SHA256,
+    RP_A2_MANIFEST_SHA256,
+    RP_A3_MANIFEST_SHA256,
+    RP_A4_MANIFEST_SHA256,
+    RP_A5_MANIFEST_SHA256,
+    ResearchCoreSnapshot,
+    assert_materialized_snapshot,
+    finalize_materialized_snapshot,
+    load_research_core_snapshot,
+    materialize_snapshot,
+)
+
+
+# Compatibility identifier for the original B0 vertical-slice API.  The typed
+# projection itself is no longer restricted to this guide.
+TARGET_GUIDE_ID = "TW_DEEP_FIRE_08_10_20260802"
+APPLICATION_VERSION = "3.0.0-b5"
+CANONICAL_SOURCE = "research_core_file_ssot"
+IMPORT_LOCK_KEY = 0x5043524231
+FULL_PVE_PROJECTION = "pve_18_24_25_26_27_closure_v2"
+LEGACY_FIRE_PROJECTION = "fire_8_10_18_24_25_26_27_closure_v1"
+FULL_STRATEGY_PROJECTION = "strategy_18_24_25_26_27_39_closure_v3"
+FULL_PLATFORM_PROJECTION = "strategy_18_24_25_26_27_39_41_45_closure_v4"
+BORROWED_STATE_SEMANTICS_FIELD = "borrowed_state_semantics"
+BORROWED_STATE_TRISTATE_V1 = "source_truth_tristate_v1"
+BORROWED_STATE_LEGACY_FALSE_V1 = "legacy_blank_false_v1"
+BORROWED_STATE_SEMANTICS = frozenset(
+    {BORROWED_STATE_TRISTATE_V1, BORROWED_STATE_LEGACY_FALSE_V1}
+)
+LEGACY_BORROWED_MANIFESTS = frozenset(
+    {RP_A2_MANIFEST_SHA256, RP_A3_MANIFEST_SHA256}
+)
+CHECKPOINT_LINEAGE_ORDER = {
+    RP_A2_MANIFEST_SHA256: 2,
+    RP_A3_MANIFEST_SHA256: 3,
+    RP_A4_MANIFEST_SHA256: 4,
+    RP_A5_MANIFEST_SHA256: 5,
+    EXPECTED_MANIFEST_SHA256: 6,
+}
+# rp-b1-1 / rp-a2 raw tree.  Its historical ImportRun materialized only the
+# Fire 8-10 vertical slice.  Keeping this identity code-owned makes a clean
+# restore deterministic even when no historical database row is present yet.
+LEGACY_FIRE_REVISION_IDS = frozenset(
+    {"fd3f1a0a102873ad4a0f0248e24f52cfc0e4e2e7f371e3abe35fd6848ba00900"}
+)
+
+# The typed strategy projection may only materialize Evidence from this reviewed host
+# boundary. Restricted/China sources are deliberately absent and can never
+# become a public href merely by editing the ledger.
+B0_AUDITED_EVIDENCE_HOSTS = frozenset(
+    {
+        "dmg.priconne-redive.jp",
+        "games.appmatch.jp",
+        "gamewith.jp",
+        "forum.gamer.com.tw",
+        "priconne-redive.jp",
+        "www.nicozon.net",
+        "www.princessconnect.so-net.tw",
+        "www.youtube.com",
+        "youtube.com",
+        "x.com",
+    }
+)
+
+CHARACTERS_FILE = "18_TW_CHARACTER_AVAILABILITY.csv"
+PVE_GUIDES_FILE = "24_PVE_GUIDE_REGISTRY.csv"
+PVE_TEAMS_FILE = "25_PVE_TEAM_REGISTRY.csv"
+PVE_TIMELINES_FILE = "26_PVE_OPERATION_TIMELINES.csv"
+PVE_TIMELINE_STEPS_FILE = "27_PVE_TIMELINE_STEPS.csv"
+ARENA_COUNTERS_FILE = "39_ARENA_COUNTER_REGISTRY.csv"
+GACHA_TIMELINE_FILE = "41_GACHA_TIMELINE.csv"
+GACHA_COMMUNITY_FILE = "45_GACHA_COMMUNITY_SOURCE_INDEX.csv"
+EVIDENCE_FILE = "92_EVIDENCE_LEDGER.csv"
+CLAIMS_FILE = "93_CLAIM_REGISTER.csv"
+STATS_FILE = "tools/stats.json"
+
+SOURCE_FILES = (
+    CHARACTERS_FILE,
+    PVE_GUIDES_FILE,
+    PVE_TEAMS_FILE,
+    PVE_TIMELINES_FILE,
+    PVE_TIMELINE_STEPS_FILE,
+    ARENA_COUNTERS_FILE,
+    GACHA_TIMELINE_FILE,
+    GACHA_COMMUNITY_FILE,
+    EVIDENCE_FILE,
+    CLAIMS_FILE,
+    STATS_FILE,
+)
+
+ARENA_REQUIRED_FIELDS = (
+    "counter_id",
+    "server",
+    "environment_version",
+    "enemy_team_ids",
+    "counter_team_ids",
+    "status",
+    "verified_date",
+    "source_tier",
+    "claim_confidence",
+    "evidence_ids",
+    "claim_ids",
+    "sample_size",
+    "randomness",
+    "reproducibility",
+    "last_review_due",
+    "notes",
+    "source_record_count",
+    "source_platforms",
+    "tw_availability_check",
+    "unavailable_unit_ids",
+    "required_upgrade_check",
+    "record_date_min",
+    "record_date_max",
+    "match_type",
+    "outcome",
+    "verification",
+    "wins",
+    "losses",
+    "empirical_win_rate",
+    "rng_risk",
+    "operation_mode",
+    "environment_match",
+    "arena_bracket",
+    "speed_conditions",
+    "initial_action_notes",
+)
+ARENA_SERVERS = frozenset({"TW", "JP"})
+ARENA_STATUSES = frozenset(
+    {"VERIFIED", "PROVISIONAL", "SINGLE_REPORT", "STALE", "REJECTED"}
+)
+ARENA_SOURCE_TIERS = frozenset(
+    {
+        "OFFICIAL",
+        "MAJOR_GUIDE",
+        "STRUCTURED_DB",
+        "COMMUNITY_WIKI",
+        "MULTI_PLAYER_REPORT",
+        "SINGLE_PLAYER_REPORT",
+        "UNKNOWN",
+        "RESTRICTED",
+    }
+)
+ARENA_VERIFIED_SOURCE_TIERS = frozenset(
+    {
+        "OFFICIAL",
+        "MAJOR_GUIDE",
+        "STRUCTURED_DB",
+        "COMMUNITY_WIKI",
+        "MULTI_PLAYER_REPORT",
+    }
+)
+ARENA_VERIFIED_EVIDENCE_TIERS = frozenset(
+    {
+        "OFFICIAL",
+        "MAJOR_GUIDE",
+        "STRUCTURED_DB",
+        "COMMUNITY_WIKI",
+        "MULTI_PLAYER_REPORT",
+        "SINGLE_PLAYER_REPORT",
+    }
+)
+ARENA_CLAIM_CONFIDENCE = frozenset({"B", "C", "D", "E"})
+ARENA_REPRODUCIBILITY = frozenset(
+    {"CONFIRMED", "UNVERIFIED_REPEATABILITY", "UNVERIFIED_ON_TW", "UNKNOWN"}
+)
+ARENA_OUTCOMES = frozenset({"WIN", "LOSS", "MIXED", "UNKNOWN"})
+ARENA_VERIFICATIONS = frozenset(
+    {"SCREENSHOT_RESULT", "VIDEO_RESULT", "TEXT_REPORT", "UNKNOWN"}
+)
+ARENA_RNG_RISKS = frozenset({"LOW", "MEDIUM", "HIGH", "UNKNOWN"})
+ARENA_OPERATION_MODES = frozenset({"AUTO_SYSTEM", "MANUAL", "UNKNOWN"})
+ARENA_ENVIRONMENT_MATCHES = frozenset(
+    {"EXACT", "COMPATIBLE", "MISMATCH", "UNKNOWN"}
+)
+ARENA_REQUIRED_UPGRADE_CHECKS = frozenset(
+    {"PASS", "FAIL", "UNKNOWN", "NOT_APPLICABLE"}
+)
+
+GACHA_FORECAST_METHODS = frozenset(
+    {"MODEL_ONLY", "MODEL_PLUS_COMMUNITY", "OFFICIAL_OVERRIDE"}
+)
+GACHA_MATURITIES = frozenset({"MATURE", "RESEARCH"})
+GACHA_LIMITED_STATES = {"是": "YES", "否": "NO", "YES": "YES", "NO": "NO", "UNKNOWN": "UNKNOWN"}
+GACHA_COMMUNITY_SOURCE_TYPES = frozenset(
+    {"MAINTAINED_TABLE", "FORUM_TIMELINE", "CREATOR_ANALYSIS", "VIDEO_SERIES"}
+)
+GACHA_COMMUNITY_UPDATE_STATUSES = frozenset(
+    {"PENDING_FETCH", "CHECKED", "STALE"}
+)
+GACHA_CONFIDENCE_CAPS = frozenset({"C", "D", "E"})
+_YEAR_MONTH = re.compile(r"^[0-9]{4}-(0[1-9]|1[0-2])$")
+_YEAR_MONTH_DAY = re.compile(
+    r"^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$"
+)
+
+TIMELINE_OPERATION_MODES = frozenset(
+    {"AUTO", "SEMI_AUTO", "MANUAL_TIMELINE", "UNKNOWN"}
+)
+TIMELINE_CLOCK_MODES = frozenset({"COUNTDOWN", "ELAPSED", "UNKNOWN"})
+TIMELINE_AUTO_STATES = frozenset({"ON", "OFF", "UNKNOWN"})
+TIMELINE_REPRODUCIBILITY = frozenset({"UNVERIFIED_ON_TW", "TW_REPRODUCED", "UNKNOWN"})
+TIMELINE_GAP_REASONS = frozenset(
+    {"NONE", "INSUFFICIENT_SOURCE_DETAIL", "PENDING_EXTRACTION"}
+)
+TIMELINE_TRIGGERS = frozenset(
+    {
+        "CLOCK",
+        "UB_READY",
+        "ANIMATION_CUE",
+        "HP_THRESHOLD",
+        "WAVE_START",
+        "BOSS_ACTION",
+        "SOURCE_TEXT_ONLY",
+    }
+)
+TIMELINE_ACTIONS = frozenset(
+    {
+        "USE_UB",
+        "WAIT",
+        "AUTO_ON",
+        "AUTO_OFF",
+        "SET_ON",
+        "SET_OFF",
+        "PAUSE",
+        "RESUME",
+        "TARGET",
+        "NO_ACTION",
+    }
+)
+TIMELINE_CRITICALITIES = frozenset({"NORMAL", "CRITICAL", "UNKNOWN"})
+TIMELINE_TIME_STATES = frozenset({"STATED", "NOT_STATED"})
+PVE_CLEAR_STATUSES = frozenset({"VERIFIED", "PROVISIONAL", "STALE"})
+PVE_TW_CHECKS = frozenset({"PASS", "FAIL", "UNVERIFIED"})
+PVE_OPERATION_MODES = frozenset(
+    {"AUTO", "SEMI_AUTO", "MANUAL_TIMELINE", "SOURCE_CONFLICT", "UNKNOWN"}
+)
+
+# This audited boundary records what the actually opened source states.  It is
+# deliberately code-owned: editing a CSV cannot turn an unstated time into a
+# canonical value or invent a battle duration.
+_EXACT_STEP_FIELDS = (
+    "source_step_no",
+    "trigger_type",
+    "trigger_actor_unit_key",
+    "time_state",
+    "clock_from_ms",
+    "clock_to_ms",
+    "actor_unit_key",
+    "action_type",
+    "target_unit_key",
+    "auto_state_after",
+    "animation_cue",
+    "criticality",
+    "source_locator",
+)
+
+
+def _exact_step_assertions(
+    *rows: tuple[str, ...],
+) -> dict[str, tuple[str, ...] | dict[str, tuple[str, ...]]]:
+    return {
+        "fields": _EXACT_STEP_FIELDS,
+        "rows": {row[0]: row[1:] for row in rows},
+    }
+
+
+AUDITED_TIMELINE_TIME_BOUNDARIES = {
+    "AX-F810-02-EV073": {
+        "battle_duration_ms": "UNKNOWN",
+        "criticality": "UNKNOWN",
+        "source_locator_prefix": "2025年9月魔法半自動／手順",
+        "source_step_numbers": frozenset(range(1, 9)),
+        "not_stated_source_steps": frozenset({1}),
+    },
+    "AX-W810-01-EV084": {
+        "battle_duration_ms": "90000",
+        "step_assertions": _exact_step_assertions(
+            ("TLS-W810-01-001", "1", "WAVE_START", "NONE", "STATED", "90000", "90000", "NONE", "NO_ACTION", "NONE", "ON", "raw_set_pattern=OOXOO", "UNKNOWN", "yt_w3My0QHcoTA@00:13-02:13#step-1"),
+            ("TLS-W810-01-002", "2", "CLOCK", "nanaka_sum", "STATED", "67000", "67000", "nanaka_sum", "NO_ACTION", "NONE", "ON", "raw_set_pattern=OXOOO", "UNKNOWN", "yt_w3My0QHcoTA@00:13-02:13#step-2"),
+            ("TLS-W810-01-003", "3", "ANIMATION_CUE", "ames_sum", "STATED", "59000", "59000", "ames_sum", "USE_UB", "NONE", "ON", "愛梅斯1技為美空充TP後最速／開眼後", "CRITICAL", "yt_w3My0QHcoTA@00:13-02:13#step-3"),
+            ("TLS-W810-01-004", "4", "SOURCE_TEXT_ONLY", "misora_xmas", "STATED", "53000", "53000", "NONE", "NO_ACTION", "NONE", "ON", "美空UB後接雪野UB", "UNKNOWN", "yt_w3My0QHcoTA@00:13-02:13#step-4"),
+            ("TLS-W810-01-005", "5", "ANIMATION_CUE", "ames_sum", "STATED", "48000", "48000", "ames_sum", "USE_UB", "NONE", "ON", "愛梅斯1技為薇歐莉特充TP後最速", "CRITICAL", "yt_w3My0QHcoTA@00:13-02:13#step-5a"),
+            ("TLS-W810-01-006", "5", "CLOCK", "NONE", "STATED", "48000", "48000", "NONE", "AUTO_OFF", "NONE", "OFF", "raw_set_pattern=OOXOO", "UNKNOWN", "yt_w3My0QHcoTA@00:13-02:13#step-5b"),
+            ("TLS-W810-01-007", "6", "BOSS_ACTION", "NONE", "STATED", "41000", "41000", "NONE", "NO_ACTION", "NONE", "OFF", "Boss UB", "UNKNOWN", "yt_w3My0QHcoTA@00:13-02:13#step-6"),
+            ("TLS-W810-01-008", "7", "CLOCK", "yukino_orig", "STATED", "38000", "38000", "NONE", "AUTO_ON", "NONE", "ON", "raw_set_pattern=OOOOX", "UNKNOWN", "yt_w3My0QHcoTA@00:13-02:13#step-7"),
+            ("TLS-W810-01-009", "8", "CLOCK", "violet_isanami", "STATED", "17000", "17000", "violet_isanami", "NO_ACTION", "NONE", "ON", "raw_set_pattern=OXOOO", "UNKNOWN", "yt_w3My0QHcoTA@00:13-02:13#step-8"),
+        ),
+    },
+    "AX-W810-02-EV085": {
+        "battle_duration_ms": "90000",
+        "step_assertions": _exact_step_assertions(
+            ("TLS-W810-02-001", "1", "WAVE_START", "NONE", "STATED", "90000", "90000", "NONE", "NO_ACTION", "NONE", "ON", "raw_set_pattern=OXOOO", "UNKNOWN", "yt_w3My0QHcoTA@02:14-03:48#step-1"),
+            ("TLS-W810-02-002", "2", "CLOCK", "ames_sum", "STATED", "71000", "71000", "NONE", "AUTO_OFF", "NONE", "OFF", "愛梅斯marker後關閉AUTO", "UNKNOWN", "yt_w3My0QHcoTA@02:14-03:48#step-2"),
+            ("TLS-W810-02-003", "3", "BOSS_ACTION", "NONE", "STATED", "56000", "56000", "NONE", "NO_ACTION", "NONE", "OFF", "Boss UB", "UNKNOWN", "yt_w3My0QHcoTA@02:14-03:48#step-3"),
+            ("TLS-W810-02-004", "4", "CLOCK", "yukino_orig", "STATED", "50000", "50000", "NONE", "AUTO_ON", "NONE", "ON", "雪野marker後開啟AUTO", "UNKNOWN", "yt_w3My0QHcoTA@02:14-03:48#step-4"),
+            ("TLS-W810-02-005", "5", "BOSS_ACTION", "NONE", "STATED", "39000", "39000", "NONE", "NO_ACTION", "NONE", "ON", "Boss UB", "UNKNOWN", "yt_w3My0QHcoTA@02:14-03:48#step-5"),
+            ("TLS-W810-02-006", "6", "CLOCK", "ames_sum", "STATED", "24000", "24000", "ames_sum", "NO_ACTION", "NONE", "ON", "raw_set_pattern=OOOOX", "UNKNOWN", "yt_w3My0QHcoTA@02:14-03:48#step-6"),
+        ),
+    },
+    "AX-W810-03-EV086": {
+        "battle_duration_ms": "90000",
+        "step_assertions": _exact_step_assertions(
+            ("TLS-W810-03-001", "1", "WAVE_START", "NONE", "STATED", "90000", "90000", "NONE", "NO_ACTION", "NONE", "ON", "raw_set_pattern=OXOOX", "UNKNOWN", "yt_w3My0QHcoTA@03:49-05:27#step-1"),
+        ),
+    },
+    "AX-W810-04-EV087": {
+        "battle_duration_ms": "90000",
+        "step_assertions": _exact_step_assertions(
+            ("TLS-W810-04-001", "1", "WAVE_START", "NONE", "STATED", "90000", "90000", "NONE", "NO_ACTION", "NONE", "ON", "raw_set_pattern=OOOXO", "UNKNOWN", "yt_w3My0QHcoTA@05:28-06:51#step-1"),
+        ),
+    },
+    "AX-W810-05-EV088": {
+        "battle_duration_ms": "90000",
+        "step_assertions": _exact_step_assertions(
+            ("TLS-W810-05-001", "1", "WAVE_START", "NONE", "STATED", "90000", "90000", "NONE", "NO_ACTION", "NONE", "ON", "raw_set_pattern=全SET", "UNKNOWN", "yt_w3My0QHcoTA@06:52-07:58#step-1"),
+        ),
+    },
+}
+
+
+class FixtureValidationError(ValueError):
+    """Raised before any write when the file closure is incomplete or inconsistent."""
+
+
+class MirrorDriftError(RuntimeError):
+    """Raised when a supposedly imported fixture is no longer materialized exactly."""
+
+
+@dataclass(frozen=True)
+class FixtureClosure:
+    fingerprint: str
+    guides: tuple[dict[str, str], ...]
+    teams: tuple[dict[str, str], ...]
+    characters: tuple[dict[str, str], ...]
+    evidence: tuple[dict[str, str], ...]
+    claims: tuple[dict[str, str], ...]
+    timelines: tuple[dict[str, str], ...]
+    timeline_steps: tuple[dict[str, str], ...]
+    arena_rows: tuple[dict[str, str], ...]
+    arena_evidence_ids_by_counter: dict[str, tuple[str, ...]]
+    arena_claim_ids_by_counter: dict[str, tuple[str, ...]]
+    gacha_events: tuple[dict[str, str], ...]
+    gacha_community_sources: tuple[dict[str, str], ...]
+    gacha_evidence_ids_by_event: dict[str, tuple[str, ...]]
+    gacha_claim_ids_by_event: dict[str, tuple[str, ...]]
+    gacha_community_source_ids_by_event: dict[str, tuple[str, ...]]
+    stage_evidence_ids_by_guide: dict[str, tuple[str, ...]]
+    stage_claim_ids_by_guide: dict[str, tuple[str, ...]]
+    team_evidence_ids: dict[str, tuple[str, ...]]
+    dangling_claim_ids: tuple[str, ...]
+    stats: dict[str, Any]
+    file_hashes: dict[str, str]
+
+    @property
+    def guide(self) -> dict[str, str]:
+        """Return the historical Fire 8-10 guide for compatibility callers."""
+
+        for guide in self.guides:
+            if guide["guide_id"] == TARGET_GUIDE_ID:
+                return guide
+        raise FixtureValidationError(
+            f"compatibility guide {TARGET_GUIDE_ID} is absent from this PVE closure"
+        )
+
+    @property
+    def stage_evidence_ids(self) -> tuple[str, ...]:
+        """Return historical Fire 8-10 stage Evidence links."""
+
+        return self.stage_evidence_ids_by_guide.get(TARGET_GUIDE_ID, ())
+
+    @property
+    def stage_claim_ids(self) -> tuple[str, ...]:
+        """Return historical Fire 8-10 stage Claim links."""
+
+        return self.stage_claim_ids_by_guide.get(TARGET_GUIDE_ID, ())
+
+
+@dataclass(frozen=True)
+class ImportResult:
+    import_run_id: str
+    fixture_sha256: str
+    created: bool
+    activated: bool
+    revision_id: str
+    raw_tree_sha256: str
+    semantic_tree_sha256: str
+    file_count: int
+    csv_file_count: int
+    csv_row_count: int
+    row_counts: dict[str, int]
+    warnings: tuple[str, ...]
+
+
+def _split_ids(value: str) -> tuple[str, ...]:
+    return tuple(item.strip() for item in value.split(";") if item.strip())
+
+
+def _parse_date(value: str, *, field: str, required: bool = False) -> date | None:
+    normalized = value.strip()
+    if not normalized or normalized in {"—", "-"}:
+        if required:
+            raise FixtureValidationError(f"{field} must be an ISO date")
+        return None
+    try:
+        return date.fromisoformat(normalized)
+    except ValueError as exc:
+        raise FixtureValidationError(f"{field} is not an ISO date: {value!r}") from exc
+
+
+def _parse_published_date(
+    value: str,
+    *,
+    precision: str,
+    field: str,
+) -> date | None:
+    """Normalize a precision-qualified source date for the SQL ``Date`` type.
+
+    MONTH/YEAR values use the interval's lower bound only as storage
+    normalization; ``published_date_precision`` remains authoritative, so this
+    does not strengthen the source to day precision.
+    """
+
+    normalized = value.strip()
+    normalized_precision = precision.strip()
+    if not normalized or normalized in {"—", "-"}:
+        return None
+    formats = {
+        "DAY": "%Y-%m-%d",
+        "MONTH": "%Y-%m",
+        "YEAR": "%Y",
+    }
+    date_format = formats.get(normalized_precision)
+    if date_format is None:
+        raise FixtureValidationError(
+            f"{field} has a value without DAY/MONTH/YEAR precision"
+        )
+    try:
+        return datetime.strptime(normalized, date_format).date()
+    except ValueError as exc:
+        raise FixtureValidationError(
+            f"{field} does not match {normalized_precision} precision: {value!r}"
+        ) from exc
+
+
+def _parse_int(
+    value: str,
+    *,
+    field: str,
+    allow_unknown: bool = False,
+    positive: bool = False,
+) -> int | None:
+    normalized = value.strip()
+    if allow_unknown and normalized == "UNKNOWN":
+        return None
+    if not normalized.isdigit():
+        raise FixtureValidationError(f"{field} must be an unsigned integer")
+    parsed = int(normalized)
+    if positive and parsed < 1:
+        raise FixtureValidationError(f"{field} must be a positive integer")
+    return parsed
+
+
+def _unit_or_none(value: str) -> str | None:
+    return None if value == "NONE" else value
+
+
+def _read_csv(
+    relative_path: str,
+    content: bytes,
+    key: str,
+) -> tuple[dict[str, str], ...]:
+    try:
+        text_content = content.decode("utf-8-sig")
+    except UnicodeDecodeError as exc:
+        raise FixtureValidationError(f"{relative_path} must be UTF-8") from exc
+    with io.StringIO(text_content, newline="") as handle:
+        reader = csv.DictReader(handle)
+        if not reader.fieldnames or key not in reader.fieldnames:
+            raise FixtureValidationError(f"{relative_path} is missing key column {key}")
+        rows = tuple({name: value or "" for name, value in row.items()} for row in reader)
+    values = [row[key] for row in rows]
+    if len(values) != len(set(values)):
+        raise FixtureValidationError(f"{relative_path} contains duplicate {key}")
+    return rows
+
+
+def _require_ids(
+    ids: Iterable[str], rows: dict[str, dict[str, str]], *, relation: str
+) -> None:
+    missing = sorted(set(ids) - rows.keys())
+    if missing:
+        raise FixtureValidationError(f"{relation} references missing ids: {missing}")
+
+
+def _validate_evidence_url(row: dict[str, str]) -> None:
+    url = row["source_url"].strip()
+    parsed = urlsplit(url)
+    host = (parsed.hostname or "").lower()
+    if (
+        parsed.scheme.lower() != "https"
+        or not host
+        or parsed.username is not None
+        or parsed.password is not None
+        or host not in B0_AUDITED_EVIDENCE_HOSTS
+    ):
+        raise FixtureValidationError(
+            f"{row['evidence_id']} source_url is not an audited HTTPS source"
+        )
+
+
+def _parse_arena_uint(
+    value: str,
+    *,
+    field: str,
+    required: bool = False,
+    positive: bool = False,
+) -> int | None:
+    normalized = value.strip()
+    if not normalized:
+        if required:
+            raise FixtureValidationError(f"{field} must be a canonical integer")
+        return None
+    if not normalized.isdigit() or (
+        len(normalized) > 1 and normalized.startswith("0")
+    ):
+        raise FixtureValidationError(f"{field} must be a canonical integer")
+    parsed = int(normalized)
+    if positive and parsed < 1:
+        raise FixtureValidationError(f"{field} must be a positive integer")
+    return parsed
+
+
+def _arena_members(
+    row: dict[str, str],
+    field: str,
+    *,
+    characters_by_id: dict[str, dict[str, str]],
+) -> tuple[str, ...]:
+    counter_id = row["counter_id"]
+    members = _split_ids(row[field])
+    if len(members) != 5 or len(set(members)) != 5:
+        raise FixtureValidationError(
+            f"{counter_id}.{field} must contain five distinct units"
+        )
+    _require_ids(members, characters_by_id, relation=f"{counter_id}.{field}")
+    return members
+
+
+def _stored_official_name(value: str) -> str | None:
+    """Return a stored official label, never a placeholder or translation."""
+
+    normalized = value.strip()
+    if not normalized:
+        return None
+    if normalized.upper() in {
+        "UNKNOWN",
+        "N/A",
+        "NA",
+        "PENDING",
+        "NOT_RELEASED",
+        "UNVERIFIED",
+    } or normalized in {"【待查證】", "待查證", "未確認", "—", "-"}:
+        return None
+    return normalized
+
+
+def _has_active_tw_official_a_evidence(
+    character: dict[str, str],
+    *,
+    evidence_by_id: dict[str, dict[str, str]],
+) -> bool:
+    return any(
+        evidence_id in evidence_by_id
+        and evidence_by_id[evidence_id]["status"] == "ACTIVE"
+        and evidence_by_id[evidence_id]["server"] == "TW"
+        and evidence_by_id[evidence_id]["source_tier"] == "OFFICIAL"
+        and evidence_by_id[evidence_id]["evidence_confidence"] == "A"
+        for evidence_id in _split_ids(character["source_evidence_ids"])
+    )
+
+
+def _validate_available_character_source(
+    character: dict[str, str],
+    *,
+    evidence_by_id: dict[str, dict[str, str]],
+) -> None:
+    unit_key = character["unit_key"]
+    if _stored_official_name(character["tw_name"]) is None:
+        raise FixtureValidationError(
+            f"AVAILABLE character {unit_key} has no stored TW official display name"
+        )
+    if not _has_active_tw_official_a_evidence(
+        character,
+        evidence_by_id=evidence_by_id,
+    ):
+        raise FixtureValidationError(
+            f"AVAILABLE character {unit_key} lacks ACTIVE TW OFFICIAL/A Evidence"
+        )
+
+
+def _arena_evidence_identity(evidence: dict[str, str]) -> str:
+    """Return the same conservative source identity used by research ST49."""
+
+    hostname = (urlsplit(evidence["source_url"]).hostname or "").lower()
+    if hostname.startswith("www."):
+        hostname = hostname[4:]
+    return hostname or evidence["source_locator"].strip() or evidence["source_title"].strip()
+
+
+def _arena_verified_provenance_is_mature(
+    row: dict[str, str],
+    *,
+    evidence_ids: tuple[str, ...],
+    claim_ids: tuple[str, ...],
+    evidence_by_id: dict[str, dict[str, str]],
+    claims_by_id: dict[str, dict[str, str]],
+) -> bool:
+    """Recognize only mechanically auditable multi-source VERIFIED rows.
+
+    A first-party reproduction is a legitimate future maturity route, but file
+    39 currently has no run identity or result-artifact relation with which to
+    audit it.  Until that registry exists, treating CONFIRMED as self-authenticating
+    would merely recreate the single-report escalation gap.
+    """
+
+    if row["status"] != "VERIFIED":
+        return True
+    if len(claim_ids) != 1:
+        return False
+    claim_id = claim_ids[0]
+    claim = claims_by_id.get(claim_id)
+    if claim is None or (
+        claim["status"] != "ACTIVE"
+        or claim["module"] != "arena"
+        or claim["server"] != row["server"]
+        or claim["claim_type"] != "SOURCE_FACT"
+        or claim["claim_confidence"] != row["claim_confidence"]
+        or claim["claim_confidence"] not in {"B", "C"}
+        or claim["independence_check"] != "YES"
+        or claim["version_match"] != "YES"
+    ):
+        return False
+
+    claim_evidence_ids = _split_ids(claim["evidence_ids"])
+    if (
+        len(claim_evidence_ids) < 2
+        or len(claim_evidence_ids) != len(set(claim_evidence_ids))
+        or set(claim_evidence_ids) != set(evidence_ids)
+    ):
+        return False
+    evidence_rows = [evidence_by_id.get(evidence_id) for evidence_id in evidence_ids]
+    if any(evidence is None for evidence in evidence_rows):
+        return False
+    typed_evidence_rows = [evidence for evidence in evidence_rows if evidence is not None]
+    if any(
+        evidence["status"] != "ACTIVE"
+        or evidence["module"] != "arena"
+        or evidence["server"] != row["server"]
+        or evidence["claim_id"] != claim_id
+        or evidence["source_tier"] not in ARENA_VERIFIED_EVIDENCE_TIERS
+        for evidence in typed_evidence_rows
+    ):
+        return False
+    return len({_arena_evidence_identity(evidence) for evidence in typed_evidence_rows}) >= 2
+
+
+def _validate_arena_rows(
+    arena_rows: tuple[dict[str, str], ...],
+    *,
+    characters_by_id: dict[str, dict[str, str]],
+    evidence_by_id: dict[str, dict[str, str]],
+    claims_by_id: dict[str, dict[str, str]],
+) -> tuple[
+    tuple[dict[str, str], ...],
+    dict[str, tuple[str, ...]],
+    dict[str, tuple[str, ...]],
+]:
+    """Validate canonical file 39 without strengthening unknown source truth."""
+
+    if not arena_rows:
+        return (), {}, {}
+    missing_fields = sorted(set(ARENA_REQUIRED_FIELDS) - arena_rows[0].keys())
+    if missing_fields:
+        raise FixtureValidationError(
+            f"{ARENA_COUNTERS_FILE} is missing canonical fields: {missing_fields}"
+        )
+
+    seen_pairs: set[tuple[str, str, str, str]] = set()
+    defense_source_shape: dict[
+        tuple[str, str, str], tuple[tuple[str, ...], str]
+    ] = {}
+    evidence_ids_by_counter: dict[str, tuple[str, ...]] = {}
+    claim_ids_by_counter: dict[str, tuple[str, ...]] = {}
+
+    for row in sorted(arena_rows, key=lambda item: item["counter_id"]):
+        counter_id = row["counter_id"].strip()
+        if not counter_id:
+            raise FixtureValidationError("Arena counter_id must not be blank")
+        enum_fields = (
+            ("server", ARENA_SERVERS),
+            ("status", ARENA_STATUSES),
+            ("source_tier", ARENA_SOURCE_TIERS),
+            ("claim_confidence", ARENA_CLAIM_CONFIDENCE),
+            ("reproducibility", ARENA_REPRODUCIBILITY),
+            ("tw_availability_check", PVE_TW_CHECKS),
+            ("required_upgrade_check", ARENA_REQUIRED_UPGRADE_CHECKS),
+            ("outcome", ARENA_OUTCOMES),
+            ("verification", ARENA_VERIFICATIONS),
+            ("rng_risk", ARENA_RNG_RISKS),
+            ("operation_mode", ARENA_OPERATION_MODES),
+            ("environment_match", ARENA_ENVIRONMENT_MATCHES),
+        )
+        for field, allowed in enum_fields:
+            if row[field] not in allowed:
+                raise FixtureValidationError(f"{counter_id}.{field} is invalid")
+        if row["match_type"] != "EXACT":
+            raise FixtureValidationError(f"{counter_id}.match_type must be EXACT")
+        for field in (
+            "environment_version",
+            "randomness",
+            "source_platforms",
+            "notes",
+            "arena_bracket",
+            "speed_conditions",
+            "initial_action_notes",
+        ):
+            if not row[field].strip():
+                raise FixtureValidationError(f"{counter_id}.{field} must not be blank")
+
+        enemy_members = _arena_members(
+            row,
+            "enemy_team_ids",
+            characters_by_id=characters_by_id,
+        )
+        counter_members = _arena_members(
+            row,
+            "counter_team_ids",
+            characters_by_id=characters_by_id,
+        )
+        pair = (
+            row["server"],
+            row["environment_version"],
+            arena_formation_signature(enemy_members),
+            arena_formation_signature(counter_members),
+        )
+        if pair in seen_pairs:
+            raise FixtureValidationError(
+                f"duplicate exact Arena pair at {counter_id}"
+            )
+        seen_pairs.add(pair)
+        defense_scope = pair[:3]
+        source_shape = (enemy_members, row["arena_bracket"])
+        previous_source_shape = defense_source_shape.setdefault(
+            defense_scope, source_shape
+        )
+        if previous_source_shape != source_shape:
+            raise FixtureValidationError(
+                f"{counter_id} conflicts with the canonical defense slot/bracket shape"
+            )
+
+        unavailable_unit_ids = _split_ids(row["unavailable_unit_ids"])
+        if len(unavailable_unit_ids) != len(set(unavailable_unit_ids)):
+            raise FixtureValidationError(
+                f"{counter_id}.unavailable_unit_ids contains duplicates"
+            )
+        all_members = {*enemy_members, *counter_members}
+        if not set(unavailable_unit_ids) <= all_members:
+            raise FixtureValidationError(
+                f"{counter_id}.unavailable_unit_ids is outside the exact teams"
+            )
+        unknown_availability = sorted(
+            unit_key
+            for unit_key in all_members
+            if characters_by_id[unit_key]["availability_status"]
+            not in {"AVAILABLE", "NOT_RELEASED", "UNVERIFIED"}
+        )
+        if unknown_availability:
+            raise FixtureValidationError(
+                f"{counter_id} Arena members have invalid availability status: "
+                f"{unknown_availability}"
+            )
+        not_released_members = {
+            unit_key
+            for unit_key in all_members
+            if characters_by_id[unit_key]["availability_status"] == "NOT_RELEASED"
+        }
+        unverified_members = {
+            unit_key
+            for unit_key in all_members
+            if characters_by_id[unit_key]["availability_status"] == "UNVERIFIED"
+        }
+        expected_tw_check = (
+            "FAIL"
+            if not_released_members
+            else "UNVERIFIED"
+            if unverified_members
+            else "PASS"
+        )
+        if row["tw_availability_check"] != expected_tw_check:
+            raise FixtureValidationError(
+                f"{counter_id} Arena TW availability closure must be "
+                f"{expected_tw_check}"
+            )
+        if set(unavailable_unit_ids) != not_released_members:
+            raise FixtureValidationError(
+                f"{counter_id}.unavailable_unit_ids must exactly list TW "
+                "NOT_RELEASED members"
+            )
+        source_platforms = _split_ids(row["source_platforms"])
+        if not source_platforms or len(source_platforms) != len(set(source_platforms)):
+            raise FixtureValidationError(
+                f"{counter_id}.source_platforms must list distinct platforms"
+            )
+        source_record_count = _parse_arena_uint(
+            row["source_record_count"],
+            field=f"{counter_id}.source_record_count",
+            required=True,
+            positive=True,
+        )
+        if source_record_count is None:  # pragma: no cover - required parser contract
+            raise FixtureValidationError(f"{counter_id}.source_record_count is missing")
+
+        sample_size = _parse_arena_uint(
+            row["sample_size"], field=f"{counter_id}.sample_size", positive=True
+        )
+        wins = _parse_arena_uint(row["wins"], field=f"{counter_id}.wins")
+        losses = _parse_arena_uint(row["losses"], field=f"{counter_id}.losses")
+        if sample_size is None:
+            if wins is not None or losses is not None:
+                raise FixtureValidationError(
+                    f"{counter_id} wins/losses require sample_size"
+                )
+        elif wins is None or losses is None or sample_size != wins + losses:
+            raise FixtureValidationError(
+                f"{counter_id} sample_size must equal wins + losses"
+            )
+        empirical_win_rate = _parse_arena_uint(
+            row["empirical_win_rate"],
+            field=f"{counter_id}.empirical_win_rate",
+        )
+        if empirical_win_rate is not None and (
+            row["status"] == "SINGLE_REPORT"
+            or sample_size is None
+            or sample_size < 2
+            or empirical_win_rate > 100
+        ):
+            raise FixtureValidationError(
+                f"{counter_id} SINGLE_REPORT or undersampled record cannot state "
+                "empirical_win_rate"
+            )
+        if row["status"] == "SINGLE_REPORT" and row["claim_confidence"] != "D":
+            raise FixtureValidationError(
+                f"{counter_id} SINGLE_REPORT claim_confidence must be D"
+            )
+        if row["status"] == "VERIFIED" and (
+            row["claim_confidence"] not in {"B", "C"}
+            or row["reproducibility"] != "CONFIRMED"
+            or row["source_tier"] not in ARENA_VERIFIED_SOURCE_TIERS
+            or source_record_count < 2
+            or sample_size is None
+            or sample_size < 2
+            or wins is None
+            or wins < 2
+            or row["outcome"] != "WIN"
+            or row["verification"] == "UNKNOWN"
+            or row["environment_match"] != "EXACT"
+        ):
+            raise FixtureValidationError(
+                f"{counter_id} VERIFIED requires independent multi-source wins"
+            )
+        if row["outcome"] == "WIN" and (wins is None or wins < 1):
+            raise FixtureValidationError(f"{counter_id} WIN requires wins >= 1")
+        if row["outcome"] == "LOSS" and (losses is None or losses < 1):
+            raise FixtureValidationError(f"{counter_id} LOSS requires losses >= 1")
+
+        verified_date = _parse_date(
+            row["verified_date"],
+            field=f"{counter_id}.verified_date",
+            required=True,
+        )
+        _parse_date(
+            row["last_review_due"],
+            field=f"{counter_id}.last_review_due",
+            required=True,
+        )
+        record_date_min = _parse_date(
+            row["record_date_min"],
+            field=f"{counter_id}.record_date_min",
+            required=True,
+        )
+        record_date_max = _parse_date(
+            row["record_date_max"],
+            field=f"{counter_id}.record_date_max",
+            required=True,
+        )
+        if (
+            verified_date is None
+            or record_date_min is None
+            or record_date_max is None
+            or record_date_min > record_date_max
+        ):
+            raise FixtureValidationError(f"{counter_id} Arena date range is invalid")
+
+        evidence_ids = _split_ids(row["evidence_ids"])
+        claim_ids = _split_ids(row["claim_ids"])
+        if (
+            not evidence_ids
+            or not claim_ids
+            or len(evidence_ids) != len(set(evidence_ids))
+            or len(claim_ids) != len(set(claim_ids))
+        ):
+            raise FixtureValidationError(
+                f"{counter_id} Arena Evidence/Claim closure must be non-empty and distinct"
+            )
+        _require_ids(
+            evidence_ids,
+            evidence_by_id,
+            relation=f"{counter_id} Arena Evidence/Claim closure",
+        )
+        _require_ids(
+            claim_ids,
+            claims_by_id,
+            relation=f"{counter_id} Arena Evidence/Claim closure",
+        )
+        if any(
+            evidence_by_id[evidence_id]["claim_id"].strip() not in claim_ids
+            for evidence_id in evidence_ids
+        ):
+            raise FixtureValidationError(
+                f"{counter_id} Arena Evidence/Claim closure is inconsistent"
+            )
+        if row["status"] in {"VERIFIED", "PROVISIONAL", "SINGLE_REPORT"} and (
+            any(
+                evidence_by_id[evidence_id]["status"] != "ACTIVE"
+                or evidence_by_id[evidence_id]["module"] != "arena"
+                or evidence_by_id[evidence_id]["server"] != row["server"]
+                for evidence_id in evidence_ids
+            )
+            or any(
+                claims_by_id[claim_id]["status"] != "ACTIVE"
+                or claims_by_id[claim_id]["module"] != "arena"
+                or claims_by_id[claim_id]["server"] != row["server"]
+                for claim_id in claim_ids
+            )
+        ):
+            raise FixtureValidationError(
+                f"{counter_id} Arena Evidence/Claim closure is not same-server ACTIVE arena data"
+            )
+        if not _arena_verified_provenance_is_mature(
+            row,
+            evidence_ids=evidence_ids,
+            claim_ids=claim_ids,
+            evidence_by_id=evidence_by_id,
+            claims_by_id=claims_by_id,
+        ):
+            raise FixtureValidationError(
+                f"{counter_id} VERIFIED requires one independent B/C result Claim"
+            )
+        evidence_ids_by_counter[counter_id] = evidence_ids
+        claim_ids_by_counter[counter_id] = claim_ids
+
+    return (
+        tuple(sorted(arena_rows, key=lambda item: item["counter_id"])),
+        evidence_ids_by_counter,
+        claim_ids_by_counter,
+    )
+
+
+def _gacha_tw_name(value: str) -> str | None:
+    normalized = value.strip()
+    if normalized in {"", "—", "-", "UNKNOWN", "【待查證】"}:
+        return None
+    return normalized
+
+
+def _gacha_limited_status(value: str, *, event_id: str) -> str:
+    normalized = value.strip()
+    try:
+        return GACHA_LIMITED_STATES[normalized]
+    except KeyError as exc:
+        raise FixtureValidationError(
+            f"{event_id}.limited must be YES/NO/UNKNOWN source truth"
+        ) from exc
+
+
+def _gacha_community_count(value: str, *, event_id: str) -> int:
+    normalized = value.strip()
+    if not normalized:
+        return 0
+    parsed = _parse_int(
+        normalized,
+        field=f"{event_id}.community_source_count",
+    )
+    if parsed is None:  # pragma: no cover - _parse_int is total here
+        raise FixtureValidationError(f"{event_id}.community_source_count is invalid")
+    return parsed
+
+
+def _gacha_coverage_bound(
+    value: str,
+    *,
+    field: str,
+    upper: bool,
+) -> date:
+    if _YEAR_MONTH.fullmatch(value):
+        year, month = (int(part) for part in value.split("-"))
+        day = calendar.monthrange(year, month)[1] if upper else 1
+        return date(year, month, day)
+    if _YEAR_MONTH_DAY.fullmatch(value):
+        try:
+            return date.fromisoformat(value)
+        except ValueError as exc:
+            raise FixtureValidationError(f"{field} is not a calendar date") from exc
+    raise FixtureValidationError(f"{field} must use YYYY-MM or YYYY-MM-DD")
+
+
+def _has_direct_official_gacha_claim(
+    designated_claim_id: str,
+    *,
+    server: str,
+    evidence_ids: tuple[str, ...],
+    claim_ids: tuple[str, ...],
+    evidence_by_id: dict[str, dict[str, str]],
+    claims_by_id: dict[str, dict[str, str]],
+) -> bool:
+    """Return whether one row-local Claim/Evidence pair proves an official fact."""
+
+    if designated_claim_id not in claim_ids:
+        return False
+    claim = claims_by_id.get(designated_claim_id)
+    if claim is None or (
+        claim["status"] != "ACTIVE"
+        or claim["module"] != "gacha"
+        or claim["server"] != server
+        or claim["claim_type"] != "SOURCE_FACT"
+        or claim["claim_confidence"] != "A"
+    ):
+        return False
+    claim_evidence_ids = set(_split_ids(claim["evidence_ids"]))
+    return any(
+        evidence_id in claim_evidence_ids
+        and evidence_by_id[evidence_id]["status"] == "ACTIVE"
+        and evidence_by_id[evidence_id]["module"] == "gacha"
+        and evidence_by_id[evidence_id]["server"] == server
+        and evidence_by_id[evidence_id]["source_tier"] == "OFFICIAL"
+        and evidence_by_id[evidence_id]["evidence_confidence"] == "A"
+        and evidence_by_id[evidence_id]["claim_id"].strip() == designated_claim_id
+        for evidence_id in evidence_ids
+    )
+
+
+def _validate_gacha_closure(
+    events: tuple[dict[str, str], ...],
+    community_sources: tuple[dict[str, str], ...],
+    *,
+    evidence_by_id: dict[str, dict[str, str]],
+    claims_by_id: dict[str, dict[str, str]],
+) -> tuple[
+    tuple[dict[str, str], ...],
+    tuple[dict[str, str], ...],
+    dict[str, tuple[str, ...]],
+    dict[str, tuple[str, ...]],
+    dict[str, tuple[str, ...]],
+]:
+    community_by_id = {row["source_id"]: row for row in community_sources}
+    for row in community_sources:
+        source_id = row["source_id"]
+        if not source_id:
+            raise FixtureValidationError("Gacha community source_id must be non-empty")
+        if row["source_type"] not in GACHA_COMMUNITY_SOURCE_TYPES:
+            raise FixtureValidationError(f"{source_id}.source_type is invalid")
+        if row["update_status"] not in GACHA_COMMUNITY_UPDATE_STATUSES:
+            raise FixtureValidationError(f"{source_id}.update_status is invalid")
+        if row["confidence_cap"] not in GACHA_CONFIDENCE_CAPS:
+            raise FixtureValidationError(f"{source_id}.confidence_cap is invalid")
+        parsed_url = urlsplit(row["url"].strip())
+        if (
+            parsed_url.scheme.lower() != "https"
+            or (parsed_url.hostname or "").lower() not in B0_AUDITED_EVIDENCE_HOSTS
+            or parsed_url.username is not None
+            or parsed_url.password is not None
+        ):
+            raise FixtureValidationError(
+                f"{source_id}.url is not an audited HTTPS source"
+            )
+        _parse_date(
+            row["last_seen_update"],
+            field=f"{source_id}.last_seen_update",
+        )
+        _parse_date(
+            row["last_checked"],
+            field=f"{source_id}.last_checked",
+            required=True,
+        )
+        coverage_start = row["coverage_start"].strip()
+        coverage_end = row["coverage_end"].strip()
+        if bool(coverage_start) != bool(coverage_end):
+            raise FixtureValidationError(f"{source_id} coverage range must be paired")
+        if coverage_start:
+            parsed_coverage_start = _gacha_coverage_bound(
+                coverage_start,
+                field=f"{source_id}.coverage_start",
+                upper=False,
+            )
+            parsed_coverage_end = _gacha_coverage_bound(
+                coverage_end,
+                field=f"{source_id}.coverage_end",
+                upper=True,
+            )
+            if parsed_coverage_start > parsed_coverage_end:
+                raise FixtureValidationError(
+                    f"{source_id} coverage range is invalid"
+                )
+
+    evidence_ids_by_event: dict[str, tuple[str, ...]] = {}
+    claim_ids_by_event: dict[str, tuple[str, ...]] = {}
+    community_ids_by_event: dict[str, tuple[str, ...]] = {}
+    for row in events:
+        event_id = row["event_id"]
+        if not event_id or not row["status"].strip():
+            raise FixtureValidationError("Gacha event id/status must be non-empty")
+        if row["forecast_method"] not in GACHA_FORECAST_METHODS:
+            raise FixtureValidationError(f"{event_id}.forecast_method is invalid")
+        if row["maturity"] not in GACHA_MATURITIES:
+            raise FixtureValidationError(f"{event_id}.maturity is invalid")
+        limited_status = _gacha_limited_status(row["limited"], event_id=event_id)
+        jp_date = _parse_date(row["jp_date"], field=f"{event_id}.jp_date", required=True)
+        model_start = _parse_date(
+            row["model_estimate_start"],
+            field=f"{event_id}.model_estimate_start",
+            required=True,
+        )
+        model_end = _parse_date(
+            row["model_estimate_end"],
+            field=f"{event_id}.model_estimate_end",
+            required=True,
+        )
+        tw_start = _parse_date(
+            row["tw_estimate_start"],
+            field=f"{event_id}.tw_estimate_start",
+            required=True,
+        )
+        tw_end = _parse_date(
+            row["tw_estimate_end"],
+            field=f"{event_id}.tw_estimate_end",
+            required=True,
+        )
+        community_start = _parse_date(
+            row["community_estimate_start"],
+            field=f"{event_id}.community_estimate_start",
+        )
+        community_end = _parse_date(
+            row["community_estimate_end"],
+            field=f"{event_id}.community_estimate_end",
+        )
+        if (
+            jp_date is None
+            or model_start is None
+            or model_end is None
+            or tw_start is None
+            or tw_end is None
+            or model_start > model_end
+            or tw_start > tw_end
+            or (community_start is None) != (community_end is None)
+            or (
+                community_start is not None
+                and community_end is not None
+                and community_start > community_end
+            )
+        ):
+            raise FixtureValidationError(f"{event_id} forecast date range is invalid")
+        _parse_date(
+            row["last_verified"],
+            field=f"{event_id}.last_verified",
+            required=True,
+        )
+        _parse_date(
+            row["last_review_due"],
+            field=f"{event_id}.last_review_due",
+            required=True,
+        )
+        _parse_date(
+            row["community_last_checked"],
+            field=f"{event_id}.community_last_checked",
+        )
+        anchor_count = _parse_int(
+            row["anchor_count"], field=f"{event_id}.anchor_count", positive=True
+        )
+        if anchor_count is None:  # pragma: no cover - _parse_int is total here
+            raise FixtureValidationError(f"{event_id}.anchor_count is invalid")
+
+        evidence_ids = _split_ids(row["evidence_ids"])
+        claim_ids = _split_ids(row["claim_ids"])
+        community_ids = _split_ids(row["community_source_ids"])
+        if (
+            not evidence_ids
+            or not claim_ids
+            or len(evidence_ids) != len(set(evidence_ids))
+            or len(claim_ids) != len(set(claim_ids))
+            or len(community_ids) != len(set(community_ids))
+        ):
+            raise FixtureValidationError(
+                f"{event_id} Gacha Evidence/Claim/source ids must be distinct"
+            )
+        _require_ids(evidence_ids, evidence_by_id, relation=f"{event_id} evidence_ids")
+        _require_ids(claim_ids, claims_by_id, relation=f"{event_id} claim_ids")
+        _require_ids(
+            community_ids,
+            community_by_id,
+            relation=f"{event_id} community_source_ids",
+        )
+        if any(
+            evidence_by_id[evidence_id]["status"] != "ACTIVE"
+            or evidence_by_id[evidence_id]["module"] != "gacha"
+            for evidence_id in evidence_ids
+        ) or any(
+            claims_by_id[claim_id]["status"] != "ACTIVE"
+            or claims_by_id[claim_id]["module"] != "gacha"
+            for claim_id in claim_ids
+        ):
+            raise FixtureValidationError(
+                f"{event_id} Gacha Evidence/Claim closure is not ACTIVE gacha data"
+            )
+        if any(
+            evidence_by_id[evidence_id]["claim_id"].strip() not in claim_ids
+            for evidence_id in evidence_ids
+        ):
+            raise FixtureValidationError(
+                f"{event_id} Gacha Evidence/Claim closure is inconsistent"
+            )
+        limited_claim_id = row["limited_claim_id"].strip()
+        if limited_status == "UNKNOWN":
+            if limited_claim_id:
+                raise FixtureValidationError(
+                    f"{event_id}.limited_claim_id must be empty when limited is UNKNOWN"
+                )
+        elif not limited_claim_id or not _has_direct_official_gacha_claim(
+            limited_claim_id,
+            server="JP",
+            evidence_ids=evidence_ids,
+            claim_ids=claim_ids,
+            evidence_by_id=evidence_by_id,
+            claims_by_id=claims_by_id,
+        ):
+            raise FixtureValidationError(
+                f"{event_id}.limited lacks designated ACTIVE JP OFFICIAL/A provenance"
+            )
+        tw_name = _gacha_tw_name(row["tw_temp_name"])
+        if tw_name is not None and not any(
+            evidence_by_id[evidence_id]["server"] == "TW"
+            and evidence_by_id[evidence_id]["source_tier"] == "OFFICIAL"
+            and evidence_by_id[evidence_id]["evidence_confidence"] == "A"
+            and evidence_id in _split_ids(claims_by_id[claim_id]["evidence_ids"])
+            and _has_direct_official_gacha_claim(
+                claim_id,
+                server="TW",
+                evidence_ids=evidence_ids,
+                claim_ids=claim_ids,
+                evidence_by_id=evidence_by_id,
+                claims_by_id=claims_by_id,
+            )
+            and (
+                tw_name in evidence_by_id[evidence_id]["claim_summary"]
+                or tw_name in claims_by_id[claim_id]["claim_text"]
+            )
+            for evidence_id in evidence_ids
+            for claim_id in (evidence_by_id[evidence_id]["claim_id"].strip(),)
+        ):
+            raise FixtureValidationError(
+                f"{event_id}.tw_temp_name lacks direct ACTIVE TW OFFICIAL/A support"
+            )
+
+        community_count = _gacha_community_count(
+            row["community_source_count"], event_id=event_id
+        )
+        if community_count != len(community_ids):
+            raise FixtureValidationError(
+                f"{event_id}.community_source_count differs from linked sources"
+            )
+        method = row["forecast_method"]
+        if method == "OFFICIAL_OVERRIDE" and not any(
+            _has_direct_official_gacha_claim(
+                claim_id,
+                server="TW",
+                evidence_ids=evidence_ids,
+                claim_ids=claim_ids,
+                evidence_by_id=evidence_by_id,
+                claims_by_id=claims_by_id,
+            )
+            for claim_id in claim_ids
+        ):
+            raise FixtureValidationError(
+                f"{event_id} OFFICIAL_OVERRIDE lacks direct ACTIVE TW OFFICIAL/A provenance"
+            )
+        if method == "MODEL_ONLY" and (
+            tw_start != model_start
+            or tw_end != model_end
+            or community_count != 0
+            or community_start is not None
+            or community_end is not None
+        ):
+            raise FixtureValidationError(f"{event_id} MODEL_ONLY closure is invalid")
+        if method == "MODEL_PLUS_COMMUNITY" and (
+            community_start is None
+            or community_end is None
+            or community_count == 0
+            or tw_start > min(model_start, community_start)
+            or tw_end < max(model_end, community_end)
+        ):
+            raise FixtureValidationError(
+                f"{event_id} MODEL_PLUS_COMMUNITY closure is invalid"
+            )
+        if row["maturity"] == "RESEARCH":
+            if any(
+                row[field] != "NOT_EVALUATED"
+                for field in (
+                    "arena_value",
+                    "p_arena_value",
+                    "pve_value",
+                    "clan_value",
+                    "relative_priority",
+                )
+            ) or row["future_upgrade"] not in {"UNKNOWN", "NOT_EVALUATED"}:
+                raise FixtureValidationError(
+                    f"{event_id} RESEARCH row must remain NOT_EVALUATED/UNKNOWN"
+                )
+
+        evidence_ids_by_event[event_id] = evidence_ids
+        claim_ids_by_event[event_id] = claim_ids
+        community_ids_by_event[event_id] = community_ids
+
+    return (
+        tuple(sorted(events, key=lambda item: item["event_id"])),
+        tuple(sorted(community_sources, key=lambda item: item["source_id"])),
+        evidence_ids_by_event,
+        claim_ids_by_event,
+        community_ids_by_event,
+    )
+
+
+def _capture_source_files(root: Path) -> dict[str, bytes]:
+    return {relative: (root / relative).read_bytes() for relative in SOURCE_FILES}
+
+
+def _file_fingerprint(
+    source_contents: dict[str, bytes],
+) -> tuple[str, dict[str, str]]:
+    digest = hashlib.sha256()
+    file_hashes: dict[str, str] = {}
+    for relative in SOURCE_FILES:
+        content = source_contents[relative]
+        current = hashlib.sha256(content).hexdigest()
+        file_hashes[relative] = current
+        digest.update(relative.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(content)
+        digest.update(b"\0")
+    return digest.hexdigest(), file_hashes
+
+
+def _validate_requirements(team: dict[str, str]) -> dict[str, Any]:
+    raw = team["requirements"]
+    try:
+        requirements = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise FixtureValidationError(f"{team['team_id']} requirements is malformed JSON") from exc
+    expected_top_level = {
+        "schema_version",
+        "operation_mode_claims",
+        "slots",
+        "support",
+        "timeline_ref",
+        "failure_conditions",
+    }
+    if (
+        not isinstance(requirements, dict)
+        or set(requirements) != expected_top_level
+        or requirements.get("schema_version") != "1.0"
+    ):
+        raise FixtureValidationError(
+            f"{team['team_id']} requirements must use the complete 1.0 schema"
+        )
+
+    canonical = json.dumps(requirements, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    if raw != canonical:
+        raise FixtureValidationError(f"{team['team_id']} requirements is not canonical JSON")
+
+    slots = requirements.get("slots")
+    expected_slots = {f"slot{number}" for number in range(1, 6)}
+    expected_fields = {
+        "connect_rank",
+        "element_boost",
+        "rank",
+        "six_star",
+        "star",
+        "ue1",
+        "ue2",
+    }
+    if not isinstance(slots, dict) or set(slots) != expected_slots:
+        raise FixtureValidationError(f"{team['team_id']} requirements must contain slot1..slot5")
+    for slot_name, values in slots.items():
+        if not isinstance(values, dict) or set(values) != expected_fields:
+            raise FixtureValidationError(
+                f"{team['team_id']} {slot_name} requirements fields are incomplete"
+            )
+        if any(not isinstance(value, str) or not value.strip() for value in values.values()):
+            raise FixtureValidationError(f"{team['team_id']} {slot_name} contains blank facts")
+
+    claims = requirements.get("operation_mode_claims")
+    if not isinstance(claims, list) or not claims:
+        raise FixtureValidationError(f"{team['team_id']} has no operation_mode_claims")
+    if any(
+        not isinstance(item, dict)
+        or set(item) != {"source_id", "mode"}
+        or not isinstance(item.get("source_id"), str)
+        or not item["source_id"].strip()
+        or item.get("mode") not in TIMELINE_OPERATION_MODES
+        for item in claims
+    ):
+        raise FixtureValidationError(
+            f"{team['team_id']} operation_mode_claims contain an invalid source or mode"
+        )
+    claim_sources = [item["source_id"] for item in claims]
+    if len(claim_sources) != len(set(claim_sources)):
+        raise FixtureValidationError(
+            f"{team['team_id']} operation_mode_claims contain duplicate sources"
+        )
+    row_sources = set(_split_ids(team["source_ids"]))
+    missing_row_sources = sorted(set(claim_sources) - row_sources)
+    if missing_row_sources:
+        raise FixtureValidationError(
+            f"{team['team_id']} operation_mode_claims are outside source_ids: "
+            f"{missing_row_sources}"
+        )
+    modes = {item["mode"] for item in claims}
+    if team["operation_mode"] == "SOURCE_CONFLICT" and len(modes) < 2:
+        raise FixtureValidationError(
+            f"{team['team_id']} SOURCE_CONFLICT must preserve conflicting source modes"
+        )
+    if team["operation_mode"] != "SOURCE_CONFLICT" and modes != {team["operation_mode"]}:
+        raise FixtureValidationError(
+            f"{team['team_id']} operation mode differs from its source claims"
+        )
+    timeline_ref = requirements.get("timeline_ref")
+    if not isinstance(timeline_ref, str) or not _split_ids(timeline_ref):
+        raise FixtureValidationError(f"{team['team_id']} has no source-axis timeline_ref")
+    support = requirements.get("support")
+    if (
+        not isinstance(support, dict)
+        or set(support) != {"unit", "requirements"}
+        or any(
+            not isinstance(value, str) or not value.strip()
+            for value in support.values()
+        )
+    ):
+        raise FixtureValidationError(
+            f"{team['team_id']} support requirements are incomplete"
+        )
+    failure_conditions = requirements.get("failure_conditions")
+    if (
+        not isinstance(failure_conditions, list)
+        or not failure_conditions
+        or any(
+            not isinstance(value, str) or not value.strip()
+            for value in failure_conditions
+        )
+    ):
+        raise FixtureValidationError(
+            f"{team['team_id']} failure_conditions are incomplete"
+        )
+    return requirements
+
+
+def _borrowed_states(
+    team: dict[str, str],
+    requirements: dict[str, Any],
+    *,
+    semantics: str = BORROWED_STATE_TRISTATE_V1,
+) -> tuple[bool | None, ...]:
+    """Project the source's support fact without turning UNKNOWN into False."""
+
+    if semantics not in BORROWED_STATE_SEMANTICS:
+        raise FixtureValidationError(f"unsupported borrowed-state semantics: {semantics}")
+
+    support_slot = team["support_slot"].strip()
+    support_unit = requirements["support"]["unit"]
+    if support_slot:
+        if support_slot not in {f"slot{slot}" for slot in range(1, 6)}:
+            raise FixtureValidationError(f"{team['team_id']} support_slot is invalid")
+        if support_unit != team[support_slot]:
+            raise FixtureValidationError(
+                f"{team['team_id']} support unit differs from support_slot"
+            )
+        return tuple(support_slot == f"slot{slot}" for slot in range(1, 6))
+    if support_unit == "NONE":
+        return (False,) * 5
+    if support_unit in {"UNKNOWN", "SOURCE_CONFLICT"}:
+        if semantics == BORROWED_STATE_LEGACY_FALSE_V1:
+            return (False,) * 5
+        return (None,) * 5
+    raise FixtureValidationError(
+        f"{team['team_id']} named support unit requires an explicit support_slot"
+    )
+
+
+def _validate_timeline_closure(
+    *,
+    teams: tuple[dict[str, str], ...],
+    requirements_by_team: dict[str, dict[str, Any]],
+    evidence_by_id: dict[str, dict[str, str]],
+    team_evidence_ids: dict[str, tuple[str, ...]],
+    timelines_all: tuple[dict[str, str], ...],
+    steps_all: tuple[dict[str, str], ...],
+) -> tuple[tuple[dict[str, str], ...], tuple[dict[str, str], ...]]:
+    teams_by_id = {team["team_id"]: team for team in teams}
+    unknown_timeline_teams = sorted(
+        {row["team_id"] for row in timelines_all} - teams_by_id.keys()
+    )
+    if unknown_timeline_teams:
+        raise FixtureValidationError(
+            "operation timelines reference missing teams: "
+            f"{unknown_timeline_teams}"
+        )
+    timelines = tuple(
+        sorted(
+            (row for row in timelines_all if row["team_id"] in teams_by_id),
+            key=lambda row: row["source_axis_id"],
+        )
+    )
+    pairs = [(row["team_id"], row["source_id"]) for row in timelines]
+    if len(pairs) != len(set(pairs)):
+        raise FixtureValidationError("operation timelines duplicate a team/source axis")
+
+    structured_ids = [
+        row["timeline_id"] for row in timelines if row["status"] == "STRUCTURED"
+    ]
+    if len(structured_ids) != len(set(structured_ids)):
+        raise FixtureValidationError("structured timeline_id values must be unique")
+    steps = tuple(
+        sorted(
+            (row for row in steps_all if row["timeline_id"] in set(structured_ids)),
+            key=lambda row: (row["timeline_id"], int(row["sequence_no"]) if row["sequence_no"].isdigit() else -1),
+        )
+    )
+    known_structured_ids = {
+        row["timeline_id"]
+        for row in timelines
+        if row["status"] == "STRUCTURED" and row["timeline_id"] != "UNKNOWN"
+    }
+    orphan_step_ids = sorted(
+        {row["timeline_id"] for row in steps_all} - known_structured_ids
+    )
+    if orphan_step_ids:
+        raise FixtureValidationError(
+            f"timeline steps reference non-structured timelines: {orphan_step_ids}"
+        )
+
+    for timeline in timelines:
+        axis_id = timeline["source_axis_id"]
+        team = teams_by_id[timeline["team_id"]]
+        requirements = requirements_by_team[timeline["team_id"]]
+        source_claims = {
+            item.get("source_id"): item.get("mode")
+            for item in requirements["operation_mode_claims"]
+            if isinstance(item, dict)
+        }
+        if source_claims.get(timeline["source_id"]) != timeline["operation_mode"]:
+            raise FixtureValidationError(
+                f"{axis_id} operation mode differs from its team source claim"
+            )
+        if timeline["operation_mode"] not in TIMELINE_OPERATION_MODES:
+            raise FixtureValidationError(f"{axis_id} operation_mode is invalid")
+        evidence_id = timeline["source_evidence_id"]
+        evidence = evidence_by_id.get(evidence_id)
+        if (
+            evidence is None
+            or evidence_id not in team_evidence_ids[timeline["team_id"]]
+            or evidence["status"] != "ACTIVE"
+        ):
+            raise FixtureValidationError(f"{axis_id} source evidence is outside its team closure")
+        evidence_locator = evidence["source_locator"]
+        if not (
+            timeline["source_locator"] == evidence_locator
+            or timeline["source_locator"].startswith(f"{evidence_locator}#")
+        ):
+            raise FixtureValidationError(
+                f"{axis_id} locator is not the Evidence locator or its # sub-location"
+            )
+        if (
+            timeline["clock_mode"] not in TIMELINE_CLOCK_MODES
+            or timeline["initial_auto_state"] not in TIMELINE_AUTO_STATES
+            or timeline["reproducibility"] not in TIMELINE_REPRODUCIBILITY
+            or timeline["gap_reason"] not in TIMELINE_GAP_REASONS
+        ):
+            raise FixtureValidationError(f"{axis_id} contains an invalid timeline enum")
+        for field in ("source_locator", "timeline_variant_name", "notes"):
+            if not timeline[field].strip():
+                raise FixtureValidationError(f"{axis_id}.{field} must not be blank")
+        _parse_date(
+            timeline["last_verified_at"],
+            field=f"{axis_id}.last_verified_at",
+            required=True,
+        )
+
+        if timeline["status"] == "STRUCTURED":
+            if (
+                timeline["timeline_id"] == "UNKNOWN"
+                or timeline["clock_mode"] == "UNKNOWN"
+                or timeline["initial_auto_state"] == "UNKNOWN"
+                or timeline["gap_reason"] != "NONE"
+            ):
+                raise FixtureValidationError(f"{axis_id} STRUCTURED state shape is invalid")
+            _parse_int(
+                timeline["battle_duration_ms"],
+                field=f"{axis_id}.battle_duration_ms",
+                allow_unknown=True,
+                positive=True,
+            )
+            if (
+                team["server"] == "TW"
+                and evidence["server"] != "TW"
+                and timeline["reproducibility"] != "UNVERIFIED_ON_TW"
+            ):
+                raise FixtureValidationError(
+                    f"{axis_id} cross-server timeline must remain UNVERIFIED_ON_TW"
+                )
+            if timeline["reproducibility"] == "TW_REPRODUCED" and evidence["server"] != "TW":
+                raise FixtureValidationError(
+                    f"{axis_id} non-TW evidence cannot claim TW_REPRODUCED"
+                )
+        elif timeline["status"] == "SOURCE_GAP":
+            if (
+                timeline["timeline_id"] != "UNKNOWN"
+                or timeline["clock_mode"] != "UNKNOWN"
+                or timeline["battle_duration_ms"] != "UNKNOWN"
+                or timeline["initial_auto_state"] != "UNKNOWN"
+                or timeline["reproducibility"] != "UNKNOWN"
+                or timeline["gap_reason"] == "NONE"
+            ):
+                raise FixtureValidationError(f"{axis_id} SOURCE_GAP state shape is invalid")
+        else:
+            raise FixtureValidationError(f"{axis_id} status is invalid")
+
+        boundary = AUDITED_TIMELINE_TIME_BOUNDARIES.get(axis_id)
+        if boundary and timeline["battle_duration_ms"] != boundary["battle_duration_ms"]:
+            raise FixtureValidationError(f"{axis_id} invents an unstated battle duration")
+
+    for team in teams:
+        declared_axes = set(_split_ids(requirements_by_team[team["team_id"]].get("timeline_ref", "")))
+        actual_axes = {
+            timeline["source_axis_id"]
+            for timeline in timelines
+            if timeline["team_id"] == team["team_id"]
+        }
+        if declared_axes != actual_axes:
+            raise FixtureValidationError(
+                f"{team['team_id']} timeline_ref differs from its source_axis_id closure"
+            )
+        if (
+            team["operation_mode"] not in {"SEMI_AUTO", "MANUAL_TIMELINE", "SOURCE_CONFLICT"}
+        ):
+            continue
+        expected = {
+            (item["source_id"], item["mode"])
+            for item in requirements_by_team[team["team_id"]]["operation_mode_claims"]
+        }
+        actual = {
+            (timeline["source_id"], timeline["operation_mode"])
+            for timeline in timelines
+            if timeline["team_id"] == team["team_id"]
+        }
+        if actual != expected:
+            raise FixtureValidationError(
+                f"{team['team_id']} operation timeline source closure is incomplete"
+            )
+
+    timeline_by_id = {
+        timeline["timeline_id"]: timeline
+        for timeline in timelines
+        if timeline["status"] == "STRUCTURED"
+    }
+    steps_by_timeline: dict[str, list[dict[str, str]]] = {
+        timeline_id: [] for timeline_id in timeline_by_id
+    }
+    for step in steps:
+        timeline = timeline_by_id[step["timeline_id"]]
+        team = teams_by_id[timeline["team_id"]]
+        members = {team[f"slot{slot}"] for slot in range(1, 6)}
+        step_id = step["timeline_step_id"]
+        sequence_no = _parse_int(
+            step["sequence_no"], field=f"{step_id}.sequence_no", positive=True
+        )
+        source_step_no = _parse_int(
+            step["source_step_no"], field=f"{step_id}.source_step_no", positive=True
+        )
+        assert sequence_no is not None and source_step_no is not None
+        if (
+            step["trigger_type"] not in TIMELINE_TRIGGERS
+            or step["time_state"] not in TIMELINE_TIME_STATES
+            or step["action_type"] not in TIMELINE_ACTIONS
+            or step["auto_state_after"] not in TIMELINE_AUTO_STATES
+            or step["criticality"] not in TIMELINE_CRITICALITIES
+        ):
+            raise FixtureValidationError(f"{step_id} contains an invalid timeline step enum")
+
+        if step["time_state"] == "STATED":
+            clock_from = _parse_int(step["clock_from_ms"], field=f"{step_id}.clock_from_ms")
+            clock_to = _parse_int(step["clock_to_ms"], field=f"{step_id}.clock_to_ms")
+            assert clock_from is not None and clock_to is not None
+            if timeline["clock_mode"] == "COUNTDOWN" and clock_from < clock_to:
+                raise FixtureValidationError(f"{step_id} countdown range is reversed")
+            if timeline["clock_mode"] == "ELAPSED" and clock_from > clock_to:
+                raise FixtureValidationError(f"{step_id} elapsed range is reversed")
+            duration = _parse_int(
+                timeline["battle_duration_ms"],
+                field=f"{timeline['source_axis_id']}.battle_duration_ms",
+                allow_unknown=True,
+                positive=True,
+            )
+            if duration is not None and (clock_from > duration or clock_to > duration):
+                raise FixtureValidationError(f"{step_id} exceeds its stated battle duration")
+        elif step["clock_from_ms"] != "UNKNOWN" or step["clock_to_ms"] != "UNKNOWN":
+            raise FixtureValidationError(f"{step_id} invents a time not stated by the source")
+
+        _parse_int(
+            step["tolerance_ms"],
+            field=f"{step_id}.tolerance_ms",
+            allow_unknown=True,
+        )
+        for key in ("trigger_actor_unit_key", "actor_unit_key", "target_unit_key"):
+            if step[key] != "NONE" and step[key] not in members:
+                raise FixtureValidationError(f"{step_id}.{key} is not a member of its team")
+        if (
+            step["action_type"] in {"USE_UB", "SET_ON", "SET_OFF", "TARGET"}
+            and step["actor_unit_key"] not in members
+        ):
+            raise FixtureValidationError(f"{step_id} action requires a team actor")
+        if step["action_type"] == "TARGET" and step["target_unit_key"] not in members:
+            raise FixtureValidationError(f"{step_id} TARGET requires a team target")
+        for field in (
+            "animation_cue",
+            "hp_threshold",
+            "tolerance_ms",
+            "instruction_zh_tw",
+            "failure_if_missed",
+            "source_locator",
+        ):
+            if not step[field].strip():
+                raise FixtureValidationError(f"{step_id}.{field} must not be blank")
+
+        boundary = AUDITED_TIMELINE_TIME_BOUNDARIES.get(timeline["source_axis_id"])
+        if (
+            boundary
+            and "step_assertions" not in boundary
+            and source_step_no in boundary["not_stated_source_steps"]
+            and step["time_state"] != "NOT_STATED"
+        ):
+            raise FixtureValidationError(f"{step_id} strengthens an unstated source time")
+        steps_by_timeline[step["timeline_id"]].append(step)
+
+    for timeline_id, timeline_steps in steps_by_timeline.items():
+        ordered_steps = sorted(timeline_steps, key=lambda step: int(step["sequence_no"]))
+        sequence = [int(step["sequence_no"]) for step in ordered_steps]
+        if sequence != list(range(1, len(timeline_steps) + 1)):
+            raise FixtureValidationError(f"{timeline_id} sequence_no must be contiguous from 1")
+        if not timeline_steps:
+            raise FixtureValidationError(f"{timeline_id} STRUCTURED timeline has no steps")
+        source_sequence = [int(step["source_step_no"]) for step in ordered_steps]
+        if (
+            source_sequence != sorted(source_sequence)
+            or set(source_sequence) != set(range(1, max(source_sequence, default=0) + 1))
+        ):
+            raise FixtureValidationError(
+                f"{timeline_id} source_step_no groups must be ordered and contiguous"
+            )
+
+        timeline = timeline_by_id[timeline_id]
+        boundary = AUDITED_TIMELINE_TIME_BOUNDARIES.get(timeline["source_axis_id"])
+        boundary_violation = False
+        if boundary and "step_assertions" in boundary:
+            assertions = boundary["step_assertions"]
+            fields = assertions["fields"]
+            expected_rows = assertions["rows"]
+            actual_rows = {step["timeline_step_id"]: step for step in ordered_steps}
+            boundary_violation = (
+                set(actual_rows) != set(expected_rows)
+                or any(
+                    actual_rows[step_id]["sequence_no"] != str(index)
+                    for index, step_id in enumerate(expected_rows, start=1)
+                    if step_id in actual_rows
+                )
+                or any(
+                    tuple(actual_rows[step_id][field] for field in fields) != expected
+                    for step_id, expected in expected_rows.items()
+                    if step_id in actual_rows
+                )
+            )
+        elif boundary:
+            boundary_violation = (
+                set(source_sequence) != boundary["source_step_numbers"]
+                or any(
+                    step["source_locator"]
+                    != f"{boundary['source_locator_prefix']}{step['source_step_no']}"
+                    for step in ordered_steps
+                )
+                or any(
+                    step["criticality"] != boundary["criticality"]
+                    for step in ordered_steps
+                )
+            )
+        if boundary_violation:
+            raise FixtureValidationError(
+                f"{timeline['source_axis_id']} steps violate the audited source boundary"
+            )
+
+    return timelines, steps
+
+
+def load_pve_closure(
+    research_core: Path,
+    *,
+    include_gacha: bool = True,
+) -> FixtureClosure:
+    """Load the typed strategy projection from canonical files 18/24/25/26/27/39.
+
+    Every guide and team is retained.  A guide's declared ``team_count`` is
+    checked against the canonical effective-team predicate, so PROVISIONAL or
+    otherwise non-effective rows remain inspectable without being counted as
+    verified clears.
+    """
+
+    root = research_core.resolve()
+    missing_files = [relative for relative in SOURCE_FILES if not (root / relative).is_file()]
+    if missing_files:
+        raise FixtureValidationError(f"research core is missing files: {missing_files}")
+
+    source_contents = _capture_source_files(root)
+    fingerprint, file_hashes = _file_fingerprint(source_contents)
+    characters_all = _read_csv(
+        CHARACTERS_FILE, source_contents[CHARACTERS_FILE], "unit_key"
+    )
+    guides_all = _read_csv(
+        PVE_GUIDES_FILE, source_contents[PVE_GUIDES_FILE], "guide_id"
+    )
+    teams_all = _read_csv(
+        PVE_TEAMS_FILE, source_contents[PVE_TEAMS_FILE], "team_id"
+    )
+    timelines_all = _read_csv(
+        PVE_TIMELINES_FILE,
+        source_contents[PVE_TIMELINES_FILE],
+        "source_axis_id",
+    )
+    timeline_steps_all = _read_csv(
+        PVE_TIMELINE_STEPS_FILE,
+        source_contents[PVE_TIMELINE_STEPS_FILE],
+        "timeline_step_id",
+    )
+    arena_rows_all = _read_csv(
+        ARENA_COUNTERS_FILE,
+        source_contents[ARENA_COUNTERS_FILE],
+        "counter_id",
+    )
+    gacha_events_all = _read_csv(
+        GACHA_TIMELINE_FILE,
+        source_contents[GACHA_TIMELINE_FILE],
+        "event_id",
+    )
+    gacha_community_sources_all = _read_csv(
+        GACHA_COMMUNITY_FILE,
+        source_contents[GACHA_COMMUNITY_FILE],
+        "source_id",
+    )
+    evidence_all = _read_csv(
+        EVIDENCE_FILE, source_contents[EVIDENCE_FILE], "evidence_id"
+    )
+    claims_all = _read_csv(
+        CLAIMS_FILE, source_contents[CLAIMS_FILE], "claim_id"
+    )
+    try:
+        stats = json.loads(source_contents[STATS_FILE].decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise FixtureValidationError(f"{STATS_FILE} must be valid UTF-8 JSON") from exc
+
+    characters = tuple(sorted(characters_all, key=lambda row: row["unit_key"]))
+    guides = tuple(sorted(guides_all, key=lambda row: row["guide_id"]))
+    teams = tuple(sorted(teams_all, key=lambda row: row["team_id"]))
+    characters_by_id = {row["unit_key"]: row for row in characters}
+    guides_by_id = {row["guide_id"]: row for row in guides_all}
+    evidence_by_id = {row["evidence_id"]: row for row in evidence_all}
+    claims_by_id = {row["claim_id"]: row for row in claims_all}
+    for character in characters:
+        if character["availability_status"] == "AVAILABLE":
+            _validate_available_character_source(
+                character,
+                evidence_by_id=evidence_by_id,
+            )
+    dangling_declared_claims = sorted(
+        {
+            evidence["claim_id"].strip()
+            for evidence in evidence_all
+            if evidence["claim_id"].strip()
+            and evidence["claim_id"].strip() not in claims_by_id
+        }
+    )
+    if dangling_declared_claims:
+        raise FixtureValidationError(
+            "selected evidence references missing claims: "
+            f"{dangling_declared_claims}"
+        )
+    active_claim_ids = {
+        claim_id
+        for claim_id, claim in claims_by_id.items()
+        if claim["status"] == "ACTIVE"
+    }
+
+    def evidence_has_active_claim(evidence_id: str) -> bool:
+        evidence = evidence_by_id[evidence_id]
+        declared_claim_id = evidence["claim_id"].strip()
+        return (
+            evidence["status"] == "ACTIVE"
+            and bool(declared_claim_id)
+            and declared_claim_id in active_claim_ids
+        )
+
+    (
+        arena_rows,
+        arena_evidence_ids_by_counter,
+        arena_claim_ids_by_counter,
+    ) = _validate_arena_rows(
+        arena_rows_all,
+        characters_by_id=characters_by_id,
+        evidence_by_id=evidence_by_id,
+        claims_by_id=claims_by_id,
+    )
+    if include_gacha:
+        (
+            gacha_events,
+            gacha_community_sources,
+            gacha_evidence_ids_by_event,
+            gacha_claim_ids_by_event,
+            gacha_community_source_ids_by_event,
+        ) = _validate_gacha_closure(
+            gacha_events_all,
+            gacha_community_sources_all,
+            evidence_by_id=evidence_by_id,
+            claims_by_id=claims_by_id,
+        )
+    else:
+        # Immutable v2/v3 checkpoints never materialized 41/45.  Their raw
+        # files remain part of the artifact fingerprint, but current Gacha
+        # serving rules must not rewrite or reject the historical projection.
+        gacha_events = ()
+        gacha_community_sources = ()
+        gacha_evidence_ids_by_event = {}
+        gacha_claim_ids_by_event = {}
+        gacha_community_source_ids_by_event = {}
+
+    unknown_team_guides = sorted(
+        {team["guide_id"] for team in teams} - guides_by_id.keys()
+    )
+    if unknown_team_guides:
+        raise FixtureValidationError(
+            f"team guide_id references missing guides: {unknown_team_guides}"
+        )
+
+    available_unit_keys = {
+        unit_key
+        for unit_key, character in characters_by_id.items()
+        if character["availability_status"] == "AVAILABLE"
+    }
+    team_evidence_ids: dict[str, tuple[str, ...]] = {}
+    requirements_by_team: dict[str, dict[str, Any]] = {}
+    effective_signatures_by_guide: dict[str, set[tuple[str, ...]]] = {
+        guide["guide_id"]: set() for guide in guides
+    }
+    seen_stage_signatures: set[tuple[str, tuple[str, ...]]] = set()
+    for team in teams:
+        guide = guides_by_id[team["guide_id"]]
+        # R3i rows use the legacy display label (for example ``紅焰8-10``),
+        # while A4 rows use the normalized guide stage (``8-10``).  Both are
+        # exact representations of the same guide relation; arbitrary labels
+        # remain fail-closed.
+        accepted_stage_labels = {
+            guide["stage"],
+            f"{guide['area']}{guide['stage']}",
+        }
+        if (
+            team["server"] != guide["server"]
+            or team["stage"] not in accepted_stage_labels
+        ):
+            raise FixtureValidationError(
+                f"{team['team_id']} server/stage differs from its guide relation"
+            )
+        if team["clear_status"] not in PVE_CLEAR_STATUSES:
+            raise FixtureValidationError(
+                f"{team['team_id']} clear_status is invalid"
+            )
+        if team["tw_availability_check"] not in PVE_TW_CHECKS:
+            raise FixtureValidationError(
+                f"{team['team_id']} tw_availability_check is invalid"
+            )
+        if team["operation_mode"] not in PVE_OPERATION_MODES:
+            raise FixtureValidationError(
+                f"{team['team_id']} operation_mode is invalid"
+            )
+        members = tuple(team[f"slot{slot}"] for slot in range(1, 6))
+        if any(not member for member in members) or len(set(members)) != 5:
+            raise FixtureValidationError(f"{team['team_id']} must contain five distinct units")
+        _require_ids(members, characters_by_id, relation=f"{team['team_id']} slots")
+        signature = tuple(sorted(members))
+        stage_signature = (team["guide_id"], signature)
+        if stage_signature in seen_stage_signatures:
+            raise FixtureValidationError(
+                f"duplicate stage five-unit signature at {team['team_id']}"
+            )
+        seen_stage_signatures.add(stage_signature)
+        requirements_by_team[team["team_id"]] = _validate_requirements(team)
+        _borrowed_states(team, requirements_by_team[team["team_id"]])
+        evidence_ids = _split_ids(team["evidence_ids"])
+        _require_ids(
+            evidence_ids,
+            evidence_by_id,
+            relation=f"{team['team_id']} evidence_ids",
+        )
+        team_evidence_ids[team["team_id"]] = evidence_ids
+        _parse_date(
+            team["verified_date"],
+            field=f"{team['team_id']}.verified_date",
+            required=True,
+        )
+        unavailable_members = sorted(set(members) - available_unit_keys)
+        if team["tw_availability_check"] == "PASS" and unavailable_members:
+            raise FixtureValidationError(
+                f"{team['team_id']} PASS units are not TW AVAILABLE: "
+                f"{unavailable_members}"
+            )
+        if (
+            team["clear_status"] == "VERIFIED"
+            and team["tw_availability_check"] == "PASS"
+            and evidence_ids
+            and all(evidence_has_active_claim(evidence_id) for evidence_id in evidence_ids)
+        ):
+            effective_signatures_by_guide[team["guide_id"]].add(signature)
+
+    stage_evidence_ids_by_guide: dict[str, tuple[str, ...]] = {}
+    stage_claim_ids_by_guide: dict[str, tuple[str, ...]] = {}
+    for guide in guides:
+        raw_team_count = guide["team_count"]
+        if (
+            not raw_team_count.isdigit()
+            or (len(raw_team_count) > 1 and raw_team_count.startswith("0"))
+        ):
+            raise FixtureValidationError(
+                f"{guide['guide_id']} team_count must be a canonical non-negative integer"
+            )
+        declared_team_count = int(raw_team_count)
+        effective_team_count = len(effective_signatures_by_guide[guide["guide_id"]])
+        if declared_team_count != effective_team_count:
+            raise FixtureValidationError(
+                f"{guide['guide_id']} team_count differs from the verified distinct "
+                "five-unit team count"
+            )
+        evidence_ids = _split_ids(guide["evidence_ids"])
+        claim_ids = _split_ids(guide["claim_ids"])
+        _require_ids(
+            evidence_ids,
+            evidence_by_id,
+            relation=f"{guide['guide_id']} evidence_ids",
+        )
+        _require_ids(
+            claim_ids,
+            claims_by_id,
+            relation=f"{guide['guide_id']} claim_ids",
+        )
+        if guide["status"] == "VERIFIED" and (
+            not evidence_ids
+            or not claim_ids
+            or any(not evidence_has_active_claim(evidence_id) for evidence_id in evidence_ids)
+            or any(claim_id not in active_claim_ids for claim_id in claim_ids)
+        ):
+            raise FixtureValidationError(
+                f"{guide['guide_id']} VERIFIED closure contains non-ACTIVE Evidence/Claim"
+            )
+        stage_evidence_ids_by_guide[guide["guide_id"]] = evidence_ids
+        stage_claim_ids_by_guide[guide["guide_id"]] = claim_ids
+
+    selected_evidence: set[str] = set()
+    for ids in stage_evidence_ids_by_guide.values():
+        selected_evidence.update(ids)
+    for ids in team_evidence_ids.values():
+        selected_evidence.update(ids)
+    for ids in arena_evidence_ids_by_counter.values():
+        selected_evidence.update(ids)
+    for ids in gacha_evidence_ids_by_event.values():
+        selected_evidence.update(ids)
+    for character in characters:
+        ids = _split_ids(character["source_evidence_ids"])
+        _require_ids(ids, evidence_by_id, relation=f"{character['unit_key']} source_evidence_ids")
+        selected_evidence.update(ids)
+
+    selected_claims: set[str] = set()
+    for ids in stage_claim_ids_by_guide.values():
+        selected_claims.update(ids)
+    for ids in arena_claim_ids_by_counter.values():
+        selected_claims.update(ids)
+    for ids in gacha_claim_ids_by_event.values():
+        selected_claims.update(ids)
+    dangling_claims: set[str] = set()
+    changed = True
+    while changed:
+        changed = False
+        for evidence_id in sorted(selected_evidence):
+            declared_claim_id = evidence_by_id[evidence_id]["claim_id"].strip()
+            if not declared_claim_id:
+                continue
+            if declared_claim_id in claims_by_id:
+                if declared_claim_id not in selected_claims:
+                    selected_claims.add(declared_claim_id)
+                    changed = True
+            else:
+                dangling_claims.add(declared_claim_id)
+        for claim_id in sorted(selected_claims):
+            for evidence_id in _split_ids(claims_by_id[claim_id]["evidence_ids"]):
+                if evidence_id not in evidence_by_id:
+                    raise FixtureValidationError(
+                        f"claim {claim_id} references missing evidence {evidence_id}"
+                    )
+                if evidence_id not in selected_evidence:
+                    selected_evidence.add(evidence_id)
+                    changed = True
+
+    if dangling_claims:
+        raise FixtureValidationError(
+            "selected evidence references missing claims: "
+            f"{sorted(dangling_claims)}"
+        )
+
+    evidence = tuple(evidence_by_id[key] for key in sorted(selected_evidence))
+    for row in evidence:
+        if row["source_tier"] not in ARENA_SOURCE_TIERS:
+            raise FixtureValidationError(
+                f"{row['evidence_id']} source_tier is not canonical"
+            )
+        _validate_evidence_url(row)
+
+    timelines, timeline_steps = _validate_timeline_closure(
+        teams=teams,
+        requirements_by_team=requirements_by_team,
+        evidence_by_id=evidence_by_id,
+        team_evidence_ids=team_evidence_ids,
+        timelines_all=timelines_all,
+        steps_all=timeline_steps_all,
+    )
+
+    return FixtureClosure(
+        fingerprint=fingerprint,
+        guides=guides,
+        teams=teams,
+        characters=characters,
+        evidence=evidence,
+        claims=tuple(claims_by_id[key] for key in sorted(selected_claims)),
+        timelines=timelines,
+        timeline_steps=timeline_steps,
+        arena_rows=arena_rows,
+        arena_evidence_ids_by_counter=arena_evidence_ids_by_counter,
+        arena_claim_ids_by_counter=arena_claim_ids_by_counter,
+        gacha_events=gacha_events,
+        gacha_community_sources=gacha_community_sources,
+        gacha_evidence_ids_by_event=gacha_evidence_ids_by_event,
+        gacha_claim_ids_by_event=gacha_claim_ids_by_event,
+        gacha_community_source_ids_by_event=gacha_community_source_ids_by_event,
+        stage_evidence_ids_by_guide=stage_evidence_ids_by_guide,
+        stage_claim_ids_by_guide=stage_claim_ids_by_guide,
+        team_evidence_ids=team_evidence_ids,
+        dangling_claim_ids=tuple(sorted(dangling_claims)),
+        stats=stats,
+        file_hashes=file_hashes,
+    )
+
+
+def _legacy_fire_projection(closure: FixtureClosure) -> FixtureClosure:
+    """Rebuild the immutable B1 Fire 8-10 typed projection from a full closure."""
+
+    guide = closure.guide
+    teams = tuple(
+        team for team in closure.teams if team["guide_id"] == TARGET_GUIDE_ID
+    )
+    team_ids = {team["team_id"] for team in teams}
+    unit_keys = {
+        team[f"slot{slot}"] for team in teams for slot in range(1, 6)
+    }
+    characters = tuple(
+        character
+        for character in closure.characters
+        if character["unit_key"] in unit_keys
+    )
+    team_evidence_ids = {
+        team_id: closure.team_evidence_ids[team_id] for team_id in sorted(team_ids)
+    }
+
+    evidence_by_id = {row["evidence_id"]: row for row in closure.evidence}
+    claims_by_id = {row["claim_id"]: row for row in closure.claims}
+    selected_evidence = set(closure.stage_evidence_ids)
+    for evidence_ids in team_evidence_ids.values():
+        selected_evidence.update(evidence_ids)
+    for character in characters:
+        selected_evidence.update(_split_ids(character["source_evidence_ids"]))
+    selected_claims = set(closure.stage_claim_ids)
+
+    changed = True
+    while changed:
+        changed = False
+        for evidence_id in sorted(selected_evidence):
+            evidence = evidence_by_id.get(evidence_id)
+            if evidence is None:
+                raise FixtureValidationError(
+                    f"legacy Fire projection is missing evidence {evidence_id}"
+                )
+            declared_claim_id = evidence["claim_id"].strip()
+            if declared_claim_id and declared_claim_id not in selected_claims:
+                if declared_claim_id not in claims_by_id:
+                    raise FixtureValidationError(
+                        f"legacy Fire projection is missing claim {declared_claim_id}"
+                    )
+                selected_claims.add(declared_claim_id)
+                changed = True
+        for claim_id in sorted(selected_claims):
+            claim = claims_by_id.get(claim_id)
+            if claim is None:
+                raise FixtureValidationError(
+                    f"legacy Fire projection is missing claim {claim_id}"
+                )
+            for evidence_id in _split_ids(claim["evidence_ids"]):
+                if evidence_id not in selected_evidence:
+                    if evidence_id not in evidence_by_id:
+                        raise FixtureValidationError(
+                            f"legacy Fire projection is missing evidence {evidence_id}"
+                        )
+                    selected_evidence.add(evidence_id)
+                    changed = True
+
+    timelines = tuple(
+        timeline for timeline in closure.timelines if timeline["team_id"] in team_ids
+    )
+    structured_timeline_ids = {
+        timeline["timeline_id"]
+        for timeline in timelines
+        if timeline["status"] == "STRUCTURED"
+    }
+    timeline_steps = tuple(
+        step
+        for step in closure.timeline_steps
+        if step["timeline_id"] in structured_timeline_ids
+    )
+    return FixtureClosure(
+        fingerprint=closure.fingerprint,
+        guides=(guide,),
+        teams=teams,
+        characters=characters,
+        evidence=tuple(evidence_by_id[key] for key in sorted(selected_evidence)),
+        claims=tuple(claims_by_id[key] for key in sorted(selected_claims)),
+        timelines=timelines,
+        timeline_steps=timeline_steps,
+        arena_rows=(),
+        arena_evidence_ids_by_counter={},
+        arena_claim_ids_by_counter={},
+        gacha_events=(),
+        gacha_community_sources=(),
+        gacha_evidence_ids_by_event={},
+        gacha_claim_ids_by_event={},
+        gacha_community_source_ids_by_event={},
+        stage_evidence_ids_by_guide={
+            TARGET_GUIDE_ID: closure.stage_evidence_ids
+        },
+        stage_claim_ids_by_guide={TARGET_GUIDE_ID: closure.stage_claim_ids},
+        team_evidence_ids=team_evidence_ids,
+        dangling_claim_ids=(),
+        stats=closure.stats,
+        file_hashes=closure.file_hashes,
+    )
+
+
+def _pve_only_projection(closure: FixtureClosure) -> FixtureClosure:
+    """Return the immutable pre-Arena v2 typed closure."""
+
+    evidence_by_id = {row["evidence_id"]: row for row in closure.evidence}
+    claims_by_id = {row["claim_id"]: row for row in closure.claims}
+    selected_evidence = {
+        evidence_id
+        for evidence_ids in closure.stage_evidence_ids_by_guide.values()
+        for evidence_id in evidence_ids
+    }
+    selected_evidence.update(
+        evidence_id
+        for evidence_ids in closure.team_evidence_ids.values()
+        for evidence_id in evidence_ids
+    )
+    for character in closure.characters:
+        selected_evidence.update(_split_ids(character["source_evidence_ids"]))
+    selected_claims = {
+        claim_id
+        for claim_ids in closure.stage_claim_ids_by_guide.values()
+        for claim_id in claim_ids
+    }
+    changed = True
+    while changed:
+        changed = False
+        for evidence_id in sorted(selected_evidence):
+            claim_id = evidence_by_id[evidence_id]["claim_id"].strip()
+            if claim_id and claim_id not in selected_claims:
+                selected_claims.add(claim_id)
+                changed = True
+        for claim_id in sorted(selected_claims):
+            for evidence_id in _split_ids(claims_by_id[claim_id]["evidence_ids"]):
+                if evidence_id not in selected_evidence:
+                    selected_evidence.add(evidence_id)
+                    changed = True
+    return replace(
+        closure,
+        evidence=tuple(evidence_by_id[key] for key in sorted(selected_evidence)),
+        claims=tuple(claims_by_id[key] for key in sorted(selected_claims)),
+        arena_rows=(),
+        arena_evidence_ids_by_counter={},
+        arena_claim_ids_by_counter={},
+        gacha_events=(),
+        gacha_community_sources=(),
+        gacha_evidence_ids_by_event={},
+        gacha_claim_ids_by_event={},
+        gacha_community_source_ids_by_event={},
+    )
+
+
+def _strategy_without_gacha_projection(closure: FixtureClosure) -> FixtureClosure:
+    """Return the immutable Arena-era v3 typed closure."""
+
+    gacha_evidence_ids = {
+        evidence_id
+        for ids in closure.gacha_evidence_ids_by_event.values()
+        for evidence_id in ids
+    }
+    gacha_claim_ids = {
+        claim_id
+        for ids in closure.gacha_claim_ids_by_event.values()
+        for claim_id in ids
+    }
+    evidence = tuple(
+        row for row in closure.evidence if row["evidence_id"] not in gacha_evidence_ids
+    )
+    claims = tuple(
+        row for row in closure.claims if row["claim_id"] not in gacha_claim_ids
+    )
+    return replace(
+        closure,
+        evidence=evidence,
+        claims=claims,
+        gacha_events=(),
+        gacha_community_sources=(),
+        gacha_evidence_ids_by_event={},
+        gacha_claim_ids_by_event={},
+        gacha_community_source_ids_by_event={},
+    )
+
+
+def load_fire_8_10_closure(research_core: Path) -> FixtureClosure:
+    """Compatibility wrapper; the returned closure now contains all PVE rows."""
+
+    return load_pve_closure(research_core)
+
+
+def _upsert(session: Session, model: type[Any], key: Any, values: dict[str, Any]) -> None:
+    row = session.get(model, key)
+    if row is None:
+        session.add(model(**values))
+        return
+    for name, value in values.items():
+        setattr(row, name, value)
+
+
+def _arena_defense_id(row: dict[str, str]) -> str:
+    signature = arena_formation_signature(_split_ids(row["enemy_team_ids"]))
+    identity = json.dumps(
+        [row["server"], row["environment_version"], signature],
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+    return f"AD-{hashlib.sha256(identity.encode('utf-8')).hexdigest()}"
+
+
+def _arena_defense_specs(
+    arena_rows: tuple[dict[str, str], ...],
+) -> tuple[dict[str, Any], ...]:
+    grouped: dict[str, list[dict[str, str]]] = {}
+    for row in arena_rows:
+        grouped.setdefault(_arena_defense_id(row), []).append(row)
+
+    specs: list[dict[str, Any]] = []
+    for defense_id in sorted(grouped):
+        rows = sorted(grouped[defense_id], key=lambda item: item["counter_id"])
+        first = rows[0]
+        statuses = {row["status"] for row in rows}
+        if statuses == {"VERIFIED"}:
+            defense_status = "VERIFIED"
+        elif "SINGLE_REPORT" in statuses:
+            defense_status = "SINGLE_REPORT"
+        elif statuses == {"STALE"}:
+            defense_status = "STALE"
+        elif statuses == {"REJECTED"}:
+            defense_status = "REJECTED"
+        else:
+            defense_status = "PROVISIONAL"
+        verified_dates = [
+            _parse_date(
+                row["verified_date"],
+                field=f"{row['counter_id']}.verified_date",
+                required=True,
+            )
+            for row in rows
+        ]
+        if any(value is None for value in verified_dates):  # pragma: no cover
+            raise FixtureValidationError(f"{defense_id} has no verified date")
+        members = _split_ids(first["enemy_team_ids"])
+        specs.append(
+            {
+                "defense_id": defense_id,
+                "server": first["server"],
+                "formation_signature": arena_formation_signature(members),
+                "environment_version": first["environment_version"],
+                "arena_bracket": first["arena_bracket"],
+                "core_tags": [],
+                "status": defense_status,
+                "review_status": (
+                    "STALE" if defense_status == "STALE" else "CURRENT"
+                ),
+                "verified_date": max(
+                    value for value in verified_dates if value is not None
+                ),
+                "notes": (
+                    "Derived only from exact source rows in "
+                    f"{ARENA_COUNTERS_FILE}; no unstated bracket or roster facts added."
+                ),
+                "source_payload": {
+                    "registry": ARENA_COUNTERS_FILE,
+                    "counter_ids": [row["counter_id"] for row in rows],
+                    "enemy_team_ids": list(members),
+                },
+                "members": members,
+            }
+        )
+    return tuple(specs)
+
+
+def _arena_counter_values(
+    row: dict[str, str],
+    *,
+    import_run_id: str,
+) -> dict[str, Any]:
+    counter_id = row["counter_id"]
+    return {
+        "counter_id": counter_id,
+        "defense_id": _arena_defense_id(row),
+        "formation_signature": arena_formation_signature(
+            _split_ids(row["counter_team_ids"])
+        ),
+        "status": row["status"],
+        "match_type": row["match_type"],
+        "outcome": row["outcome"],
+        "verification": row["verification"],
+        "sample_size": _parse_arena_uint(
+            row["sample_size"], field=f"{counter_id}.sample_size", positive=True
+        ),
+        "wins": _parse_arena_uint(row["wins"], field=f"{counter_id}.wins"),
+        "losses": _parse_arena_uint(row["losses"], field=f"{counter_id}.losses"),
+        "empirical_win_rate": _parse_arena_uint(
+            row["empirical_win_rate"],
+            field=f"{counter_id}.empirical_win_rate",
+        ),
+        "randomness": row["randomness"],
+        "rng_risk": row["rng_risk"],
+        "claim_confidence": row["claim_confidence"],
+        "reproducibility": row["reproducibility"],
+        "source_tier": row["source_tier"],
+        "source_record_count": _parse_arena_uint(
+            row["source_record_count"],
+            field=f"{counter_id}.source_record_count",
+            required=True,
+            positive=True,
+        ),
+        "source_platforms": list(_split_ids(row["source_platforms"])),
+        "tw_availability_check": row["tw_availability_check"],
+        "unavailable_unit_ids": list(_split_ids(row["unavailable_unit_ids"])),
+        "required_upgrade_check": row["required_upgrade_check"],
+        "operation_mode": row["operation_mode"],
+        "environment_match": row["environment_match"],
+        "speed_conditions": row["speed_conditions"],
+        "initial_action_notes": row["initial_action_notes"],
+        "verified_date": _parse_date(
+            row["verified_date"],
+            field=f"{counter_id}.verified_date",
+            required=True,
+        ),
+        "last_review_due": _parse_date(
+            row["last_review_due"],
+            field=f"{counter_id}.last_review_due",
+            required=True,
+        ),
+        "record_date_min": _parse_date(
+            row["record_date_min"],
+            field=f"{counter_id}.record_date_min",
+            required=True,
+        ),
+        "record_date_max": _parse_date(
+            row["record_date_max"],
+            field=f"{counter_id}.record_date_max",
+            required=True,
+        ),
+        "notes": row["notes"],
+        "source_payload": row,
+        "import_run_id": import_run_id,
+    }
+
+
+def _gacha_event_values(
+    row: dict[str, str],
+    *,
+    import_run_id: str,
+) -> dict[str, Any]:
+    event_id = row["event_id"]
+    return {
+        "event_id": event_id,
+        "source_server": "JP",
+        "target_server": "TW",
+        "jp_date": _parse_date(row["jp_date"], field=f"{event_id}.jp_date", required=True),
+        "model_estimate_start": _parse_date(row["model_estimate_start"], field=f"{event_id}.model_estimate_start", required=True),
+        "model_estimate_end": _parse_date(row["model_estimate_end"], field=f"{event_id}.model_estimate_end", required=True),
+        "tw_estimate_start": _parse_date(row["tw_estimate_start"], field=f"{event_id}.tw_estimate_start", required=True),
+        "tw_estimate_end": _parse_date(row["tw_estimate_end"], field=f"{event_id}.tw_estimate_end", required=True),
+        "forecast_method": row["forecast_method"],
+        "confidence": row["confidence"],
+        "character_name_jp": row["character_name_jp"],
+        "tw_name": _gacha_tw_name(row["tw_temp_name"]),
+        "pool_type": row["pool_type"],
+        "limited_status": _gacha_limited_status(row["limited"], event_id=event_id),
+        "limited_claim_id": row["limited_claim_id"].strip() or None,
+        "arena_value": row["arena_value"],
+        "p_arena_value": row["p_arena_value"],
+        "pve_value": row["pve_value"],
+        "clan_value": row["clan_value"],
+        "future_upgrade": row["future_upgrade"],
+        "relative_priority": row["relative_priority"],
+        "anchor_track": row["anchor_track"],
+        "anchor_count": _parse_int(row["anchor_count"], field=f"{event_id}.anchor_count", positive=True),
+        "forecast_basis": row["forecast_basis"],
+        "last_verified": _parse_date(row["last_verified"], field=f"{event_id}.last_verified", required=True),
+        "status": row["status"],
+        "maturity": row["maturity"],
+        "last_review_due": _parse_date(row["last_review_due"], field=f"{event_id}.last_review_due", required=True),
+        "community_estimate_start": _parse_date(row["community_estimate_start"], field=f"{event_id}.community_estimate_start"),
+        "community_estimate_end": _parse_date(row["community_estimate_end"], field=f"{event_id}.community_estimate_end"),
+        "community_order_consensus": row["community_order_consensus"],
+        "community_source_count": _gacha_community_count(row["community_source_count"], event_id=event_id),
+        "community_last_checked": _parse_date(row["community_last_checked"], field=f"{event_id}.community_last_checked"),
+        "community_disagreement": row["community_disagreement"],
+        "forecast_notes": row["forecast_notes"],
+        "source_payload": row,
+        "import_run_id": import_run_id,
+    }
+
+
+def _gacha_community_source_values(
+    row: dict[str, str],
+    *,
+    import_run_id: str,
+) -> dict[str, Any]:
+    source_id = row["source_id"]
+    return {
+        "source_id": source_id,
+        "title": row["title"],
+        "platform": row["platform"],
+        "author": row["author"],
+        "source_type": row["source_type"],
+        "url": row["url"],
+        "last_seen_update": _parse_date(row["last_seen_update"], field=f"{source_id}.last_seen_update"),
+        "coverage_start": row["coverage_start"].strip() or None,
+        "coverage_end": row["coverage_end"].strip() or None,
+        "update_status": row["update_status"],
+        "confidence_cap": row["confidence_cap"],
+        "usage": row["usage"],
+        "last_checked": _parse_date(row["last_checked"], field=f"{source_id}.last_checked", required=True),
+        "notes": row["notes"],
+        "source_payload": row,
+        "import_run_id": import_run_id,
+    }
+
+
+def _timeline_values(row: dict[str, str], *, import_run_id: str) -> dict[str, Any]:
+    axis_id = row["source_axis_id"]
+    return {
+        "source_axis_id": axis_id,
+        "timeline_id": None if row["timeline_id"] == "UNKNOWN" else row["timeline_id"],
+        "team_id": row["team_id"],
+        "source_id": row["source_id"],
+        "source_evidence_id": row["source_evidence_id"],
+        "source_locator": row["source_locator"],
+        "timeline_variant_name": row["timeline_variant_name"],
+        "operation_mode": row["operation_mode"],
+        "clock_mode": row["clock_mode"],
+        "battle_duration_ms": _parse_int(
+            row["battle_duration_ms"],
+            field=f"{axis_id}.battle_duration_ms",
+            allow_unknown=True,
+            positive=True,
+        ),
+        "initial_auto_state": row["initial_auto_state"],
+        "status": row["status"],
+        "reproducibility": row["reproducibility"],
+        "gap_reason": row["gap_reason"],
+        "last_verified_at": _parse_date(
+            row["last_verified_at"],
+            field=f"{axis_id}.last_verified_at",
+            required=True,
+        ),
+        "notes": row["notes"],
+        "source_payload": row,
+        "import_run_id": import_run_id,
+    }
+
+
+def _timeline_step_values(
+    row: dict[str, str],
+    *,
+    team_id: str,
+    import_run_id: str,
+) -> dict[str, Any]:
+    step_id = row["timeline_step_id"]
+    return {
+        "timeline_step_id": step_id,
+        "timeline_id": row["timeline_id"],
+        "team_id": team_id,
+        "sequence_no": _parse_int(
+            row["sequence_no"], field=f"{step_id}.sequence_no", positive=True
+        ),
+        "source_step_no": _parse_int(
+            row["source_step_no"], field=f"{step_id}.source_step_no", positive=True
+        ),
+        "trigger_type": row["trigger_type"],
+        "trigger_actor_unit_key": _unit_or_none(row["trigger_actor_unit_key"]),
+        "time_state": row["time_state"],
+        "clock_from_ms": _parse_int(
+            row["clock_from_ms"],
+            field=f"{step_id}.clock_from_ms",
+            allow_unknown=True,
+        ),
+        "clock_to_ms": _parse_int(
+            row["clock_to_ms"],
+            field=f"{step_id}.clock_to_ms",
+            allow_unknown=True,
+        ),
+        "actor_unit_key": _unit_or_none(row["actor_unit_key"]),
+        "action_type": row["action_type"],
+        "target_unit_key": _unit_or_none(row["target_unit_key"]),
+        "auto_state_after": row["auto_state_after"],
+        "animation_cue": row["animation_cue"],
+        "hp_threshold": row["hp_threshold"],
+        "tolerance_ms": _parse_int(
+            row["tolerance_ms"],
+            field=f"{step_id}.tolerance_ms",
+            allow_unknown=True,
+        ),
+        "criticality": row["criticality"],
+        "instruction_zh_tw": row["instruction_zh_tw"],
+        "failure_if_missed": row["failure_if_missed"],
+        "source_locator": row["source_locator"],
+        "source_payload": row,
+        "import_run_id": import_run_id,
+    }
+
+
+def _counts(closure: FixtureClosure, *, projection: str) -> dict[str, int]:
+    counts = {
+        "stages": len(closure.guides),
+        "teams": len(closure.teams),
+        "team_members": len(closure.teams) * 5,
+        "characters": len(closure.characters),
+        "evidence": len(closure.evidence),
+        "claims": len(closure.claims),
+        "operation_timelines": len(closure.timelines),
+        "timeline_steps": len(closure.timeline_steps),
+    }
+    if projection in {FULL_STRATEGY_PROJECTION, FULL_PLATFORM_PROJECTION}:
+        defense_count = len(_arena_defense_specs(closure.arena_rows))
+        counts.update(
+            {
+                "arena_defenses": defense_count,
+                "arena_defense_members": defense_count * 5,
+                "arena_counters": len(closure.arena_rows),
+                "arena_counter_members": len(closure.arena_rows) * 5,
+                "arena_counter_evidence": sum(
+                    len(ids)
+                    for ids in closure.arena_evidence_ids_by_counter.values()
+                ),
+                "arena_counter_claims": sum(
+                    len(ids)
+                    for ids in closure.arena_claim_ids_by_counter.values()
+                ),
+            }
+        )
+    if projection == FULL_PLATFORM_PROJECTION:
+        counts.update(
+            {
+                "gacha_timeline_events": len(closure.gacha_events),
+                "gacha_timeline_evidence": sum(
+                    len(ids) for ids in closure.gacha_evidence_ids_by_event.values()
+                ),
+                "gacha_timeline_claims": sum(
+                    len(ids) for ids in closure.gacha_claim_ids_by_event.values()
+                ),
+                "gacha_community_sources": len(closure.gacha_community_sources),
+                "gacha_timeline_community_sources": sum(
+                    len(ids)
+                    for ids in closure.gacha_community_source_ids_by_event.values()
+                ),
+            }
+        )
+    return counts
+
+
+def _materialization_expectation(
+    projection: str,
+    *,
+    persisted: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
+    if persisted is not None:
+        return persisted
+    if projection in {FULL_PVE_PROJECTION, LEGACY_FIRE_PROJECTION}:
+        return {
+            "schema_version": LEGACY_MATERIALIZATION_MANIFEST_VERSION,
+            "tables": {model.__tablename__: {} for model in LEGACY_SERVING_MODELS},
+        }
+    if projection == FULL_STRATEGY_PROJECTION:
+        return {
+            "schema_version": ARENA_MATERIALIZATION_MANIFEST_VERSION,
+            "tables": {
+                model.__tablename__: {}
+                for model in ARENA_MATERIALIZATION_SERVING_MODELS
+            },
+        }
+    if projection == FULL_PLATFORM_PROJECTION:
+        return None
+    raise MirrorDriftError(f"unsupported typed projection: {projection}")
+
+
+def _assert_materialized(
+    session: Session,
+    closure: FixtureClosure,
+    *,
+    borrowed_state_semantics: str,
+) -> None:
+    guides_by_id = {row["guide_id"]: row for row in closure.guides}
+    requirements_by_team = {
+        row["team_id"]: _validate_requirements(row) for row in closure.teams
+    }
+    borrowed_states_by_team = {
+        row["team_id"]: _borrowed_states(
+            row,
+            requirements_by_team[row["team_id"]],
+            semantics=borrowed_state_semantics,
+        )
+        for row in closure.teams
+    }
+    expected_guide_ids = {row["guide_id"] for row in closure.guides}
+    actual_guide_ids = set(session.scalars(select(Stage.guide_id)).all())
+    if actual_guide_ids != expected_guide_ids:
+        raise MirrorDriftError("idempotent fixture stage ids drifted")
+    for source_row in closure.guides:
+        stage = session.get(Stage, source_row["guide_id"])
+        if (
+            stage is None
+            or stage.team_count != int(source_row["team_count"])
+            or stage.source_payload != source_row
+        ):
+            raise MirrorDriftError(
+                f"idempotent fixture stage {source_row['guide_id']} drifted"
+            )
+
+    expected_team_ids = {row["team_id"] for row in closure.teams}
+    actual_team_ids = set(session.scalars(select(Team.team_id)).all())
+    if actual_team_ids != expected_team_ids:
+        raise MirrorDriftError("idempotent fixture team ids drifted")
+    expected_member_rows = {
+        (
+            row["team_id"],
+            slot,
+            row[f"slot{slot}"],
+            borrowed_states_by_team[row["team_id"]][slot - 1],
+        )
+        for row in closure.teams
+        for slot in range(1, 6)
+    }
+    actual_member_rows = {
+        tuple(stored)
+        for stored in session.execute(
+            select(
+                TeamMember.team_id,
+                TeamMember.slot,
+                TeamMember.unit_key,
+                TeamMember.is_borrowed,
+            )
+        ).all()
+    }
+    if actual_member_rows != expected_member_rows:
+        raise MirrorDriftError("idempotent fixture team members drifted")
+
+    for row in closure.teams:
+        team = session.get(Team, row["team_id"])
+        expected_members = [row[f"slot{slot}"] for slot in range(1, 6)]
+        actual_members = session.execute(
+            select(TeamMember.slot, TeamMember.unit_key, TeamMember.is_borrowed)
+            .where(TeamMember.team_id == row["team_id"])
+            .order_by(TeamMember.slot)
+        ).all()
+        guide = guides_by_id[row["guide_id"]]
+        if (
+            team is None
+            or team.source_payload != row
+            or team.requirements_raw != row["requirements"]
+            or team.signature != ";".join(sorted(expected_members))
+            or team.stage_label != f"{guide['area']}{guide['stage']}"
+            or team.support_slot != (row["support_slot"].strip() or None)
+            or actual_members
+            != [
+                (
+                    slot,
+                    unit_key,
+                    borrowed_states_by_team[row["team_id"]][slot - 1],
+                )
+                for slot, unit_key in enumerate(expected_members, start=1)
+            ]
+        ):
+            raise MirrorDriftError(f"idempotent fixture team {row['team_id']} drifted")
+
+    timeline_ids_by_axis = {
+        row["source_axis_id"]: row for row in closure.timelines
+    }
+    actual_axis_ids = set(
+        session.scalars(select(OperationTimeline.source_axis_id)).all()
+    )
+    if actual_axis_ids != set(timeline_ids_by_axis):
+        raise MirrorDriftError("idempotent fixture operation timeline axes drifted")
+    for axis_id, source_row in timeline_ids_by_axis.items():
+        stored = session.get(OperationTimeline, axis_id)
+        expected = _timeline_values(source_row, import_run_id=stored.import_run_id if stored else "")
+        if stored is None or any(
+            getattr(stored, name) != value for name, value in expected.items()
+        ):
+            raise MirrorDriftError(f"idempotent fixture timeline {axis_id} drifted")
+
+    structured_team_by_id = {
+        row["timeline_id"]: row["team_id"]
+        for row in closure.timelines
+        if row["status"] == "STRUCTURED"
+    }
+    expected_step_ids = {row["timeline_step_id"] for row in closure.timeline_steps}
+    actual_step_ids = set(session.scalars(select(TimelineStep.timeline_step_id)).all())
+    if actual_step_ids != expected_step_ids:
+        raise MirrorDriftError("idempotent fixture timeline steps drifted")
+    for source_row in closure.timeline_steps:
+        stored = session.get(TimelineStep, source_row["timeline_step_id"])
+        expected = _timeline_step_values(
+            source_row,
+            team_id=structured_team_by_id[source_row["timeline_id"]],
+            import_run_id=stored.import_run_id if stored else "",
+        )
+        if stored is None or any(
+            getattr(stored, name) != value for name, value in expected.items()
+        ):
+            raise MirrorDriftError(
+                f"idempotent fixture timeline step {source_row['timeline_step_id']} drifted"
+            )
+
+    for model, key_name, rows in (
+        (Character, "unit_key", closure.characters),
+        (Evidence, "evidence_id", closure.evidence),
+        (Claim, "claim_id", closure.claims),
+    ):
+        expected_ids = {source_row[key_name] for source_row in rows}
+        actual_ids = set(session.scalars(select(getattr(model, key_name))).all())
+        if actual_ids != expected_ids:
+            raise MirrorDriftError(
+                f"idempotent fixture {model.__tablename__} ids drifted"
+            )
+        for source_row in rows:
+            stored = session.get(model, source_row[key_name])
+            if stored is None or stored.source_payload != source_row:
+                raise MirrorDriftError(
+                    f"idempotent fixture {model.__tablename__} {source_row[key_name]} drifted"
+                )
+
+    defense_specs = _arena_defense_specs(closure.arena_rows)
+    expected_defense_ids = {spec["defense_id"] for spec in defense_specs}
+    actual_defense_ids = set(session.scalars(select(ArenaDefense.defense_id)).all())
+    if actual_defense_ids != expected_defense_ids:
+        raise MirrorDriftError("idempotent fixture Arena defense ids drifted")
+    expected_defense_members = {
+        (spec["defense_id"], slot, unit_key)
+        for spec in defense_specs
+        for slot, unit_key in enumerate(spec["members"], start=1)
+    }
+    actual_defense_members = {
+        tuple(stored)
+        for stored in session.execute(
+            select(
+                ArenaDefenseMember.defense_id,
+                ArenaDefenseMember.slot,
+                ArenaDefenseMember.unit_key,
+            )
+        ).all()
+    }
+    if actual_defense_members != expected_defense_members:
+        raise MirrorDriftError("idempotent fixture Arena defense members drifted")
+    for spec in defense_specs:
+        stored = session.get(ArenaDefense, spec["defense_id"])
+        expected = {key: value for key, value in spec.items() if key != "members"}
+        if stored is None or any(
+            getattr(stored, name) != value for name, value in expected.items()
+        ):
+            raise MirrorDriftError(
+                f"idempotent fixture Arena defense {spec['defense_id']} drifted"
+            )
+
+    expected_counter_ids = {row["counter_id"] for row in closure.arena_rows}
+    actual_counter_ids = set(session.scalars(select(ArenaCounter.counter_id)).all())
+    if actual_counter_ids != expected_counter_ids:
+        raise MirrorDriftError("idempotent fixture Arena counter ids drifted")
+    for source_row in closure.arena_rows:
+        stored = session.get(ArenaCounter, source_row["counter_id"])
+        expected = _arena_counter_values(
+            source_row,
+            import_run_id=stored.import_run_id if stored else "",
+        )
+        if stored is None or any(
+            getattr(stored, name) != value for name, value in expected.items()
+        ):
+            raise MirrorDriftError(
+                f"idempotent fixture Arena counter {source_row['counter_id']} drifted"
+            )
+    expected_counter_members = {
+        (row["counter_id"], slot, unit_key)
+        for row in closure.arena_rows
+        for slot, unit_key in enumerate(
+            _split_ids(row["counter_team_ids"]), start=1
+        )
+    }
+    actual_counter_members = {
+        tuple(stored)
+        for stored in session.execute(
+            select(
+                ArenaCounterMember.counter_id,
+                ArenaCounterMember.slot,
+                ArenaCounterMember.unit_key,
+            )
+        ).all()
+    }
+    if actual_counter_members != expected_counter_members:
+        raise MirrorDriftError("idempotent fixture Arena counter members drifted")
+    expected_counter_evidence = {
+        (counter_id, evidence_id)
+        for counter_id, evidence_ids in closure.arena_evidence_ids_by_counter.items()
+        for evidence_id in evidence_ids
+    }
+    actual_counter_evidence = {
+        tuple(stored)
+        for stored in session.execute(
+            select(ArenaCounterEvidence.counter_id, ArenaCounterEvidence.evidence_id)
+        ).all()
+    }
+    if actual_counter_evidence != expected_counter_evidence:
+        raise MirrorDriftError("idempotent fixture Arena counter Evidence links drifted")
+    expected_counter_claims = {
+        (counter_id, claim_id)
+        for counter_id, claim_ids in closure.arena_claim_ids_by_counter.items()
+        for claim_id in claim_ids
+    }
+    actual_counter_claims = {
+        tuple(stored)
+        for stored in session.execute(
+            select(ArenaCounterClaim.counter_id, ArenaCounterClaim.claim_id)
+        ).all()
+    }
+    if actual_counter_claims != expected_counter_claims:
+        raise MirrorDriftError("idempotent fixture Arena counter Claim links drifted")
+
+    expected_gacha_event_ids = {row["event_id"] for row in closure.gacha_events}
+    actual_gacha_event_ids = set(
+        session.scalars(select(GachaTimelineEvent.event_id)).all()
+    )
+    if actual_gacha_event_ids != expected_gacha_event_ids:
+        raise MirrorDriftError("idempotent fixture Gacha event ids drifted")
+    for source_row in closure.gacha_events:
+        stored = session.get(GachaTimelineEvent, source_row["event_id"])
+        expected = _gacha_event_values(
+            source_row,
+            import_run_id=stored.import_run_id if stored else "",
+        )
+        if stored is None or any(
+            getattr(stored, name) != value for name, value in expected.items()
+        ):
+            raise MirrorDriftError(
+                f"idempotent fixture Gacha event {source_row['event_id']} drifted"
+            )
+
+    expected_community_ids = {
+        row["source_id"] for row in closure.gacha_community_sources
+    }
+    actual_community_ids = set(
+        session.scalars(select(GachaCommunitySource.source_id)).all()
+    )
+    if actual_community_ids != expected_community_ids:
+        raise MirrorDriftError("idempotent fixture Gacha community source ids drifted")
+    for source_row in closure.gacha_community_sources:
+        stored = session.get(GachaCommunitySource, source_row["source_id"])
+        expected = _gacha_community_source_values(
+            source_row,
+            import_run_id=stored.import_run_id if stored else "",
+        )
+        if stored is None or any(
+            getattr(stored, name) != value for name, value in expected.items()
+        ):
+            raise MirrorDriftError(
+                "idempotent fixture Gacha community source "
+                f"{source_row['source_id']} drifted"
+            )
+
+    expected_gacha_evidence = {
+        (event_id, evidence_id)
+        for event_id, evidence_ids in closure.gacha_evidence_ids_by_event.items()
+        for evidence_id in evidence_ids
+    }
+    actual_gacha_evidence = {
+        tuple(stored)
+        for stored in session.execute(
+            select(GachaTimelineEvidence.event_id, GachaTimelineEvidence.evidence_id)
+        ).all()
+    }
+    if actual_gacha_evidence != expected_gacha_evidence:
+        raise MirrorDriftError("idempotent fixture Gacha Evidence links drifted")
+
+    expected_gacha_claims = {
+        (event_id, claim_id)
+        for event_id, claim_ids in closure.gacha_claim_ids_by_event.items()
+        for claim_id in claim_ids
+    }
+    actual_gacha_claims = {
+        tuple(stored)
+        for stored in session.execute(
+            select(GachaTimelineClaim.event_id, GachaTimelineClaim.claim_id)
+        ).all()
+    }
+    if actual_gacha_claims != expected_gacha_claims:
+        raise MirrorDriftError("idempotent fixture Gacha Claim links drifted")
+
+    expected_gacha_community = {
+        (event_id, source_id)
+        for event_id, source_ids in closure.gacha_community_source_ids_by_event.items()
+        for source_id in source_ids
+    }
+    actual_gacha_community = {
+        tuple(stored)
+        for stored in session.execute(
+            select(
+                GachaTimelineCommunitySource.event_id,
+                GachaTimelineCommunitySource.source_id,
+            )
+        ).all()
+    }
+    if actual_gacha_community != expected_gacha_community:
+        raise MirrorDriftError("idempotent fixture Gacha community links drifted")
+
+    expected_stage_evidence = {
+        (guide_id, evidence_id)
+        for guide_id, evidence_ids in closure.stage_evidence_ids_by_guide.items()
+        for evidence_id in evidence_ids
+    }
+    actual_stage_evidence = {
+        tuple(stored)
+        for stored in session.execute(
+            select(StageEvidence.guide_id, StageEvidence.evidence_id)
+        ).all()
+    }
+    expected_stage_claims = {
+        (guide_id, claim_id)
+        for guide_id, claim_ids in closure.stage_claim_ids_by_guide.items()
+        for claim_id in claim_ids
+    }
+    actual_stage_claims = {
+        tuple(stored)
+        for stored in session.execute(
+            select(StageClaim.guide_id, StageClaim.claim_id)
+        ).all()
+    }
+    if actual_stage_evidence != expected_stage_evidence:
+        raise MirrorDriftError("idempotent fixture stage evidence links drifted")
+    if actual_stage_claims != expected_stage_claims:
+        raise MirrorDriftError("idempotent fixture stage claim links drifted")
+
+    expected_team_evidence = {
+        (team_id, evidence_id)
+        for team_id, evidence_ids in closure.team_evidence_ids.items()
+        for evidence_id in evidence_ids
+    }
+    actual_team_evidence = {
+        tuple(stored)
+        for stored in session.execute(
+            select(TeamEvidence.team_id, TeamEvidence.evidence_id)
+        ).all()
+    }
+    if actual_team_evidence != expected_team_evidence:
+        raise MirrorDriftError("idempotent fixture team evidence links drifted")
+
+    selected_evidence_ids = {row["evidence_id"] for row in closure.evidence}
+    expected_claim_evidence = {
+        (row["claim_id"], evidence_id)
+        for row in closure.claims
+        for evidence_id in _split_ids(row["evidence_ids"])
+        if evidence_id in selected_evidence_ids
+    }
+    actual_claim_evidence = {
+        tuple(stored)
+        for stored in session.execute(
+            select(ClaimEvidence.claim_id, ClaimEvidence.evidence_id)
+        ).all()
+    }
+    if actual_claim_evidence != expected_claim_evidence:
+        raise MirrorDriftError("idempotent fixture claim evidence links drifted")
+    for row in closure.claims:
+        expected = set(_split_ids(row["evidence_ids"])) & selected_evidence_ids
+        actual = set(
+            session.scalars(
+                select(ClaimEvidence.evidence_id).where(ClaimEvidence.claim_id == row["claim_id"])
+            ).all()
+        )
+        if actual != expected:
+            raise MirrorDriftError(f"idempotent fixture {row['claim_id']} evidence links drifted")
+
+
+def _acquire_import_lock(session: Session) -> None:
+    """Serialize revision activation on PostgreSQL; SQLite tests are single-writer."""
+
+    if session.get_bind().dialect.name == "postgresql":
+        session.execute(
+            text("SELECT pg_advisory_xact_lock(:lock_key)"),
+            {"lock_key": IMPORT_LOCK_KEY},
+        )
+
+
+def _materialization_state(session: Session) -> MaterializationState:
+    state = session.get(MaterializationState, 1)
+    if state is None:
+        state = MaterializationState(
+            id=1,
+            active_revision_id=None,
+            active_import_run_id=None,
+            epoch=0,
+            materialization_sha256=None,
+            serving_counts={},
+        )
+        session.add(state)
+        session.flush()
+    return state
+
+
+def _clear_serving_mirror(session: Session) -> None:
+    """Remove only typed serving rows, in FK-safe order, inside the activation transaction."""
+
+    for model in (
+        GachaTimelineCommunitySource,
+        GachaTimelineClaim,
+        GachaTimelineEvidence,
+        GachaTimelineEvent,
+        GachaCommunitySource,
+        ArenaCounterClaim,
+        ArenaCounterEvidence,
+        ArenaCounterMember,
+        ArenaCounter,
+        ArenaDefenseMember,
+        ArenaDefense,
+        TimelineStep,
+        OperationTimeline,
+        TeamMember,
+        TeamEvidence,
+        StageEvidence,
+        StageClaim,
+        ClaimEvidence,
+        Team,
+        Stage,
+        Evidence,
+        Claim,
+        Character,
+    ):
+        session.execute(delete(model))
+    session.flush()
+
+
+def _serving_counts(materialization: dict[str, Any]) -> dict[str, int]:
+    tables = materialization.get("tables")
+    if not isinstance(tables, dict):
+        raise MirrorDriftError("typed materialization has no table manifest")
+    counts: dict[str, int] = {}
+    for table_name, table_manifest in tables.items():
+        if not isinstance(table_manifest, dict) or not isinstance(
+            table_manifest.get("primary_keys"), list
+        ):
+            raise MirrorDriftError(
+                f"typed materialization table is malformed: {table_name}"
+            )
+        counts[table_name] = len(table_manifest["primary_keys"])
+    return counts
+
+
+def _import_result(
+    *,
+    run: ImportRun,
+    snapshot: ResearchCoreSnapshot,
+    created: bool,
+    activated: bool,
+) -> ImportResult:
+    return ImportResult(
+        import_run_id=run.id,
+        fixture_sha256=run.fixture_sha256,
+        created=created,
+        activated=activated,
+        revision_id=snapshot.revision_id,
+        raw_tree_sha256=snapshot.raw_tree_sha256,
+        semantic_tree_sha256=snapshot.semantic_tree_sha256,
+        file_count=len(snapshot.files),
+        csv_file_count=len(snapshot.csv_files),
+        csv_row_count=snapshot.csv_row_count,
+        row_counts=dict(run.row_counts),
+        warnings=tuple(run.manifest.get("warnings", [])),
+    )
+
+
+def _initial_import_sequence(session: Session, revision_id: str) -> int:
+    sequence_no = session.scalar(
+        select(func.min(RevisionActivation.sequence_no)).where(
+            RevisionActivation.to_revision_id == revision_id,
+            RevisionActivation.kind == "IMPORT",
+        )
+    )
+    if sequence_no is None:
+        raise MirrorDriftError(
+            f"revision activation chronology is incomplete: {revision_id}"
+        )
+    return int(sequence_no)
+
+
+def _activation_kind(
+    session: Session,
+    *,
+    created: bool,
+    previous_revision_id: str | None,
+    target_revision_id: str,
+) -> str:
+    if previous_revision_id is None:
+        if created:
+            return "IMPORT"
+        raise MirrorDriftError("existing revision activation has no active predecessor")
+    if previous_revision_id == target_revision_id:
+        raise MirrorDriftError("existing revision activation has no distinct active predecessor")
+    previous_manifest = session.scalar(
+        select(CoreRevision.manifest_sha256).where(
+            CoreRevision.revision_id == previous_revision_id
+        )
+    )
+    target_manifest = session.scalar(
+        select(CoreRevision.manifest_sha256).where(
+            CoreRevision.revision_id == target_revision_id
+        )
+    )
+    previous_lineage = CHECKPOINT_LINEAGE_ORDER.get(str(previous_manifest))
+    target_lineage = CHECKPOINT_LINEAGE_ORDER.get(str(target_manifest))
+    if previous_lineage is not None and target_lineage is not None:
+        if target_lineage < previous_lineage:
+            return "ROLLBACK"
+        if target_lineage > previous_lineage:
+            return "IMPORT" if created else "REACTIVATE"
+        raise MirrorDriftError("distinct revisions share a checkpoint lineage position")
+    if created:
+        return "IMPORT"
+    previous_sequence = _initial_import_sequence(session, previous_revision_id)
+    target_sequence = _initial_import_sequence(session, target_revision_id)
+    if target_sequence < previous_sequence:
+        return "ROLLBACK"
+    if target_sequence > previous_sequence:
+        return "REACTIVATE"
+    raise MirrorDriftError("distinct revisions share an initial-import chronology position")
+
+
+def _projection_from_manifest(manifest: dict[str, Any]) -> str:
+    """Recover the immutable typed projection selected by an existing run.
+
+    B1 manifests predate the explicit projection field.  Their historical
+    ``target_guide_id`` marker is therefore the only supported compatibility
+    path; every other unknown or missing projection fails closed.
+    """
+
+    projection = manifest.get("projection")
+    if projection in {
+        FULL_PLATFORM_PROJECTION,
+        FULL_STRATEGY_PROJECTION,
+        FULL_PVE_PROJECTION,
+        LEGACY_FIRE_PROJECTION,
+    }:
+        return str(projection)
+    if projection is None and manifest.get("target_guide_id") == TARGET_GUIDE_ID:
+        return LEGACY_FIRE_PROJECTION
+    raise MirrorDriftError("import run has an unsupported typed projection")
+
+
+def _borrowed_state_semantics_from_manifest(manifest: dict[str, Any]) -> str:
+    """Resolve the immutable TeamMember projection used by an existing run.
+
+    ImportRun manifests written before A4 had no policy marker and projected a
+    blank support slot as ``False``.  Treating a missing marker as that deployed
+    binary behavior is required for byte-for-byte A2/A3 reactivation.
+    """
+
+    if BORROWED_STATE_SEMANTICS_FIELD not in manifest:
+        return BORROWED_STATE_LEGACY_FALSE_V1
+    semantics = manifest[BORROWED_STATE_SEMANTICS_FIELD]
+    if not isinstance(semantics, str) or semantics not in BORROWED_STATE_SEMANTICS:
+        raise MirrorDriftError("import run has unsupported borrowed-state semantics")
+    return semantics
+
+
+def _new_borrowed_state_semantics(manifest_sha256: str) -> str:
+    """Select semantics for a first import without rewriting old checkpoints."""
+
+    if manifest_sha256 in LEGACY_BORROWED_MANIFESTS:
+        return BORROWED_STATE_LEGACY_FALSE_V1
+    return BORROWED_STATE_TRISTATE_V1
+
+
+def _closure_for_projection(
+    full_closure: FixtureClosure,
+    projection: str,
+) -> FixtureClosure:
+    if projection == FULL_PLATFORM_PROJECTION:
+        return full_closure
+    if projection == FULL_STRATEGY_PROJECTION:
+        return _strategy_without_gacha_projection(full_closure)
+    if projection == FULL_PVE_PROJECTION:
+        return _pve_only_projection(full_closure)
+    if projection == LEGACY_FIRE_PROJECTION:
+        return _legacy_fire_projection(full_closure)
+    raise MirrorDriftError(f"unsupported typed projection: {projection}")
+
+
+def import_pve_projection(
+    session: Session,
+    research_core: Path,
+    *,
+    manifest_path: Path = DEFAULT_MANIFEST,
+    expected_manifest_sha256: str = EXPECTED_MANIFEST_SHA256,
+    application_version: str = APPLICATION_VERSION,
+    now: datetime | None = None,
+) -> ImportResult:
+    """Atomically activate a full-core revision and its typed strategy closure.
+
+    All file/row and selected-domain validation happens before any database write.
+    The active pointer is switched only after artifact parity, typed parity and the
+    immutable ImportRun manifest have all been verified in the same transaction.
+    """
+
+    # Keep the domain validator first so malformed selected facts retain precise
+    # errors; a valid candidate must then also match the independently pinned full tree.
+    historical_pre_gacha_manifest = expected_manifest_sha256 in {
+        RP_A2_MANIFEST_SHA256,
+        RP_A3_MANIFEST_SHA256,
+        RP_A4_MANIFEST_SHA256,
+        RP_A5_MANIFEST_SHA256,
+    }
+    full_closure = load_pve_closure(
+        research_core,
+        include_gacha=not historical_pre_gacha_manifest,
+    )
+    snapshot = load_research_core_snapshot(
+        research_core,
+        manifest_path,
+        expected_manifest_sha256=expected_manifest_sha256,
+    )
+    changed_source_files = [
+        relative
+        for relative in SOURCE_FILES
+        if full_closure.file_hashes.get(relative) != snapshot.file(relative).sha256
+    ]
+    if changed_source_files:
+        raise FixtureValidationError(
+            "source files changed during import snapshot capture: "
+            f"{changed_source_files}"
+        )
+    imported_at = now or datetime.now(timezone.utc)
+
+    with session.begin():
+        _acquire_import_lock(session)
+        state = _materialization_state(session)
+        previous = session.scalar(
+            select(ImportRun).where(ImportRun.fixture_sha256 == snapshot.raw_tree_sha256)
+        )
+        projection = (
+            _projection_from_manifest(previous.manifest)
+            if previous is not None
+            else (
+                LEGACY_FIRE_PROJECTION
+                if snapshot.revision_id in LEGACY_FIRE_REVISION_IDS
+                else (
+                    FULL_PVE_PROJECTION
+                    if snapshot.manifest_sha256
+                    in {RP_A3_MANIFEST_SHA256, RP_A4_MANIFEST_SHA256}
+                    else (
+                        FULL_STRATEGY_PROJECTION
+                        if snapshot.manifest_sha256 == RP_A5_MANIFEST_SHA256
+                        else (
+                            FULL_PLATFORM_PROJECTION
+                            if full_closure.gacha_events
+                            or full_closure.gacha_community_sources
+                            else (
+                                FULL_STRATEGY_PROJECTION
+                                if full_closure.arena_rows
+                                else FULL_PVE_PROJECTION
+                            )
+                        )
+                    )
+                )
+            )
+        )
+        borrowed_state_semantics = (
+            _borrowed_state_semantics_from_manifest(previous.manifest)
+            if previous is not None
+            else _new_borrowed_state_semantics(snapshot.manifest_sha256)
+        )
+        closure = _closure_for_projection(full_closure, projection)
+        row_counts = _counts(closure, projection=projection)
+        if previous is not None:
+            if previous.status != "SUCCEEDED":
+                raise MirrorDriftError("revision fingerprint exists without a successful import")
+            revision = session.get(CoreRevision, snapshot.revision_id)
+            if revision is None or revision.import_run_id != previous.id:
+                raise MirrorDriftError("revision/import provenance is incomplete")
+            assert_materialized_snapshot(session, snapshot)
+            if (
+                state.active_revision_id == snapshot.revision_id
+                and state.active_import_run_id == previous.id
+            ):
+                _assert_materialized(
+                    session,
+                    closure,
+                    borrowed_state_semantics=borrowed_state_semantics,
+                )
+                actual_materialization = build_materialization_manifest(
+                    session,
+                    expected_manifest=previous.manifest.get("materialization"),
+                )
+                drift_reason = materialization_drift_reason(
+                    previous.manifest.get("materialization"),
+                    actual_materialization,
+                )
+                if drift_reason is not None:
+                    raise MirrorDriftError(
+                        f"idempotent revision complete closure drifted: {drift_reason}"
+                    )
+                expected_sha256 = actual_materialization.get("sha256")
+                expected_counts = _serving_counts(actual_materialization)
+                if (
+                    not isinstance(expected_sha256, str)
+                    or revision.materialization_sha256 != expected_sha256
+                    or state.materialization_sha256 != expected_sha256
+                    or state.serving_counts != expected_counts
+                ):
+                    raise MirrorDriftError("idempotent active materialization digest drifted")
+                return _import_result(
+                    run=previous,
+                    snapshot=snapshot,
+                    created=False,
+                    activated=False,
+                )
+            run = previous
+            run_id = run.id
+            created = False
+        else:
+            run_id = str(uuid4())
+            created = True
+
+        warnings: tuple[str, ...] = ()
+        if created:
+            run = ImportRun(
+                id=run_id,
+                fixture_sha256=snapshot.raw_tree_sha256,
+                canonical_source=CANONICAL_SOURCE,
+                research_core_version=str(closure.stats.get("project_version", "UNKNOWN")),
+                application_version=application_version,
+                imported_at=imported_at,
+                status="RUNNING",
+                manifest={
+                    "projection": projection,
+                    BORROWED_STATE_SEMANTICS_FIELD: borrowed_state_semantics,
+                    "guide_ids": [guide["guide_id"] for guide in closure.guides],
+                    **(
+                        {"target_guide_id": TARGET_GUIDE_ID}
+                        if projection == LEGACY_FIRE_PROJECTION
+                        else {}
+                    ),
+                    "selected_fixture_sha256": closure.fingerprint,
+                    "selected_input_file_sha256": closure.file_hashes,
+                    "core_revision": snapshot.report().as_dict(),
+                    "stats": closure.stats,
+                    "warnings": list(warnings),
+                },
+                row_counts=row_counts,
+            )
+            session.add(run)
+            session.flush()
+            materialize_snapshot(session, snapshot, import_run_id=run_id)
+
+        # A revision switch is a full replacement, never a partial upsert. Any
+        # later error rolls these deletes and the previous active pointer back.
+        _clear_serving_mirror(session)
+
+        for row in closure.claims:
+            _upsert(
+                session,
+                Claim,
+                row["claim_id"],
+                {
+                    "claim_id": row["claim_id"],
+                    "module": row["module"],
+                    "server": row["server"],
+                    "claim_text": row["claim_text"],
+                    "claim_type": row["claim_type"],
+                    "claim_confidence": row["claim_confidence"],
+                    "independence_check": row["independence_check"],
+                    "version_match": row["version_match"],
+                    "status": row["status"],
+                    "verified_date": _parse_date(
+                        row["verified_date"], field=f"{row['claim_id']}.verified_date", required=True
+                    ),
+                    "next_review_due": _parse_date(
+                        row["next_review_due"], field=f"{row['claim_id']}.next_review_due"
+                    ),
+                    "affected_files": row["affected_files"],
+                    "notes": row["notes"],
+                    "declared_evidence_ids": list(_split_ids(row["evidence_ids"])),
+                    "source_payload": row,
+                    "import_run_id": run_id,
+                },
+            )
+        session.flush()
+
+        selected_claim_ids = {row["claim_id"] for row in closure.claims}
+        for row in closure.evidence:
+            declared_claim_id = row["claim_id"].strip() or None
+            linked_claim_id = (
+                declared_claim_id if declared_claim_id in selected_claim_ids else None
+            )
+            _upsert(
+                session,
+                Evidence,
+                row["evidence_id"],
+                {
+                    "evidence_id": row["evidence_id"],
+                    "declared_claim_id": declared_claim_id,
+                    "linked_claim_id": linked_claim_id,
+                    "module": row["module"],
+                    "server": row["server"],
+                    "source_tier": row["source_tier"],
+                    "evidence_confidence": row["evidence_confidence"],
+                    "source_title": row["source_title"],
+                    "source_url": row["source_url"],
+                    "source_locator": row["source_locator"],
+                    "published_date": _parse_published_date(
+                        row["published_date"],
+                        precision=row["published_date_precision"],
+                        field=f"{row['evidence_id']}.published_date",
+                    ),
+                    "published_date_precision": row["published_date_precision"],
+                    "verified_date": _parse_date(
+                        row["verified_date"],
+                        field=f"{row['evidence_id']}.verified_date",
+                        required=True,
+                    ),
+                    "claim_summary": row["claim_summary"],
+                    "limitations": row["limitations"],
+                    "affected_files": row["affected_files"],
+                    "status": row["status"],
+                    "source_payload": row,
+                    "import_run_id": run_id,
+                },
+            )
+        session.flush()
+
+        for row in closure.gacha_community_sources:
+            _upsert(
+                session,
+                GachaCommunitySource,
+                row["source_id"],
+                _gacha_community_source_values(row, import_run_id=run_id),
+            )
+        for row in closure.gacha_events:
+            _upsert(
+                session,
+                GachaTimelineEvent,
+                row["event_id"],
+                _gacha_event_values(row, import_run_id=run_id),
+            )
+        session.flush()
+        for row in closure.gacha_events:
+            event_id = row["event_id"]
+            for evidence_id in closure.gacha_evidence_ids_by_event[event_id]:
+                session.add(
+                    GachaTimelineEvidence(
+                        event_id=event_id,
+                        evidence_id=evidence_id,
+                    )
+                )
+            for claim_id in closure.gacha_claim_ids_by_event[event_id]:
+                session.add(
+                    GachaTimelineClaim(event_id=event_id, claim_id=claim_id)
+                )
+            for source_id in closure.gacha_community_source_ids_by_event[event_id]:
+                session.add(
+                    GachaTimelineCommunitySource(
+                        event_id=event_id,
+                        source_id=source_id,
+                    )
+                )
+        session.flush()
+
+        for row in closure.characters:
+            _upsert(
+                session,
+                Character,
+                row["unit_key"],
+                {
+                    "unit_key": row["unit_key"],
+                    "tw_name": row["tw_name"],
+                    "jp_name": row["jp_name"],
+                    "version": row["version"],
+                    "tw_release_date": _parse_date(
+                        row["tw_release_date"], field=f"{row['unit_key']}.tw_release_date"
+                    ),
+                    "availability_status": row["availability_status"],
+                    "ue1_status": row["ue1_status"],
+                    "ue2_status": row["ue2_status"],
+                    "six_star_status": row["six_star_status"],
+                    "connect_rank_status": row["connect_rank_status"],
+                    "element": row["element"],
+                    "source_evidence_ids": list(_split_ids(row["source_evidence_ids"])),
+                    "last_verified": _parse_date(
+                        row["last_verified"], field=f"{row['unit_key']}.last_verified", required=True
+                    ),
+                    "last_review_due": _parse_date(
+                        row["last_review_due"], field=f"{row['unit_key']}.last_review_due"
+                    ),
+                    "notes": row["notes"],
+                    "source_payload": row,
+                    "import_run_id": run_id,
+                },
+            )
+        session.flush()
+
+        defense_specs = _arena_defense_specs(closure.arena_rows)
+        for spec in defense_specs:
+            _upsert(
+                session,
+                ArenaDefense,
+                spec["defense_id"],
+                {
+                    key: value
+                    for key, value in spec.items()
+                    if key != "members"
+                }
+                | {"import_run_id": run_id},
+            )
+        session.flush()
+        for row in closure.arena_rows:
+            _upsert(
+                session,
+                ArenaCounter,
+                row["counter_id"],
+                _arena_counter_values(row, import_run_id=run_id),
+            )
+        session.flush()
+        for spec in defense_specs:
+            for slot, unit_key in enumerate(spec["members"], start=1):
+                session.add(
+                    ArenaDefenseMember(
+                        defense_id=spec["defense_id"],
+                        slot=slot,
+                        unit_key=unit_key,
+                    )
+                )
+        for row in closure.arena_rows:
+            counter_id = row["counter_id"]
+            for slot, unit_key in enumerate(
+                _split_ids(row["counter_team_ids"]), start=1
+            ):
+                session.add(
+                    ArenaCounterMember(
+                        counter_id=counter_id,
+                        slot=slot,
+                        unit_key=unit_key,
+                    )
+                )
+            for evidence_id in closure.arena_evidence_ids_by_counter[counter_id]:
+                session.add(
+                    ArenaCounterEvidence(
+                        counter_id=counter_id,
+                        evidence_id=evidence_id,
+                    )
+                )
+            for claim_id in closure.arena_claim_ids_by_counter[counter_id]:
+                session.add(
+                    ArenaCounterClaim(counter_id=counter_id, claim_id=claim_id)
+                )
+        session.flush()
+
+        for guide in closure.guides:
+            _upsert(
+                session,
+                Stage,
+                guide["guide_id"],
+                {
+                    "guide_id": guide["guide_id"],
+                    "server": guide["server"],
+                    "mode": guide["mode"],
+                    "area": guide["area"],
+                    "stage": guide["stage"],
+                    "status": guide["status"],
+                    "verified_date": _parse_date(
+                        guide["verified_date"],
+                        field=f"{guide['guide_id']}.verified_date",
+                        required=True,
+                    ),
+                    "applicable_version": guide["applicable_version"],
+                    "team_count": int(guide["team_count"]),
+                    "source_tier": guide["source_tier"],
+                    "claim_confidence": guide["claim_confidence"],
+                    "reproducibility": guide["reproducibility"],
+                    "last_review_due": _parse_date(
+                        guide["last_review_due"],
+                        field=f"{guide['guide_id']}.last_review_due",
+                    ),
+                    "notes": guide["notes"],
+                    "source_payload": guide,
+                    "import_run_id": run_id,
+                },
+            )
+        session.flush()
+
+        guides_by_id = {row["guide_id"]: row for row in closure.guides}
+        for row in closure.teams:
+            members = tuple(row[f"slot{slot}"] for slot in range(1, 6))
+            guide = guides_by_id[row["guide_id"]]
+            _upsert(
+                session,
+                Team,
+                row["team_id"],
+                {
+                    "team_id": row["team_id"],
+                    "guide_id": row["guide_id"],
+                    "server": row["server"],
+                    "stage_label": f"{guide['area']}{guide['stage']}",
+                    "support_slot": row["support_slot"].strip() or None,
+                    "operation_mode": row["operation_mode"],
+                    "requirements": _validate_requirements(row),
+                    "requirements_raw": row["requirements"],
+                    "clear_status": row["clear_status"],
+                    "stability": row["stability"],
+                    "source_ids": list(_split_ids(row["source_ids"])),
+                    "tw_availability_check": row["tw_availability_check"],
+                    "verified_date": _parse_date(
+                        row["verified_date"], field=f"{row['team_id']}.verified_date", required=True
+                    ),
+                    "last_review_due": _parse_date(
+                        row["last_review_due"], field=f"{row['team_id']}.last_review_due"
+                    ),
+                    "notes": row["notes"],
+                    "signature": ";".join(sorted(members)),
+                    "source_payload": row,
+                    "import_run_id": run_id,
+                },
+            )
+        session.flush()
+
+        team_ids = [row["team_id"] for row in closure.teams]
+        guide_ids = [row["guide_id"] for row in closure.guides]
+        session.execute(delete(TeamMember).where(TeamMember.team_id.in_(team_ids)))
+        session.execute(delete(TeamEvidence).where(TeamEvidence.team_id.in_(team_ids)))
+        session.execute(delete(StageEvidence).where(StageEvidence.guide_id.in_(guide_ids)))
+        session.execute(delete(StageClaim).where(StageClaim.guide_id.in_(guide_ids)))
+        if selected_claim_ids:
+            session.execute(delete(ClaimEvidence).where(ClaimEvidence.claim_id.in_(selected_claim_ids)))
+
+        for row in closure.teams:
+            borrowed_states = _borrowed_states(
+                row,
+                _validate_requirements(row),
+                semantics=borrowed_state_semantics,
+            )
+            for slot in range(1, 6):
+                session.add(
+                    TeamMember(
+                        team_id=row["team_id"],
+                        slot=slot,
+                        unit_key=row[f"slot{slot}"],
+                        is_borrowed=borrowed_states[slot - 1],
+                    )
+                )
+            for evidence_id in closure.team_evidence_ids[row["team_id"]]:
+                session.add(TeamEvidence(team_id=row["team_id"], evidence_id=evidence_id))
+        for guide_id, evidence_ids in closure.stage_evidence_ids_by_guide.items():
+            for evidence_id in evidence_ids:
+                session.add(StageEvidence(guide_id=guide_id, evidence_id=evidence_id))
+        for guide_id, claim_ids in closure.stage_claim_ids_by_guide.items():
+            for claim_id in claim_ids:
+                session.add(StageClaim(guide_id=guide_id, claim_id=claim_id))
+        selected_evidence_ids = {row["evidence_id"] for row in closure.evidence}
+        for row in closure.claims:
+            for evidence_id in _split_ids(row["evidence_ids"]):
+                if evidence_id in selected_evidence_ids:
+                    session.add(ClaimEvidence(claim_id=row["claim_id"], evidence_id=evidence_id))
+
+        session.flush()
+
+        for row in closure.timelines:
+            _upsert(
+                session,
+                OperationTimeline,
+                row["source_axis_id"],
+                _timeline_values(row, import_run_id=run_id),
+            )
+        session.flush()
+
+        structured_team_by_id = {
+            row["timeline_id"]: row["team_id"]
+            for row in closure.timelines
+            if row["status"] == "STRUCTURED"
+        }
+        for row in closure.timeline_steps:
+            _upsert(
+                session,
+                TimelineStep,
+                row["timeline_step_id"],
+                _timeline_step_values(
+                    row,
+                    team_id=structured_team_by_id[row["timeline_id"]],
+                    import_run_id=run_id,
+                ),
+            )
+        session.flush()
+
+        _assert_materialized(
+            session,
+            closure,
+            borrowed_state_semantics=borrowed_state_semantics,
+        )
+        persisted_materialization = (
+            run.manifest.get("materialization") if not created else None
+        )
+        materialization = build_materialization_manifest(
+            session,
+            expected_manifest=_materialization_expectation(
+                projection,
+                persisted=(
+                    persisted_materialization
+                    if isinstance(persisted_materialization, dict)
+                    else None
+                ),
+            ),
+        )
+        materialization_sha256 = materialization.get("sha256")
+        if not isinstance(materialization_sha256, str):
+            raise MirrorDriftError("typed materialization has no SHA-256")
+        serving_counts = _serving_counts(materialization)
+
+        if created:
+            run.manifest = {
+                **run.manifest,
+                "materialization": materialization,
+                "serving_row_counts": serving_counts,
+            }
+            run.status = "SUCCEEDED"
+            finalize_materialized_snapshot(
+                session,
+                snapshot,
+                import_run_id=run_id,
+                typed_materialization_sha256=materialization_sha256,
+            )
+        else:
+            drift_reason = materialization_drift_reason(
+                run.manifest.get("materialization"),
+                materialization,
+            )
+            if drift_reason is not None:
+                raise MirrorDriftError(
+                    f"reactivated revision typed closure drifted: {drift_reason}"
+                )
+            revision = session.get(CoreRevision, snapshot.revision_id)
+            if (
+                revision is None
+                or revision.status != "SUCCEEDED"
+                or revision.materialization_sha256 != materialization_sha256
+            ):
+                raise MirrorDriftError("reactivated revision metadata drifted")
+        session.flush()
+
+        # Epoch triggers have now observed every artifact/typed/run write. Refresh
+        # before reserving the activation epoch, then append audit and switch last.
+        session.refresh(state)
+        next_epoch = state.epoch + 1
+        previous_revision_id = state.active_revision_id
+        sequence_no = (
+            session.scalar(select(func.max(RevisionActivation.sequence_no))) or 0
+        ) + 1
+        activation_kind = _activation_kind(
+            session,
+            created=created,
+            previous_revision_id=previous_revision_id,
+            target_revision_id=snapshot.revision_id,
+        )
+        session.add(
+            RevisionActivation(
+                activation_id=str(uuid4()),
+                sequence_no=sequence_no,
+                from_revision_id=previous_revision_id,
+                to_revision_id=snapshot.revision_id,
+                kind=activation_kind,
+                reason={
+                    "IMPORT": "activate manifest-pinned full-core import",
+                    "ROLLBACK": "rollback to earlier verified immutable revision",
+                    "REACTIVATE": "reactivate later verified immutable revision",
+                }[activation_kind],
+                actor="pcr_pipeline.import_pve",
+                activated_at=imported_at,
+                epoch=next_epoch,
+            )
+        )
+        session.flush()
+
+        state.active_revision_id = snapshot.revision_id
+        state.active_import_run_id = run_id
+        state.epoch = next_epoch
+        state.materialization_sha256 = materialization_sha256
+        state.serving_counts = serving_counts
+        state.updated_at = imported_at
+        session.flush()
+        result = _import_result(
+            run=run,
+            snapshot=snapshot,
+            created=created,
+            activated=True,
+        )
+
+    return result
+
+
+def import_fire_8_10(
+    session: Session,
+    research_core: Path,
+    *,
+    manifest_path: Path = DEFAULT_MANIFEST,
+    expected_manifest_sha256: str = EXPECTED_MANIFEST_SHA256,
+    application_version: str = APPLICATION_VERSION,
+    now: datetime | None = None,
+) -> ImportResult:
+    """Compatibility wrapper; imports the current typed strategy projection."""
+
+    return import_pve_projection(
+        session,
+        research_core,
+        manifest_path=manifest_path,
+        expected_manifest_sha256=expected_manifest_sha256,
+        application_version=application_version,
+        now=now,
+    )

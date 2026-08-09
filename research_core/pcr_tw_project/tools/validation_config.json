@@ -1,0 +1,1000 @@
+{
+ "knowledge_excluded": [
+  "00_PROJECT_INSTRUCTIONS.md",
+  "README.md"
+ ],
+ "scan_excluded_files": [
+  "16_STATIC_VALIDATION_REPORT.md"
+ ],
+ "historical_zones": {
+  "99_CHANGELOG.md": {
+   "start": "## 更新紀錄",
+   "end": "## 過期資料登記"
+  },
+  "44_GACHA_RESEARCH_LOG.md": {
+   "start": "【SUPERSEDED",
+   "end": "【現行主紀錄】"
+  }
+ },
+ "forbidden_current_strings": [
+  "T1–T15",
+  "其餘 10 個檔案",
+  "精簡為 11 檔",
+  "Fixtures×24",
+  "T1–T40",
+  "MAJOR_GUIDE／C",
+  "estimated_reliability",
+  "（n=2 錨點）",
+  "第 3 個列債",
+  "補第 3 錨點",
+  "必須揭露 n=2"
+ ],
+ "expected_total_non_tools": 44,
+ "expected_numbered": 43,
+ "expected_knowledge": 42,
+ "csv_specs": {
+  "41_GACHA_TIMELINE.csv": {
+   "cols": 36,
+   "min_rows": 2
+  },
+  "92_EVIDENCE_LEDGER.csv": {
+   "cols": 16,
+   "min_rows": 36
+  },
+  "93_CLAIM_REGISTER.csv": {
+   "cols": 14,
+   "min_rows": 34
+  },
+  "17_TEST_EXECUTION_LOG.csv": {
+   "cols": 21,
+   "min_rows": 0
+  },
+  "24_PVE_GUIDE_REGISTRY.csv": {
+   "cols": 16,
+   "min_rows": 0
+  },
+ "39_ARENA_COUNTER_REGISTRY.csv": {
+   "cols": 35,
+   "min_rows": 0
+  },
+  "18_TW_CHARACTER_AVAILABILITY.csv": {
+   "cols": 15,
+   "min_rows": 1
+  },
+  "25_PVE_TEAM_REGISTRY.csv": {
+   "cols": 20,
+   "min_rows": 0
+  },
+  "26_PVE_OPERATION_TIMELINES.csv": {
+   "cols": 16,
+   "min_rows": 1
+  },
+  "27_PVE_TIMELINE_STEPS.csv": {
+   "cols": 20,
+   "min_rows": 0
+  },
+  "45_GACHA_COMMUNITY_SOURCE_INDEX.csv": {
+   "cols": 14,
+   "min_rows": 2
+  },
+  "46_ARENA_SOURCE_REGISTRY.csv": {
+   "cols": 12,
+   "min_rows": 2
+  },
+  "47_PRINCESS_ARENA_CASE_REGISTRY.csv": {
+   "cols": 20,
+   "min_rows": 0
+  }
+ },
+ "enums": {
+  "test_status": [
+   "PASS",
+   "FAIL",
+   "PARTIAL",
+   "NOT_RUN"
+  ],
+  "precision": [
+   "DAY",
+   "MONTH",
+   "YEAR",
+   "UNKNOWN"
+  ],
+  "gacha_limited": [
+   "是",
+   "否",
+   "UNKNOWN"
+  ],
+  "claim_type": [
+   "SOURCE_FACT",
+   "DERIVED_CALCULATION",
+   "ANALYTICAL_JUDGMENT",
+   "FORECAST"
+  ],
+  "confidence": [
+   "A",
+   "B",
+   "C",
+   "D",
+   "E"
+  ],
+  "evidence_status": [
+   "ACTIVE",
+   "PENDING_REVIEW",
+   "STALE",
+   "REJECTED",
+   "ARCHIVED"
+  ],
+  "review_method": [
+   "MANUAL_FIXTURE_REVIEW",
+   "AUTO",
+   "NONE"
+  ],
+  "tw_availability": [
+   "AVAILABLE",
+   "NOT_RELEASED",
+   "UNVERIFIED"
+  ],
+  "upgrade_status": [
+   "AVAILABLE",
+   "NOT_AVAILABLE",
+   "UNVERIFIED"
+  ],
+  "team_clear_status": [
+   "VERIFIED",
+   "PROVISIONAL",
+   "STALE"
+  ],
+  "tw_check": [
+   "PASS",
+   "FAIL",
+   "UNVERIFIED"
+  ],
+  "arena_status": [
+   "VERIFIED",
+   "PROVISIONAL",
+   "SINGLE_REPORT",
+   "STALE",
+   "REJECTED"
+  ],
+  "arena_source_tier": [
+   "OFFICIAL",
+   "MAJOR_GUIDE",
+   "STRUCTURED_DB",
+   "COMMUNITY_WIKI",
+   "MULTI_PLAYER_REPORT",
+   "SINGLE_PLAYER_REPORT",
+   "UNKNOWN",
+   "RESTRICTED"
+  ],
+  "arena_claim_confidence": [
+   "B",
+   "C",
+   "D",
+   "E"
+  ],
+  "arena_verified_claim_confidence": [
+   "B",
+   "C"
+  ],
+  "arena_reproducibility": [
+   "CONFIRMED",
+   "UNVERIFIED_REPEATABILITY",
+   "UNVERIFIED_ON_TW",
+   "UNKNOWN"
+  ],
+  "pve_operation_mode": [
+   "AUTO",
+   "SEMI_AUTO",
+   "MANUAL_TIMELINE",
+   "SOURCE_CONFLICT",
+   "UNKNOWN"
+  ],
+  "pve_mode_claim": [
+   "AUTO",
+   "SEMI_AUTO",
+   "MANUAL_TIMELINE",
+   "UNKNOWN"
+  ],
+  "pve_timeline_status": [
+   "STRUCTURED",
+   "SOURCE_GAP"
+  ],
+  "pve_timeline_reproducibility": [
+   "UNVERIFIED_ON_TW",
+   "TW_REPRODUCED",
+   "UNKNOWN"
+  ],
+  "pve_clock_mode": [
+   "COUNTDOWN",
+   "ELAPSED",
+   "UNKNOWN"
+  ],
+  "pve_auto_state": [
+   "ON",
+   "OFF",
+   "UNKNOWN"
+  ],
+  "pve_timeline_trigger": [
+   "CLOCK",
+   "UB_READY",
+   "ANIMATION_CUE",
+   "HP_THRESHOLD",
+   "WAVE_START",
+   "BOSS_ACTION",
+   "SOURCE_TEXT_ONLY"
+  ],
+  "pve_timeline_time_state": [
+   "STATED",
+   "NOT_STATED"
+  ],
+  "pve_timeline_action": [
+   "USE_UB",
+   "WAIT",
+   "AUTO_ON",
+   "AUTO_OFF",
+   "SET_ON",
+   "SET_OFF",
+   "PAUSE",
+   "RESUME",
+   "TARGET",
+   "NO_ACTION"
+  ],
+  "pve_timeline_criticality": [
+   "NORMAL",
+   "CRITICAL",
+   "UNKNOWN"
+  ],
+  "pve_timeline_gap_reason": [
+   "NONE",
+   "INSUFFICIENT_SOURCE_DETAIL",
+   "PENDING_EXTRACTION"
+  ],
+  "source_update_status": [
+   "PENDING_FETCH",
+   "CHECKED",
+   "STALE"
+  ],
+  "arena_access_status": [
+   "ACTIVE",
+   "PARTIAL",
+   "BLOCKED",
+   "STALE",
+   "ARCHIVED"
+  ],
+  "community_source_type": [
+   "MAINTAINED_TABLE",
+   "FORUM_TIMELINE",
+   "CREATOR_ANALYSIS",
+   "VIDEO_SERIES"
+  ]
+ },
+ "anchors": [
+  {
+   "anchor_id": "POOL-WAKANA-WINTER",
+   "track": "GACHA",
+   "pool_class": "LIMITED",
+   "jp_date": "2026-03-03",
+   "tw_date": "2026-07-04",
+   "delta_days": 123,
+   "jp_claim_id": "CLM-JP-WAKANA-WINTER-REL",
+   "tw_claim_id": "CLM-TW-WAKANA-WINTER-REL",
+   "mapping_claim_id": "CLM-LOC-WAKANA-WINTER"
+  },
+  {
+   "anchor_id": "POOL-SHIORI-WINTER",
+   "track": "GACHA",
+   "pool_class": "LIMITED",
+   "jp_date": "2026-03-16",
+   "tw_date": "2026-07-17",
+   "delta_days": 123,
+   "jp_claim_id": "CLM-JP-SHIORI-WINTER-REL",
+   "tw_claim_id": "CLM-TW-SHIORI-POOL",
+   "mapping_claim_id": "CLM-LOC-SHIORI-WINTER"
+  },
+  {
+   "anchor_id": "POOL-LAILAEL-XMAS",
+   "track": "GACHA",
+   "pool_class": "LIMITED",
+   "jp_date": "2024-11-30",
+   "tw_date": "2025-04-01",
+   "delta_days": 122,
+   "jp_claim_id": "CLM-JP-LAILAEL-XMAS-REL",
+   "tw_claim_id": "CLM-TW-LAILAEL-XMAS-REL",
+   "mapping_claim_id": "CLM-LOC-LAILAEL-XMAS"
+  },
+  {
+   "anchor_id": "POOL-CROCE-AERIAL",
+   "track": "GACHA",
+   "pool_class": "LIMITED",
+   "jp_date": "2025-04-08",
+   "tw_date": "2025-08-09",
+   "delta_days": 123,
+   "jp_claim_id": "CLM-JP-CROCE-AERIAL-REL",
+   "tw_claim_id": "CLM-TW-CROCE-AERIAL-REL",
+   "mapping_claim_id": "CLM-LOC-CROCE-AERIAL"
+  },
+  {
+   "anchor_id": "POOL-LUISE-ORIG",
+   "track": "GACHA",
+   "pool_class": "LIMITED",
+   "jp_date": "2025-05-03",
+   "tw_date": "2025-09-04",
+   "delta_days": 124,
+   "jp_claim_id": "CLM-JP-LUISE-ORIG-REL",
+   "tw_claim_id": "CLM-TW-LUISE-ORIG-REL",
+   "mapping_claim_id": "CLM-LOC-LUISE-ORIG"
+  },
+  {
+   "anchor_id": "POOL-LIND",
+   "track": "GACHA",
+   "pool_class": "PERMANENT",
+   "jp_date": "2024-10-10",
+   "tw_date": "2025-02-10",
+   "delta_days": 123,
+   "jp_claim_id": "CLM-JP-LIND-REL",
+   "tw_claim_id": "CLM-TW-LIND-REL",
+   "mapping_claim_id": "CLM-LOC-LIND"
+  },
+  {
+   "anchor_id": "POOL-VURM",
+   "track": "GACHA",
+   "pool_class": "PERMANENT",
+   "jp_date": "2024-10-18",
+   "tw_date": "2025-02-17",
+   "delta_days": 122,
+   "jp_claim_id": "CLM-JP-VURM-REL",
+   "tw_claim_id": "CLM-TW-VURM-REL",
+   "mapping_claim_id": "CLM-LOC-VURM"
+  },
+  {
+   "anchor_id": "SYSTEM-EXCHANGE-PT-ITEMS",
+   "track": "SYSTEM",
+   "pool_class": "SYSTEM",
+   "jp_date": "2025-12-31",
+   "tw_date": "2026-03-16",
+   "delta_days": 75,
+   "jp_claim_id": "CLM-JP-EXPT-REL",
+   "tw_claim_id": "CLM-TW-EXPT-REL",
+   "mapping_claim_id": "CLM-LOC-EXPT-MECHANISM"
+  }
+ ],
+ "t41": {
+  "gems": 15000,
+  "free": 20,
+  "cost": 150,
+  "expect": 120
+ },
+ "scenarios": [
+  [
+   9000,
+   10,
+   0,
+   70
+  ],
+  [
+   15000,
+   20,
+   0,
+   120
+  ],
+  [
+   24000,
+   30,
+   10,
+   200
+  ]
+ ],
+ "gap_example": {
+  "need": 200,
+  "have": 120,
+  "cost": 150,
+  "expect": 12000
+ },
+ "fixture_expected": 37,
+ "public_tests_expected": 41,
+ "tests_total": 41,
+ "sync_guard": {
+  "prompt_required": [
+   "18_TW_CHARACTER_AVAILABILITY",
+   "unit_key",
+   "availability_status",
+   "last_checked",
+   "逐筆",
+   "不保存帳號資料"
+  ],
+  "prompt_forbidden": [
+   "匯入 roster",
+   "TW_ROSTER_PENDING",
+   "owned 一律預設",
+   "data_status",
+   "兩份 roster 一起"
+  ]
+ },
+ "t43_guard": {
+  "must": "02 的最新",
+  "forbid": "必須揭露 n=2"
+ },
+ "baseline_change_date": "2026-08-09",
+ "project_version": "v1.5",
+ "release_date": "2026-08-09",
+ "baseline_date": "2026-08-09",
+ "public_test_set": [
+  "A1",
+  "A2",
+  "A3",
+  "T1",
+  "T2",
+  "T13",
+  "T14",
+  "T16",
+  "T17",
+  "T18",
+  "T22",
+  "T23",
+  "T24",
+  "T25",
+  "T26",
+  "T27",
+  "T28",
+  "T29",
+  "T30",
+  "T31",
+  "T32",
+  "T33",
+  "T34",
+  "T35",
+  "T36",
+  "T37",
+  "T38",
+  "T39",
+  "T40",
+  "T41",
+  "T42",
+  "T43",
+  "T44",
+  "T45",
+  "T46",
+  "T47",
+  "T48",
+  "T49",
+  "T50",
+  "T51",
+  "T52"
+ ],
+ "definition_set": [
+  "A1",
+  "A2",
+  "A3",
+  "T1",
+  "T2",
+  "T13",
+  "T14",
+  "T16",
+  "T17",
+  "T18",
+  "T22",
+  "T23",
+  "T24",
+  "T25",
+  "T26",
+  "T27",
+  "T28",
+  "T29",
+  "T30",
+  "T31",
+  "T32",
+  "T33",
+  "T34",
+  "T35",
+  "T36",
+  "T37",
+  "T38",
+  "T39",
+  "T40",
+  "T41",
+  "T42",
+  "T43",
+  "T44",
+  "T45",
+  "T46",
+  "T47",
+  "T48",
+  "T49",
+  "T50",
+  "T51",
+  "T52"
+ ],
+ "version_files": {
+  "README.md": "v1\\.5(?!\\.\\d)",
+  "13_ACCEPTANCE_RESULTS.md": "Instructions 版本：v1\\.5",
+  "15_DATA_QUALITY_REPORT.md": "本版：v1\\.5",
+  "99_CHANGELOG.md": "v1\\.5"
+ },
+ "result_required_fields": {
+  "PASS": [
+   "fixture_id",
+   "execution_date",
+   "exact_prompt",
+   "observed_result",
+   "evidence_ids"
+  ],
+  "FAIL": [
+   "observed_result",
+   "defect_id"
+  ],
+  "PARTIAL": [
+   "observed_result"
+  ]
+ },
+ "gate_thresholds": {
+  "B": {
+   "pve_stages": 2,
+   "teams_per_stage": 5,
+   "arena": 5,
+   "counters_per_defense": 2,
+   "parena": 3,
+   "timeline": 6,
+   "community_sources": 2
+  },
+  "C": {
+   "pve_stages": 5,
+   "arena": 10,
+   "parena": 5
+  }
+ },
+ "suite_map": {
+  "Core": [
+   "A1",
+   "A2",
+   "A3",
+   "T1",
+   "T2",
+   "T13",
+   "T16",
+   "T17"
+  ],
+  "PVE": [
+   "T18",
+   "T22",
+   "T23",
+   "T24",
+   "T46",
+   "T47"
+  ],
+  "Arena": [
+   "T25",
+   "T26",
+   "T27",
+   "T28",
+   "T29",
+   "T30",
+   "T31",
+   "T32",
+   "T33",
+   "T34",
+   "T48",
+   "T49",
+   "T50"
+  ],
+  "Gacha": [
+   "T14",
+   "T35",
+   "T36",
+   "T37",
+   "T38",
+   "T39",
+   "T40",
+   "T41",
+   "T42",
+   "T43",
+   "T44",
+   "T45",
+   "T51",
+   "T52"
+  ]
+ },
+ "fixture_map": {
+  "A1": "FX-CORE-A1",
+  "A2": "FX-CORE-A2",
+  "A3": "FX-CORE-A3",
+  "T1": "FX-CORE-T1",
+  "T2": "FX-CORE-T2",
+  "T13": "FX-CORE-T13",
+  "T16": "FX-CORE-T16",
+  "T17": "FX-CORE-T17",
+  "T18": "FX-PVE-T18",
+  "T22": "FX-PVE-T22",
+  "T23": "FX-PVE-T23",
+  "T24": "FX-PVE-T24",
+  "T25": "FX-AR-T25",
+  "T26": "FX-AR-T26",
+  "T27": "FX-AR-T27",
+  "T28": "FX-AR-T28",
+  "T29": "FX-AR-T29",
+  "T30": "FX-AR-T30",
+  "T31": "FX-AR-T31",
+  "T32": "FX-AR-T32",
+  "T33": "FX-AR-T33",
+  "T34": "FX-AR-T34",
+  "T14": "FX-GA-T14",
+  "T35": "FX-GA-T14",
+  "T36": "FX-GA-T14",
+  "T43": "FX-GA-T14",
+  "T37": "FX-GA-T37",
+  "T38": "FX-GA-T38",
+  "T39": "FX-GA-T38",
+  "T40": "FX-GA-T40",
+  "T41": "FX-GA-T41",
+  "T42": "FX-GA-T42",
+  "T44": "FX-GA-T44",
+  "T45": "FX-GA-T45",
+  "T46": "FX-PVE-T46",
+  "T47": "FX-PVE-T47",
+  "T48": "FX-AR-T48",
+  "T49": "FX-AR-T49",
+  "T50": "FX-AR-T50",
+  "T51": "FX-GA-T51",
+  "T52": "FX-GA-T52"
+ },
+ "pass_required_fields": [
+  "fixture_id",
+  "fixture_version",
+  "exact_prompt",
+  "execution_date",
+  "model",
+  "observed_result",
+  "evidence_ids",
+  "reviewer",
+  "review_method",
+  "expectation_checklist"
+ ],
+ "gate_a_public_set": [
+  "A1",
+  "A2",
+  "A3",
+  "T1",
+  "T2",
+  "T13",
+  "T14",
+  "T16",
+  "T17",
+  "T18",
+  "T22",
+  "T23",
+  "T24",
+  "T25",
+  "T26",
+  "T27",
+  "T28",
+  "T29",
+  "T30",
+  "T31",
+  "T32",
+  "T33",
+  "T34",
+  "T35",
+  "T36",
+  "T37",
+  "T38",
+  "T39",
+  "T40",
+  "T41",
+  "T42",
+  "T43",
+  "T44",
+  "T45",
+  "T46",
+  "T47",
+  "T48",
+  "T49",
+  "T50",
+  "T51",
+  "T52"
+ ],
+ "exec_log_columns": [
+  "run_id",
+  "test_id",
+  "suite",
+  "fixture_id",
+  "fixture_version",
+  "exact_prompt",
+  "execution_date",
+  "model",
+  "observed_result",
+  "evidence_ids",
+  "status",
+  "defect_id",
+  "retest_of",
+  "supersedes_run_id",
+  "is_current",
+  "reviewer",
+  "reviewed_at",
+  "review_method",
+  "expectation_checklist",
+  "response_reference",
+  "notes"
+ ],
+ "pve_gate_row": {
+  "status": "VERIFIED",
+  "min_team": 1,
+  "repro": "CONFIRMED"
+ },
+ "pve_timeline_exact_step_fields": [
+  "source_step_no",
+  "trigger_type",
+  "trigger_actor_unit_key",
+  "time_state",
+  "clock_from_ms",
+  "clock_to_ms",
+  "actor_unit_key",
+  "action_type",
+  "target_unit_key",
+  "auto_state_after",
+  "animation_cue",
+  "criticality",
+  "source_locator"
+ ],
+ "pve_timeline_source_boundaries": {
+  "AX-F810-02-EV073": {
+   "battle_duration_ms": "UNKNOWN",
+   "criticality": "UNKNOWN",
+   "source_locator_prefix": "2025年9月魔法半自動／手順",
+   "source_step_numbers": [
+    "1",
+    "2",
+    "3",
+    "4",
+    "5",
+    "6",
+    "7",
+    "8"
+   ],
+   "not_stated_source_steps": [
+    "1"
+   ]
+  },
+  "AX-W810-01-EV084": {
+   "battle_duration_ms": "90000",
+   "step_assertions": {
+    "TLS-W810-01-001": ["1", "WAVE_START", "NONE", "STATED", "90000", "90000", "NONE", "NO_ACTION", "NONE", "ON", "raw_set_pattern=OOXOO", "UNKNOWN", "yt_w3My0QHcoTA@00:13-02:13#step-1"],
+    "TLS-W810-01-002": ["2", "CLOCK", "nanaka_sum", "STATED", "67000", "67000", "nanaka_sum", "NO_ACTION", "NONE", "ON", "raw_set_pattern=OXOOO", "UNKNOWN", "yt_w3My0QHcoTA@00:13-02:13#step-2"],
+    "TLS-W810-01-003": ["3", "ANIMATION_CUE", "ames_sum", "STATED", "59000", "59000", "ames_sum", "USE_UB", "NONE", "ON", "愛梅斯1技為美空充TP後最速／開眼後", "CRITICAL", "yt_w3My0QHcoTA@00:13-02:13#step-3"],
+    "TLS-W810-01-004": ["4", "SOURCE_TEXT_ONLY", "misora_xmas", "STATED", "53000", "53000", "NONE", "NO_ACTION", "NONE", "ON", "美空UB後接雪野UB", "UNKNOWN", "yt_w3My0QHcoTA@00:13-02:13#step-4"],
+    "TLS-W810-01-005": ["5", "ANIMATION_CUE", "ames_sum", "STATED", "48000", "48000", "ames_sum", "USE_UB", "NONE", "ON", "愛梅斯1技為薇歐莉特充TP後最速", "CRITICAL", "yt_w3My0QHcoTA@00:13-02:13#step-5a"],
+    "TLS-W810-01-006": ["5", "CLOCK", "NONE", "STATED", "48000", "48000", "NONE", "AUTO_OFF", "NONE", "OFF", "raw_set_pattern=OOXOO", "UNKNOWN", "yt_w3My0QHcoTA@00:13-02:13#step-5b"],
+    "TLS-W810-01-007": ["6", "BOSS_ACTION", "NONE", "STATED", "41000", "41000", "NONE", "NO_ACTION", "NONE", "OFF", "Boss UB", "UNKNOWN", "yt_w3My0QHcoTA@00:13-02:13#step-6"],
+    "TLS-W810-01-008": ["7", "CLOCK", "yukino_orig", "STATED", "38000", "38000", "NONE", "AUTO_ON", "NONE", "ON", "raw_set_pattern=OOOOX", "UNKNOWN", "yt_w3My0QHcoTA@00:13-02:13#step-7"],
+    "TLS-W810-01-009": ["8", "CLOCK", "violet_isanami", "STATED", "17000", "17000", "violet_isanami", "NO_ACTION", "NONE", "ON", "raw_set_pattern=OXOOO", "UNKNOWN", "yt_w3My0QHcoTA@00:13-02:13#step-8"]
+   }
+  },
+  "AX-W810-02-EV085": {
+   "battle_duration_ms": "90000",
+   "step_assertions": {
+    "TLS-W810-02-001": ["1", "WAVE_START", "NONE", "STATED", "90000", "90000", "NONE", "NO_ACTION", "NONE", "ON", "raw_set_pattern=OXOOO", "UNKNOWN", "yt_w3My0QHcoTA@02:14-03:48#step-1"],
+    "TLS-W810-02-002": ["2", "CLOCK", "ames_sum", "STATED", "71000", "71000", "NONE", "AUTO_OFF", "NONE", "OFF", "愛梅斯marker後關閉AUTO", "UNKNOWN", "yt_w3My0QHcoTA@02:14-03:48#step-2"],
+    "TLS-W810-02-003": ["3", "BOSS_ACTION", "NONE", "STATED", "56000", "56000", "NONE", "NO_ACTION", "NONE", "OFF", "Boss UB", "UNKNOWN", "yt_w3My0QHcoTA@02:14-03:48#step-3"],
+    "TLS-W810-02-004": ["4", "CLOCK", "yukino_orig", "STATED", "50000", "50000", "NONE", "AUTO_ON", "NONE", "ON", "雪野marker後開啟AUTO", "UNKNOWN", "yt_w3My0QHcoTA@02:14-03:48#step-4"],
+    "TLS-W810-02-005": ["5", "BOSS_ACTION", "NONE", "STATED", "39000", "39000", "NONE", "NO_ACTION", "NONE", "ON", "Boss UB", "UNKNOWN", "yt_w3My0QHcoTA@02:14-03:48#step-5"],
+    "TLS-W810-02-006": ["6", "CLOCK", "ames_sum", "STATED", "24000", "24000", "ames_sum", "NO_ACTION", "NONE", "ON", "raw_set_pattern=OOOOX", "UNKNOWN", "yt_w3My0QHcoTA@02:14-03:48#step-6"]
+   }
+  },
+  "AX-W810-03-EV086": {
+   "battle_duration_ms": "90000",
+   "step_assertions": {
+    "TLS-W810-03-001": ["1", "WAVE_START", "NONE", "STATED", "90000", "90000", "NONE", "NO_ACTION", "NONE", "ON", "raw_set_pattern=OXOOX", "UNKNOWN", "yt_w3My0QHcoTA@03:49-05:27#step-1"]
+   }
+  },
+  "AX-W810-04-EV087": {
+   "battle_duration_ms": "90000",
+   "step_assertions": {
+    "TLS-W810-04-001": ["1", "WAVE_START", "NONE", "STATED", "90000", "90000", "NONE", "NO_ACTION", "NONE", "ON", "raw_set_pattern=OOOXO", "UNKNOWN", "yt_w3My0QHcoTA@05:28-06:51#step-1"]
+   }
+  },
+  "AX-W810-05-EV088": {
+   "battle_duration_ms": "90000",
+   "step_assertions": {
+    "TLS-W810-05-001": ["1", "WAVE_START", "NONE", "STATED", "90000", "90000", "NONE", "NO_ACTION", "NONE", "ON", "raw_set_pattern=全SET", "UNKNOWN", "yt_w3My0QHcoTA@06:52-07:58#step-1"]
+   }
+  }
+ },
+ "arena_gate_row": {
+  "status": "VERIFIED",
+  "team_size": 5,
+  "repro_required": true,
+  "allowed_claim_confidence": ["B", "C"],
+  "allowed_source_tiers": [
+   "OFFICIAL",
+   "MAJOR_GUIDE",
+   "STRUCTURED_DB",
+   "COMMUNITY_WIKI",
+   "MULTI_PLAYER_REPORT"
+  ],
+  "allowed_evidence_source_tiers": [
+   "OFFICIAL",
+   "MAJOR_GUIDE",
+   "STRUCTURED_DB",
+   "COMMUNITY_WIKI",
+   "MULTI_PLAYER_REPORT",
+   "SINGLE_PLAYER_REPORT"
+  ],
+  "minimum_source_records": 2,
+  "minimum_observed_samples": 2,
+  "minimum_observed_wins": 2,
+  "outcome": "WIN",
+  "environment_match": "EXACT",
+  "result_claim_count": 1,
+  "independent_evidence_count": 2,
+  "required_evidence_url_scheme": "https",
+  "self_tested_run_registry_available": false
+ },
+ "timeline_gate_row": {
+  "status": "ACTIVE",
+  "maturity": "MATURE"
+ },
+ "fixture_policy": {
+  "T1": {
+   "required_server": "TW+JP",
+   "min_evidence_count": 2
+  },
+  "T13": {
+   "forbidden_server": "CN",
+   "required_source_tier": "OFFICIAL_OR_TRACEABLE"
+  },
+  "T17": {
+   "min_evidence_count": 1,
+   "max_claim_confidence": "D"
+  }
+ },
+ "t18_header": [
+  "unit_key",
+  "tw_name",
+  "jp_name",
+  "version",
+  "tw_release_date",
+  "availability_status",
+  "ue1_status",
+  "ue2_status",
+  "six_star_status",
+  "connect_rank_status",
+  "element",
+  "source_evidence_ids",
+  "last_verified",
+  "last_review_due",
+  "notes"
+ ],
+ "t25_header": [
+  "team_id",
+  "guide_id",
+  "server",
+  "stage",
+  "slot1",
+  "slot2",
+  "slot3",
+  "slot4",
+  "slot5",
+  "support_slot",
+  "operation_mode",
+  "requirements",
+  "clear_status",
+  "stability",
+  "source_ids",
+  "evidence_ids",
+  "tw_availability_check",
+  "verified_date",
+  "last_review_due",
+  "notes"
+ ],
+ "t26_header": [
+  "source_axis_id",
+  "timeline_id",
+  "team_id",
+  "source_id",
+  "source_evidence_id",
+  "source_locator",
+  "timeline_variant_name",
+  "operation_mode",
+  "clock_mode",
+  "battle_duration_ms",
+  "initial_auto_state",
+  "status",
+  "reproducibility",
+  "gap_reason",
+  "last_verified_at",
+  "notes"
+ ],
+ "t27_header": [
+  "timeline_step_id",
+  "timeline_id",
+  "sequence_no",
+  "source_step_no",
+  "trigger_type",
+  "trigger_actor_unit_key",
+  "time_state",
+  "clock_from_ms",
+  "clock_to_ms",
+  "actor_unit_key",
+  "action_type",
+  "target_unit_key",
+  "auto_state_after",
+  "animation_cue",
+  "hp_threshold",
+  "tolerance_ms",
+  "criticality",
+  "instruction_zh_tw",
+  "failure_if_missed",
+  "source_locator"
+ ],
+ "t45_header": [
+  "source_id",
+  "title",
+  "platform",
+  "author",
+  "source_type",
+  "url",
+  "last_seen_update",
+  "coverage_start",
+  "coverage_end",
+  "update_status",
+  "confidence_cap",
+  "usage",
+  "last_checked",
+  "notes"
+ ],
+ "t46_header": [
+  "source_id",
+  "title",
+  "platform",
+  "source_type",
+  "server",
+  "url",
+  "last_checked",
+  "freshness_window",
+  "access_status",
+  "confidence_cap",
+  "extraction_method",
+  "notes"
+ ],
+ "account_forbidden_strings": [
+  "04_ACC_MAIN_PROFILE",
+  "05_ACC_MAIN_ROSTER",
+  "06_ACC_ALT_PROFILE",
+  "07_ACC_ALT_ROSTER",
+  "10_IMPORT_WORKFLOW",
+  "ACCOUNT_LAYER_STATUS",
+  "BLOCKED_BY_ACCOUNT_DATA",
+  "TW_ROSTER_PENDING",
+  "account_id",
+  "account_status",
+  "data_status",
+  "roster Schema",
+  "roster_status",
+  "主帳號分析",
+  "副帳號分析",
+  "匯入 roster",
+  "帳號三隊",
+  "帳號個人化",
+  "未載入角色池"
+ ],
+ "t47_header": [
+  "case_id",
+  "server",
+  "environment_version",
+  "enemy_team1",
+  "enemy_team2",
+  "enemy_team3",
+  "counter_team1",
+  "counter_team2",
+  "counter_team3",
+  "hidden_team_mode",
+  "status",
+  "verified_date",
+  "source_ids",
+  "evidence_ids",
+  "claim_ids",
+  "tw_availability_check",
+  "non_overlap_check",
+  "reproducibility",
+  "last_review_due",
+  "notes"
+ ]
+}

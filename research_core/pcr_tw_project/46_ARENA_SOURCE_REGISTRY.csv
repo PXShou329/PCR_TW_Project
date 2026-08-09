@@ -1,0 +1,7 @@
+source_id,title,platform,source_type,server,url,last_checked,freshness_window,access_status,confidence_cap,extraction_method,notes
+ARENA-SRC-001,AppMedia 防衛突破編成搜尋工具,AppMedia,STRUCTURED_DB,JP,https://appmedia.jp/priconne-redive/4466131,2026-08-02,90d,ACTIVE,C,選敵方五人→查投稿進攻隊；單筆 D、多筆近期一致可升 C,依稽核登錄；Checkpoint D 實測複驗存取
+ARENA-SRC-002,GameWith Arena 進攻模板,GameWith,CURATED_GUIDE,JP,https://gamewith.jp/pricone-re/article/show/94606,2026-08-02,90d,ACTIVE,C,現行進攻模板與 Meta archetype；非特定防守勝率,同上
+ARENA-SRC-003,GameWith Arena 角色排行,GameWith,CURATED_GUIDE,JP,https://gamewith.jp/pricone-re/article/show/93179,2026-08-02,90d,ACTIVE,C,角色功能定位；不作精確解陣,同上
+ARENA-SRC-004,pcrdfans JP Battle,pcrdfans,STRUCTURED_DB,JP,https://www.pcrdfans.com/en/battle,2026-08-02,90d,ACTIVE,C,日服玩家反制紀錄；逐筆確認伺服器，無法確認則 REJECTED,同上
+ARENA-SRC-005,nomae Arena DB,nomae,STRUCTURED_DB,JP,nomae.net/arenadb,2026-08-02,,STALE,E,2020/11 後停更；只作歷史機制與 STALE 案例，不得作現行解,依稽核；STALE ONLY
+ARENA-SRC-006,巴哈姆特公主連結台服競技場問答串,Bahamut,FORUM_THREAD,TW,https://forum.gamer.com.tw/Co.php?bsn=30861&sn=504930,2026-08-08,90d,ACTIVE,D,逐樓實開正文與原始圖片；只採明示 Win／Lose 的 exact composition,同一回覆者兩筆各自仍是 SINGLE_REPORT；不可由兩隊反推獨立交叉驗證或勝率

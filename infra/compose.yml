@@ -1,0 +1,345 @@
+name: pcr-tw-b1
+
+x-python-security: &python-security
+  read_only: true
+  init: true
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+  tmpfs:
+    - /tmp:rw,noexec,nosuid,size=64m
+
+x-owner-database-environment: &owner-database-environment
+  PCR_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-pcr_owner}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in a local .env file}@db:5432/${POSTGRES_DB:-pcr_tw}
+
+services:
+  db:
+    image: postgres:18.4-bookworm
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-pcr_tw}
+      POSTGRES_USER: ${POSTGRES_USER:-pcr_owner}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in a local .env file}
+      POSTGRES_INITDB_ARGS: --data-checksums --encoding=UTF8
+      TZ: Asia/Taipei
+    expose:
+      - "5432"
+    volumes:
+      - pg_data:/var/lib/postgresql
+      - ${BACKUP_DIR:-../.runtime/backups}:/backups
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+    stop_grace_period: 30s
+    networks:
+      - backend
+
+  migration:
+    <<: *python-security
+    image: ${PCR_API_IMAGE:-pcr-tw-platform-api:local}
+    command: ["alembic", "-c", "database/alembic.ini", "upgrade", "head"]
+    environment:
+      <<: *owner-database-environment
+      PYTHONDONTWRITEBYTECODE: "1"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+    networks:
+      - backend
+
+  role-provision:
+    <<: *python-security
+    image: ${PCR_API_IMAGE:-pcr-tw-platform-api:local}
+    command: ["python", "-m", "pcr_database.provision_roles"]
+    environment:
+      PCR_OWNER_DATABASE_URL: postgresql://${POSTGRES_USER:-pcr_owner}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in a local .env file}@db:5432/${POSTGRES_DB:-pcr_tw}
+      PCR_API_DB_PASSWORD: ${PCR_API_DB_PASSWORD:?Set a distinct PCR_API_DB_PASSWORD in .env}
+      PCR_IMPORTER_DB_PASSWORD: ${PCR_IMPORTER_DB_PASSWORD:?Set a distinct PCR_IMPORTER_DB_PASSWORD in .env}
+      PCR_SCHEDULER_DB_PASSWORD: ${PCR_SCHEDULER_DB_PASSWORD:?Set a distinct PCR_SCHEDULER_DB_PASSWORD in .env}
+      PYTHONDONTWRITEBYTECODE: "1"
+    depends_on:
+      migration:
+        condition: service_completed_successfully
+    restart: "no"
+    networks:
+      - backend
+
+  importer:
+    <<: *python-security
+    image: ${PCR_API_IMAGE:-pcr-tw-platform-api:local}
+    command:
+      - python
+      - -m
+      - pcr_pipeline.import_pve
+      - --research-core
+      - research_core/pcr_tw_project
+    environment:
+      PCR_DATABASE_URL: postgresql+psycopg://pcr_importer:${PCR_IMPORTER_DB_PASSWORD:?Set a distinct PCR_IMPORTER_DB_PASSWORD in .env}@db:5432/${POSTGRES_DB:-pcr_tw}
+      PYTHONDONTWRITEBYTECODE: "1"
+    depends_on:
+      role-provision:
+        condition: service_completed_successfully
+    restart: "no"
+    networks:
+      - backend
+
+  round-trip-smoke:
+    <<: *python-security
+    profiles: [verification]
+    image: ${PCR_API_IMAGE:-pcr-tw-platform-api:local}
+    command:
+      - python
+      - -m
+      - pcr_pipeline.verify_round_trip
+      - --research-core
+      - research_core/pcr_tw_project
+      - --manifest
+      - scripts/research_core_rp_b5_1_manifest.sha256
+      - --run-baseline
+    environment:
+      PCR_DATABASE_URL: postgresql+psycopg://pcr_api:${PCR_API_DB_PASSWORD:?Set a distinct PCR_API_DB_PASSWORD in .env}@db:5432/${POSTGRES_DB:-pcr_tw}
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONUNBUFFERED: "1"
+    depends_on:
+      importer:
+        condition: service_completed_successfully
+    restart: "no"
+    networks:
+      - backend
+
+  consistency-smoke:
+    <<: *python-security
+    profiles: [verification]
+    image: ${PCR_API_IMAGE:-pcr-tw-platform-api:local}
+    command: ["python", "-m", "pcr_pipeline.repeatable_read_smoke"]
+    environment:
+      PCR_API_DATABASE_URL: postgresql+psycopg://pcr_api:${PCR_API_DB_PASSWORD:?Set a distinct PCR_API_DB_PASSWORD in .env}@db:5432/${POSTGRES_DB:-pcr_tw}
+      PCR_IMPORTER_DATABASE_URL: postgresql+psycopg://pcr_importer:${PCR_IMPORTER_DB_PASSWORD:?Set a distinct PCR_IMPORTER_DB_PASSWORD in .env}@db:5432/${POSTGRES_DB:-pcr_tw}
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONUNBUFFERED: "1"
+    depends_on:
+      importer:
+        condition: service_completed_successfully
+    restart: "no"
+    networks:
+      - backend
+
+  cache-epoch-smoke:
+    <<: *python-security
+    profiles: [verification]
+    image: ${PCR_API_IMAGE:-pcr-tw-platform-api:local}
+    command: ["python", "-m", "pcr_pipeline.cache_epoch_smoke"]
+    environment:
+      PCR_API_BASE_URL: http://api:8000
+      PCR_IMPORTER_DATABASE_URL: postgresql+psycopg://pcr_importer:${PCR_IMPORTER_DB_PASSWORD:?Set a distinct PCR_IMPORTER_DB_PASSWORD in .env}@db:5432/${POSTGRES_DB:-pcr_tw}
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONUNBUFFERED: "1"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: "no"
+    networks:
+      - backend
+
+  artifact-lock-smoke:
+    <<: *python-security
+    profiles: [verification]
+    image: ${PCR_API_IMAGE:-pcr-tw-platform-api:local}
+    command: ["python", "-m", "pcr_pipeline.artifact_lock_smoke"]
+    environment:
+      PCR_IMPORTER_DATABASE_URL: postgresql+psycopg://pcr_importer:${PCR_IMPORTER_DB_PASSWORD:?Set a distinct PCR_IMPORTER_DB_PASSWORD in .env}@db:5432/${POSTGRES_DB:-pcr_tw}
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONUNBUFFERED: "1"
+    depends_on:
+      importer:
+        condition: service_completed_successfully
+    restart: "no"
+    networks:
+      - backend
+
+  revision-history-smoke:
+    <<: *python-security
+    profiles: [verification]
+    image: ${PCR_API_IMAGE:-pcr-tw-platform-api:local}
+    command: ["python", "-m", "pcr_pipeline.revision_history_smoke"]
+    environment:
+      PCR_DATABASE_URL: postgresql+psycopg://pcr_importer:${PCR_IMPORTER_DB_PASSWORD:?Set a distinct PCR_IMPORTER_DB_PASSWORD in .env}@db:5432/${POSTGRES_DB:-pcr_tw}
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONUNBUFFERED: "1"
+    depends_on:
+      importer:
+        condition: service_completed_successfully
+    restart: "no"
+    networks:
+      - backend
+
+  revision-history-verify:
+    <<: *python-security
+    profiles: [verification]
+    image: ${PCR_API_IMAGE:-pcr-tw-platform-api:local}
+    command: ["python", "-m", "pcr_pipeline.verify_revision_history"]
+    environment:
+      PCR_DATABASE_URL: postgresql+psycopg://pcr_api:${PCR_API_DB_PASSWORD:?Set a distinct PCR_API_DB_PASSWORD in .env}@db:5432/${POSTGRES_DB:-pcr_tw}
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONUNBUFFERED: "1"
+    depends_on:
+      importer:
+        condition: service_completed_successfully
+    restart: "no"
+    networks:
+      - backend
+
+  api:
+    <<: *python-security
+    image: ${PCR_API_IMAGE:-pcr-tw-platform-api:local}
+    build:
+      context: ..
+      dockerfile: infra/docker/api.Dockerfile
+    restart: unless-stopped
+    environment:
+      PCR_DATABASE_URL: postgresql+psycopg://pcr_api:${PCR_API_DB_PASSWORD:?Set a distinct PCR_API_DB_PASSWORD in .env}@db:5432/${POSTGRES_DB:-pcr_tw}
+      PCR_APPLICATION_VERSION: 3.0.0-b5
+      PCR_RESEARCH_CORE_VERSION: "1.5"
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONUNBUFFERED: "1"
+    command:
+      - uvicorn
+      - pcr_api.main:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+      - --no-access-log
+    ports:
+      - "127.0.0.1:${API_PORT:-8000}:8000"
+    expose:
+      - "8000"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=2)"
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+    depends_on:
+      importer:
+        condition: service_completed_successfully
+    networks:
+      - frontend
+      - backend
+
+  scheduler:
+    <<: *python-security
+    image: ${PCR_SCHEDULER_IMAGE:-pcr-tw-platform-scheduler:local}
+    build:
+      context: ..
+      dockerfile: infra/docker/scheduler.Dockerfile
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://pcr_scheduler:${PCR_SCHEDULER_DB_PASSWORD:?Set a distinct PCR_SCHEDULER_DB_PASSWORD in .env}@db:5432/${POSTGRES_DB:-pcr_tw}
+      SCHEDULER_ENABLED: ${SCHEDULER_ENABLED:-false}
+      SHADOW_MODE: ${SHADOW_MODE:-true}
+      AUTO_PUBLISH: ${AUTO_PUBLISH:-false}
+      SCHEDULER_HEALTH_PORT: "8081"
+      SCHEDULER_POLL_SECONDS: ${SCHEDULER_POLL_SECONDS:-60}
+      SCHEDULER_LEASE_TTL_SECONDS: ${SCHEDULER_LEASE_TTL_SECONDS:-180}
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONUNBUFFERED: "1"
+    ports:
+      - "127.0.0.1:${SCHEDULER_HEALTH_PORT:-8081}:8081"
+    expose:
+      - "8081"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8081/ready', timeout=2)"
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+    depends_on:
+      role-provision:
+        condition: service_completed_successfully
+    networks:
+      - frontend
+      - backend
+
+  scheduler-smoke:
+    <<: *python-security
+    profiles: [verification]
+    image: ${PCR_SCHEDULER_IMAGE:-pcr-tw-platform-scheduler:local}
+    entrypoint: ["python", "-m", "pcr_scheduler.smoke"]
+    environment:
+      DATABASE_URL: postgresql://pcr_scheduler:${PCR_SCHEDULER_DB_PASSWORD:?Set a distinct PCR_SCHEDULER_DB_PASSWORD in .env}@db:5432/${POSTGRES_DB:-pcr_tw}
+      SCHEDULER_ENABLED: "true"
+      SHADOW_MODE: "true"
+      AUTO_PUBLISH: "false"
+      SCHEDULER_POLL_SECONDS: "60"
+      SCHEDULER_LEASE_TTL_SECONDS: "180"
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONUNBUFFERED: "1"
+    depends_on:
+      role-provision:
+        condition: service_completed_successfully
+    restart: "no"
+    networks:
+      - backend
+
+  web:
+    read_only: true
+    init: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+      - /app/apps/web/.next/cache:rw,noexec,nosuid,size=64m
+    build:
+      context: ..
+      dockerfile: infra/docker/web.Dockerfile
+    restart: unless-stopped
+    environment:
+      API_BASE_URL: http://api:8000
+      NEXT_TELEMETRY_DISABLED: "1"
+      NODE_ENV: production
+      PORT: "3000"
+      HOSTNAME: 0.0.0.0
+    ports:
+      - "127.0.0.1:${WEB_PORT:-3000}:3000"
+    expose:
+      - "3000"
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 15s
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - frontend
+      - backend
+
+networks:
+  frontend: {}
+  backend:
+    internal: true
+
+volumes:
+  pg_data: {}

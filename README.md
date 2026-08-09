@@ -1,131 +1,115 @@
-# 公主連結台服 AI 攻略研究所 — v1.5 檔案包使用說明
+# 公主連結台服 AI 攻略研究所
 
-**版本定位**：v1.5 Guide-Only ── **台服公共攻略資訊整合系統（帳號層 REMOVED_FROM_ACTIVE_SCOPE）**。
-產品只做：PVE 通關隊伍（每關 5–10 支）、競技場解陣、公主競技場三隊、抽卡未來視、來源追溯。
-**本專案不保存帳號資料**；帳號層完整封存於外部 `PCR_TW_Project_account_layer_archive_v1_5.zip`（不上傳）。
-已完成：17→13 Option A（13 全部狀態由 17 生成單一 AUTO_RESULTS；Gate A 只讀 17）、Gate C 警告分類優化、
-流程清理（全專案不再手動回填 13）、**Baseline Integrity Patch**
-（主線第 15 章／Lv370／涅婭★6 以官方直頁重新驗證：ev040 第15章、ev041 涅婭★6、ev042 Lv370；
-ev037 保留為 01/15 第14章歷史快照）。
-**2026/08/02 刷新（六直頁完整抓取）**：主線第 16 章／Lv373（ev043＝#3937）、深域第 10 區解鎖
-（**ev029 ACTIVE**＝#3938）、台服當期池格蕾斯（兔女郎）08/01–08/11（ev044＝#3963）、日服ルイズマリー直頁
-（**ev033 ACTIVE**＝#36850）、日服當期池フブキ（サマー）07/31–08/15（ev048＝#37049）；CURRENT-0717→
-SUPERSEDED＋新建 CURRENT-0802；next_review_due=2026-08-09（含 08/08 日服 8.5 直播事件觸發）。
-攻略內容（PVE／Arena／P-Arena／Timeline）與四個公共 Suite 實跑為部署後 Guide Wave 1–3 工作，
-本輪未虛構任何攻略或 Suite PASS。Gate A/B/C 未通過（正確）；Phase 6＝BLOCKED_BY_RELEASE_GATE。
+Guide-Only Strategy Platform v3.0 的 RP-B5-1 Gacha 垂直切片候選，建立在
+B3／D0 exact picker、RP-A5 Arena typed slice、RP-A4 Water 成熟切片與已封存的 B1 full-core round-trip 里程碑之上。這是一個可部署的
+**本機／私人 staging**，不是公開正式版，也尚未宣稱 Gates D–G 通過。
 
-**Guide-Only Scope Reset（2026-08-02）**
-- 移出 Active：04／05／06／07／10 與 T3–T12／T15／T19–T21（ID 永久退休）；帳號 Mutation M22／M24／M31–M33 封存。
-- 新增：18 公共角色可用性（PVE／Arena／P-Arena 可用性唯一來源）、25 PVE 隊伍層、45 Gacha 社群來源索引、46 Arena 來源 Registry。
-- 測試集＝Guide-Only 41（A1–A3、T1、T2、T13、T14、T16–T18、T22–T52）；17 為 21 欄公共 Schema。
+本切片以私人 tag `rp-b3-d0-1` 封存五角色 exact picker、保守 Strategy Metadata 與
+Application/Data parity verifier；前一安全回滾點是 `rp-a5-2`。`rp-a5-1` 保留為 CI runtime
+依賴安裝修正前的稽核 checkpoint。RP-A4 仍保留為 Water／A3 PVE content expansion 的
+rollback checkpoint，不覆寫歷史 manifest。這個 release checkpoint
+不等於整個 B3＋A5 content expansion 已完成：Arena mature defenses 目前仍為 0。RP-B5-1
+完成私人 CI 後才建立新的 immutable tag；既有 tags 不移動。
 
-**Phase 狀態**：Baseline Current through 2026/08/02｜PVE Registry 3 VERIFIED（紅焰 8-10 關卡仍 PROVISIONAL；5 隊門檻未達）｜Arena Registry 0（Checkpoint D）
-｜P-Arena 理論模型 3（Checkpoint E 組合求解）｜Gacha MATURE 2＋RESEARCH 1（Checkpoint C 社群整合）｜Suite 全 NOT_RUN（部署後）。
+目前端到端垂直切片包含「紅焰深域 8-10」與「蒼波深域 8-10」，各提供五支不同五人的實際通關隊伍、逐 Slot
+條件、來源分離的操作軸、逐步 Evidence Drawer，以及誠實的 `UNKNOWN`／結構化操作軸缺口。競技場
+research core 已加入同環境、實際勝利截圖支持的兩筆 `SINGLE_REPORT` exact counter；不把單次
+回報包裝成勝率，也不建立示意隊。`/pvp` 現在以五個 AVAILABLE 台服官方名稱角色建立
+可分享的 exact query；不足五人、重複角色與四人重疊都 fail closed，Similar 仍未啟用。
+`/gacha` 把 5 筆 timeline 與 4 筆社群來源從 file SSOT 正規化到 PostgreSQL v4、FastAPI、
+typed client 與 Next.js UI：2 筆 MATURE、3 筆 RESEARCH；三筆已知限定身分都有指定 JP
+OFFICIAL／A Claim/Evidence，Vampy／Tia 維持 `UNKNOWN/null`。頁面不輸出個人寶石、
+持有角色條件或帳號專屬抽取建議。
 
-**R3i（2026/08/08）**：PVE Gate 已封住 PROVISIONAL／缺失 unit_key 灌水路徑；TM-F810-01 已以
-`SOURCE_CONFLICT`＋canonical requirements JSON 正規化；紅焰 8-10 實開候選來源後取得 3 支不同五人的
-VERIFIED effective teams（詳見 22／23／25）。相同五人多來源只計一隊；因仍少於 5 支，24 不升 `VERIFIED`。
+## 真相與安全邊界
 
-## 檔案清單（唯一權威清單）
+- `research_core/pcr_tw_project/` 是唯一 canonical source；目前 RP-B5-1 的 48 個檔案
+  由 `scripts/research_core_rp_b5_1_manifest.sha256` 逐檔 SHA-256 鎖定；RP-A2／RP-A3／RP-A4／RP-A5
+  manifests 保留供 immutable rollback 相容驗證。
+- PostgreSQL 同時保存 byte-preserved artifact mirror、lossless row mirror 與 normalized typed
+  serving closure；只有 typed closure 供 API／UI 讀取，三者都不會回寫 research core。
+- 台服是攻略主體；日服只作未來視與可轉用研究。中國服／B 服資料不作核心、
+  替代或補洞依據。
+- 不含帳號匯入、roster／owned、個人寶石或個人化推薦，也不登入或操作遊戲。
+- Scheduler 預設停用且固定 Shadow Mode；目前 RP-B5-1 仍沒有 fetcher、publisher 或
+  canonical writer。
+- Migration、Importer、API、Scheduler 使用分離的 PostgreSQL roles；API 只有
+  serving tables 的 `SELECT` 權限。
 
-> ZIP 內 46 檔＝編號 41＋README＋tools×4（validate_project.py／validation_config.json／stats.json／
-> mutation_test.py）；**40 檔**上傳 Knowledge（00 貼設定欄；README 與 `tools/` 皆不上傳）。
-> 本地驗證：`python3 tools/validate_project.py`（生成 15 AUTO 區＋16＋stats.json）；
-> 回歸攔截驗證：`python3 tools/mutation_test.py`（檢查數以 16 為準，README 不重述）。
-> v1.4 交付規則：**單一權威 ZIP**，不外包 ZIP、不附鬆散副本。
+```mermaid
+flowchart LR
+  RC["B5-1 research core\nFile SSOT"] --> IM["Fail-closed importer"]
+  IM --> DB["PostgreSQL\nbyte artifact + lossless rows\nnormalized typed closure"]
+  DB --> API["FastAPI read API"]
+  API --> WEB["Next.js Web UI"]
+  SCH["Disabled shadow scheduler"] --> CTRL["Scheduler control tables only"]
+```
 
-| 檔案 | 用途 | 上傳 |
-|---|---|---|
-| 00_PROJECT_INSTRUCTIONS.md | 貼設定欄；v1.4 雙軌制＋錨點揭露更新 | 否 |
-| 01_SOURCE_REGISTRY.md | 雙軌制定義＋統一欄位標準＋來源現況（v1.4 查證） | 是 |
-| 02_SERVER_BASELINE.md | canonical anchors＝8 筆（LIMITED 5／PERMANENT 2／SYSTEM 1）＋四軌統計（由 tools/validation_config.json 即時派生）＋台日現況 | 是 |
-| 03_NAME_GLOSSARY.md | 術語（交換Pt 升 A/A、星素、深域雙邊沿革等） | 是 |
-| 11_ACCEPTANCE_TESTS.md | 測試定義（Guide-Only 41 測試） | 是 |
-| 12_CHARACTER_SYNC.md | 同步生命週期（台服→18、日服→41；去重／截止日） | 是 |
-| 18_TW_CHARACTER_AVAILABILITY.csv | 台服公共角色可用性 Registry（unit_key SSOT，15 欄） | 是 |
-| 13_ACCEPTANCE_RESULTS.md | 驗收紀錄簿（四 Suite＋可追溯欄位） | 是 |
-| 14_PUBLIC_TEST_FIXTURES.md | 公共測試固定輸入（37 個 Fixture 覆蓋 41 個測試） | 是 |
-| 15_DATA_QUALITY_REPORT.md | 資料品質報告＋Release Gate 分層判定 | 是 |
-| 16_STATIC_VALIDATION_REPORT.md | 靜態驗證報告（程式化統計） | 是 |
-| 17_TEST_EXECUTION_LOG.csv | 測試執行紀錄 SSOT（21 欄公共 Schema；reviewer／review_method／expectation_checklist） | 是 |
-| 20_PVE_GUIDE_WORKFLOW.md | PVE 流程（每關 5–10 隊＋去重＋公共借角） | 是 |
-| 21_STAGE_GUIDE_SCHEMA.md | 攻略 Schema（統一欄位＋雙軌制） | 是 |
-| 22_DEEP_ZONE_GUIDE_INDEX.md | 深域人讀索引（隊數／全自動／手動；Gate SSOT 為 24） | 是 |
-| 24_PVE_GUIDE_REGISTRY.csv | PVE 關卡層 Registry（Gate SSOT，16 欄；team_count↔25） | 是 |
-| 25_PVE_TEAM_REGISTRY.csv | PVE 隊伍層 Registry（20 欄；五 slot＋requirements canonical JSON＋來源模式聲明＋台服可用性＋去重） | 是 |
-| 23_PVE_RESEARCH_LOG.md | PVE 研究日誌（P1 前置已登錄） | 是 |
-| 30_ARENA_RESEARCH_WORKFLOW.md | 競技場研究流程 | 是 |
-| 31_ARENA_COUNTER_SCHEMA.md | 反制 Schema（雙軌制＋evidence_ids） | 是 |
-| 32_ARENA_META_SNAPSHOT.md | JP 初版＋TW PROVISIONAL 快照 | 是 |
-| 33_ARENA_COUNTER_LOG.md | 反制日誌＋8 原型簡報＋停止條件回報 | 是 |
-| 34_ARENA_SOURCE_MAP.md | 競技場來源地圖 | 是 |
-| 35_PRINCESS_ARENA_WORKFLOW.md | 公競流程 | 是 |
-| 36_PRINCESS_ARENA_STRATEGY_LIBRARY.md | 一般策略庫 | 是 |
-| 37_PRINCESS_ARENA_PLANNER_SCHEMA.md | 三隊規劃 Schema | 是 |
-| 38_PRINCESS_ARENA_RESEARCH_LOG.md | 公競日誌（PA1–PA3 理論案例） | 是 |
-| 39_ARENA_COUNTER_REGISTRY.csv | 競技場反制 Registry（Gate SSOT，23 欄含 tw_availability_check／來源涵蓋） | 是 |
-| 40_GACHA_FUTURE_SIGHT.md | 未來視公共流程 | 是 |
-| 41_GACHA_TIMELINE.csv | 時間線（35 欄含模型區間／方法／社群共識欄；MATURE 2＋RESEARCH 1） | 是 |
-| 42_CHARACTER_FUTURE_VALUE_SCHEMA.md | 價值評估 Schema | 是 |
-| 43_GEM_FORECAST_TEMPLATE.md | 寶石模型（v1.4 單位修正＋三情境示例） | 是 |
-| 44_GACHA_RESEARCH_LOG.md | 未來視日誌 | 是 |
-| 45_GACHA_COMMUNITY_SOURCE_INDEX.csv | 台服社群未來視來源索引（14 欄；cap≤C） | 是 |
-| 46_ARENA_SOURCE_REGISTRY.csv | Arena 解陣來源 Registry（12 欄；nomae STALE-only） | 是 |
-| 47_PRINCESS_ARENA_CASE_REGISTRY.csv | P-Arena 成熟案例 Registry（Gate SSOT，20 欄；15 人不重複＋TW 可用） | 是 |
-| 90_MAINTENANCE_RUNBOOK.md | 維運（＋證據帳與 Suite 回歸） | 是 |
-| 91_PROMPT_LIBRARY.md | 提示庫（§10 四 Suite） | 是 |
-| 92_EVIDENCE_LEDGER.csv | 證據帳（16 欄；列數以 validator 生成統計為準，見 16／stats.json） | 是 |
-| 93_CLAIM_REGISTER.csv | 結論登錄簿（Claim SSOT，14 欄含 claim_type；列數見 16／stats.json） | 是 |
-| 99_CHANGELOG.md | 更新紀錄 | 是 |
-| README.md | 本檔 | 否 |
+## 快速驗證
 
-## 建置／升級步驟
+需要 Python 3.13.14、Node.js 24 LTS／npm 11，以及 Docker Compose v2。
 
-1. 新建：照表上傳＋貼 00 → 跑 91 §1（ev045-047／ev049／#3943 直頁例行回驗、08/02 後新公告、候選 #4 JP 側）→ Checkpoint B–E（PVE 5–10 隊→社群未來視→Arena 來源→P-Arena 組合）→ 依 91 §10 逐 Suite 實跑。
-2. **測試結果一律寫入 `17_TEST_EXECUTION_LOG.csv`（21 欄），再執行 `python tools/validate_project.py --mode OPERATIONAL --write`，由 validator 自動更新 13 的 AUTO_RESULTS——不手動修改 13 的測試狀態。**
-2. 自 refresh_20260802 升級：重貼 00；移除 04／05／06／07／10；新增 18／25／45／46；替換 01、03、11–17、20–23、30、33、35、37、38、40、41、43、91、99、README；tools 全量更換。
-3. 台服可用性補查：91 §9（18 Registry 逐筆查證）。
+```powershell
+python scripts/check_research_baseline.py
+python scripts/check_application_data_parity.py --run-round-trip
+python -m pytest -q
+npm ci
+npm run check:contract
+npm run typecheck
+npm run build:web
+```
 
-## ADR（v1.4 新增）
+研究核心的原始五命令需在 `research_core/pcr_tw_project/` 執行：
 
-| # | 決策 | 理由 |
-|---|---|---|
-| 17 | Source Tier 與 Claim Confidence 雙軌制；單一大型攻略站最多 D | 修正來源／結論混用（P0） |
-| 18 | 14 Fixtures＋92 證據帳＋四 Suite；PASS 必附 fixture/observed/evidence/日期 | 驗收可追溯（P0） |
-| 19 | 單一權威 ZIP 交付 | 消除多副本失同步 |
-| 20 | 寶石模型單位修正；並修正計畫稿缺口公式的免費抽重複扣除 | P0；有效抽數已含免費抽與券 |
-| 21 | 內容量未達標時如實回報＋交付執行簡報，不灌水不虛構 | 停止條件 §17（3/5/8/10） |
-| 22 | 錨點依 pool_class 四軌（LIMITED／PERMANENT／ALL_NEW／SYSTEM），統計必揭露軌道別與 n | 由 canonical anchor objects 即時重算，ST83／ST84／ST85 守門 |
-| 23 | 92（證據）／93（結論）雙 SSOT；15 分布一律程式化計算 | 稽核 F02／F15：混算導致統計錯誤 |
-| 24 | Evidence URL 標準化（source_url＋source_locator） | 稽核 F16 |
-| 25 |（已由 ADR 39 取代）台服新角改逐筆入 18 | Guide-Only Scope Reset |
-| 26 | 16 只能由 tools/validate_project.py 生成；打包以 exit 0 為前置 | v1.4.1 稽核 F01／F12：報告不可重現且曾與實際不符 |
-| 27 | 驗證分 CURRENT_SPEC_SCAN／HISTORICAL_RECORD_SCAN；歷史只報告不 FAIL | v1.4.1 稽核 F16：不得刪歷史規避檢查 |
-| 28 | 92 欄名 evidence_confidence；93 增 claim_type（含 DERIVED_CALCULATION） | v1.4.1 稽核 §6.1／6.2（F14／F15） |
-| 29 | Validator 升級為回歸守門（ST38–ST43）＋mutation_test.py 隨附；15 AUTO_STATS 區由 validator 生成核對 | v1.4.1.1 稽核 M05／M06：關鍵字檢查不等於語意保護 |
-| 30 | 提示不硬編碼會過期的統計值（T43 動態讀 02）；Evidence 限制逐筆處置、ev029 未直驗不解鎖 | v1.4.1.1 稽核 §4.1／§4.7 |
-| 31 | Validation Mode（PRE_SUITE／OPERATIONAL／ARTIFACT_READY）：完整 PASS 放行、空白 PASS 攔截、FAIL 必附 defect | v1.4.1.2 稽核 M13：禁止一切 PASS 會阻擋 v1.5 |
-| 32 | 17 為執行紀錄 SSOT（exact_prompt 機器可讀）；13 為人讀摘要；版本 SSOT 於 config 精確比對 | v1.4.1.2 稽核 §6／§7.2 |
-| 33 | ARTIFACT_READY 強制 Gate A/B/C（未達 exit 1）；Gate 數量由 22／33／38／41 直接計算 | v1.4.1.3 稽核 §4／§8：ARTIFACT_READY 空專案仍 exit 0 |
-| 34 | 17 全面守門（run_id 唯一／test-suite-fixture 映射／Evidence FK／PASS 必填 model・fixture_version／current result） | v1.4.1.3 稽核 §5 X01–X09 |
-| 35 |（帳號段已由 ADR 39 移除）Mode 輸出隔離（未達 Gate 不覆寫 canonical，改寫 tools/reports/*.json） | v1.4.1.3 稽核 §6／§9 |
-| 36 | Gate 數量改由結構化 Registry（24 PVE／39 Arena／41 Timeline）成熟且可追溯的列計算，假列不計 | v1.4.1.4 稽核 §5／§6：幾行假資料即可通過 Gate |
-| 37 | Gate C 納入 blocking_gate_c_warnings=0＋新鮮度；warnings 於 Gate 計算前產生 | v1.4.1.4 稽核 §5：Gate C 未檢查阻擋警告 |
-| 38 | 13 由 validator 依 17 current result 自動覆寫 AUTO_RESULTS 區；retest chain 語意守門 | v1.4.1.4 稽核 §8–§15 |
-| 39 | **Guide-Only Scope Reset**：帳號層 REMOVED_FROM_ACTIVE_SCOPE（封存 archive ZIP）；18 為台服可用性唯一來源；25 隊伍層＋同五人去重＋24 team_count 一致；45／46 來源 Registry（社群 cap≤C）；Gate 重定義（B：PVE 2 關×5 隊＋Arena 5 防守×2 反制＋P-Arena 3＋Timeline 6＋社群來源 2；C：PVE 5 關＋Arena 10＋P-Arena 5） | 20260802 Guide-Only 稽核 §3–§12 |
+```powershell
+python tools/validate_project.py --mode PRE_SUITE --write
+python tools/validate_project.py --mode PRE_SUITE
+python tools/validate_project.py --mode OPERATIONAL
+python tools/validate_project.py --mode ARTIFACT_READY
+python tools/mutation_test.py
+```
 
-## 已知債務（v1.4）
+目前預期 ARTIFACT_READY 仍以 exit 1 誠實揭露 Gate A／B／C 三項缺口；本里程碑不會為了
+讓測試變綠而降低研究 Gate。
 
-ev045-047／ev049／#3943 直頁例行回驗＋候選 #4 JP 側官方化＋08/02 後例行檢查（91 §1）
-｜Checkpoint B：紅焰 8-10 現 3/5（至少再補 2 支不同五人）／10-10 現 0/5（24／25）｜Checkpoint C：45 來源抓取＋41 社群共識欄
-｜Checkpoint D：46 來源實測＋逐防守解陣（39）｜Checkpoint E：P-Arena 組合求解（成熟案例入 47）
-｜18 On-Demand Registry 依需求擴充（採需求驅動，不建全角色 roster；筆數以 AUTO 統計為準）｜SYNC-004/005 官方確認｜Timeline 補至 6+｜台服官方譯名回填。
+目前 RP-B5-1 research-core 五命令由 `scripts/check_research_baseline.py` 在乾淨暫存副本
+重現；immutable pin 的實跑輸出見
+[`docs/operations/B5_1_VERIFICATION_REPORT.md`](docs/operations/B5_1_VERIFICATION_REPORT.md)。
+本次 fresh V0007 stack、651 格 ACL、Shadow scheduler、backup／restore、B5→A5→B5
+schema/data rollback，以及 mock／real desktop/mobile 實跑輸出亦收錄於該報告；操作順序見
+[`docs/operations/B5_ROLLBACK_RUNBOOK.md`](docs/operations/B5_ROLLBACK_RUNBOOK.md)。歷史
+A5→A4→A5 證據仍見
+[`docs/operations/A5_VERIFICATION_REPORT.md`](docs/operations/A5_VERIFICATION_REPORT.md)。
+本次 B3／D0 picker、metadata、重建 A5 stack、backup／restore 與 rollback 實跑輸出見
+[`docs/operations/B3_D0_VERIFICATION_REPORT.md`](docs/operations/B3_D0_VERIFICATION_REPORT.md)。
+RP-A4 的 round-trip、PostgreSQL、瀏覽器、E2E、restore 與 A4→A3 rollback drill 歷史輸出仍見
+[`docs/operations/A4_VERIFICATION_REPORT.md`](docs/operations/A4_VERIFICATION_REPORT.md)；
+B1 的歷史基線仍保留於
+[`docs/operations/B1_VERIFICATION_REPORT.md`](docs/operations/B1_VERIFICATION_REPORT.md)。
 
-## Removed from Active Scope（封存於 archive ZIP；重啟條件見 ADR）
+## 啟動本機私人堆疊
 
-- 帳號資料匯入與個人化（含多帳號）：REMOVED_FROM_ACTIVE_SCOPE，非 Deferred
-- Web App／Artifact：BLOCKED_BY_RELEASE_GATE（Gate C 通過後）
+先將 `.env.example` 複製為 Git 忽略的 `.env`，並把四組密碼替換為彼此不同、至少
+16 字元的 URL-safe 值：
 
-## 維運
+```powershell
+docker compose --env-file .env -f infra/compose.yml config --quiet
+docker compose --env-file .env -f infra/compose.yml up --build --wait
+```
 
-依 90；提示一律 91；證據一律 92；品質與 Gate 一律 15。
+服務入口：
+
+- Web：<http://127.0.0.1:3000>
+- API 文件：<http://127.0.0.1:8000/docs>
+- API readiness：<http://127.0.0.1:8000/health/ready>
+- Scheduler health：<http://127.0.0.1:8081/health>
+
+完整的權限實測、scheduler smoke 與備份還原流程請依
+[`docs/operations/B1_RUNBOOK.md`](docs/operations/B1_RUNBOOK.md)；A4→A3 的版本回退與
+重新前進請依 [`docs/operations/A4_ROLLBACK_RUNBOOK.md`](docs/operations/A4_ROLLBACK_RUNBOOK.md)；
+A5→A4 的 backup-first 回退與重新前進請依
+[`docs/operations/A5_ROLLBACK_RUNBOOK.md`](docs/operations/A5_ROLLBACK_RUNBOOK.md)；B5→A5
+的 V0007／V0006 回退與重新前進請依
+[`docs/operations/B5_ROLLBACK_RUNBOOK.md`](docs/operations/B5_ROLLBACK_RUNBOOK.md)。
+架構決策與後續依賴順序見
+[`docs/architecture/INTEGRATED_ROADMAP.md`](docs/architecture/INTEGRATED_ROADMAP.md)。

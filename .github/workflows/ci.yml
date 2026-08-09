@@ -1,0 +1,234 @@
+name: RP-B5-1 full-core parity validation
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rp-b5-1-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  research-core:
+    name: Research core exact baseline
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13.14"
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - name: Install locked runtime dependencies
+        run: python -m pip install --requirement requirements.txt
+      - name: Run five commands in a disposable copy
+        run: python scripts/check_research_baseline.py
+
+  python:
+    name: API, importer, and scheduler tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13.14"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+            apps/scheduler/pyproject.toml
+      - name: Install locked-compatible dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --requirement requirements-dev.txt
+          python -m pip install --editable "apps/scheduler[dev]"
+      - name: Run Python tests
+        env:
+          PYTHONPATH: apps/api:data_pipeline:database
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: python -m pytest tests apps/scheduler/tests
+      - name: Verify isolated DB/export round trip and exported baseline
+        env:
+          PYTHONPATH: apps/api:data_pipeline:database
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: python -m pcr_pipeline.verify_round_trip --run-baseline
+
+  web:
+    name: Web typecheck and production build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13.14"
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.18.0"
+          cache: npm
+      - run: npm ci
+      - run: python -m pip install --requirement requirements.txt
+      - run: npm run check:contract
+      - run: npm run typecheck
+      - run: npm run build:web
+        env:
+          API_BASE_URL: http://127.0.0.1:8000
+
+  e2e:
+    name: Compose health and browser E2E
+    runs-on: ubuntu-24.04
+    needs: [research-core, python, web]
+    timeout-minutes: 45
+    env:
+      COMPOSE_PROJECT_NAME: pcr-tw-b5-ci
+      PCR_API_IMAGE: pcr-tw-platform-api:b5-ci
+      PCR_SCHEDULER_IMAGE: pcr-tw-platform-scheduler:b5-ci
+      API_PORT: "8000"
+      WEB_PORT: "3000"
+      SCHEDULER_HEALTH_PORT: "8081"
+      POSTGRES_PASSWORD: ci-ephemeral-not-a-real-secret
+      POSTGRES_USER: pcr_owner
+      POSTGRES_DB: pcr_tw
+      PCR_API_DB_PASSWORD: ci-api-readonly-ephemeral-only
+      PCR_IMPORTER_DB_PASSWORD: ci-importer-dml-ephemeral-only
+      PCR_SCHEDULER_DB_PASSWORD: ci-scheduler-control-ephemeral-only
+      SCHEDULER_ENABLED: "false"
+      SHADOW_MODE: "true"
+      AUTO_PUBLISH: "false"
+      PLAYWRIGHT_BASE_URL: http://127.0.0.1:3000
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.18.0"
+          cache: npm
+      - run: npm ci
+      - name: Materialize ignored ephemeral Compose environment
+        shell: pwsh
+        run: |
+          @"
+          POSTGRES_PASSWORD=$env:POSTGRES_PASSWORD
+          POSTGRES_USER=$env:POSTGRES_USER
+          POSTGRES_DB=$env:POSTGRES_DB
+          PCR_API_DB_PASSWORD=$env:PCR_API_DB_PASSWORD
+          PCR_IMPORTER_DB_PASSWORD=$env:PCR_IMPORTER_DB_PASSWORD
+          PCR_SCHEDULER_DB_PASSWORD=$env:PCR_SCHEDULER_DB_PASSWORD
+          COMPOSE_PROJECT_NAME=$env:COMPOSE_PROJECT_NAME
+          PCR_API_IMAGE=$env:PCR_API_IMAGE
+          PCR_SCHEDULER_IMAGE=$env:PCR_SCHEDULER_IMAGE
+          API_PORT=$env:API_PORT
+          WEB_PORT=$env:WEB_PORT
+          SCHEDULER_HEALTH_PORT=$env:SCHEDULER_HEALTH_PORT
+          SCHEDULER_ENABLED=$env:SCHEDULER_ENABLED
+          SHADOW_MODE=$env:SHADOW_MODE
+          AUTO_PUBLISH=$env:AUTO_PUBLISH
+          "@ | Set-Content -LiteralPath .env.ci -Encoding utf8NoBOM
+      - name: Validate resolved Compose configuration
+        run: docker compose --env-file .env.ci --project-name "$COMPOSE_PROJECT_NAME" -f infra/compose.yml config --quiet
+      - name: Build and start private staging stack
+        run: docker compose --env-file .env.ci --project-name "$COMPOSE_PROJECT_NAME" -f infra/compose.yml up --build --wait
+      - name: Verify service health and safety flags
+        shell: pwsh
+        run: |
+          $api = Invoke-RestMethod http://127.0.0.1:8000/health/ready
+          $scheduler = Invoke-RestMethod http://127.0.0.1:8081/health
+          $web = Invoke-RestMethod http://127.0.0.1:3000/api/health
+          if ($scheduler.enabled -or -not $scheduler.shadow_mode -or $scheduler.canonical_write_capable) {
+            throw "Scheduler shadow-mode safety boundary failed"
+          }
+      - name: Verify PostgreSQL least-privilege matrix and real denials
+        shell: pwsh
+        run: ./scripts/check_db_privileges.ps1 -EnvFile .env.ci -ProjectName $env:COMPOSE_PROJECT_NAME
+      - name: Verify scheduler lease and idempotency contract
+        run: docker compose --env-file .env.ci --project-name "$COMPOSE_PROJECT_NAME" --profile verification -f infra/compose.yml run --rm scheduler-smoke
+      - name: Verify read-only PostgreSQL round trip and exported five-command baseline
+        run: docker compose --env-file .env.ci --project-name "$COMPOSE_PROJECT_NAME" --profile verification -f infra/compose.yml run --rm --no-deps round-trip-smoke
+      - name: Verify one API request cannot observe a mixed importer snapshot
+        run: docker compose --env-file .env.ci --project-name "$COMPOSE_PROJECT_NAME" --profile verification -f infra/compose.yml run --rm --no-deps consistency-smoke
+      - name: Verify warmed cache fails closed and epoch cannot rewind
+        run: docker compose --env-file .env.ci --project-name "$COMPOSE_PROJECT_NAME" --profile verification -f infra/compose.yml run --rm --no-deps cache-epoch-smoke
+      - name: Verify artifact writes serialize against revision finalization
+        run: docker compose --env-file .env.ci --project-name "$COMPOSE_PROJECT_NAME" --profile verification -f infra/compose.yml run --rm --no-deps artifact-lock-smoke
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Run browser E2E
+        run: npm run test:e2e
+      - name: Backup, empty-DB restore, and B5 to A5 to B5 rollback
+        shell: pwsh
+        run: |
+          $backupOutput = @(
+            ./scripts/backup_restore_smoke.ps1 `
+              -EnvFile (Resolve-Path .env.ci) `
+              -ProjectName $env:COMPOSE_PROJECT_NAME `
+              -ExpectedApiImage $env:PCR_API_IMAGE `
+              -ExpectedSchedulerImage $env:PCR_SCHEDULER_IMAGE `
+              -ExpectedApiPort ([int]$env:API_PORT) `
+              -ExpectedWebPort ([int]$env:WEB_PORT) `
+              -ExpectedSchedulerPort ([int]$env:SCHEDULER_HEALTH_PORT) `
+              -KeepBackup
+          )
+          $backupOutput | ForEach-Object { Write-Host $_ }
+          $receiptLines = @(
+            $backupOutput |
+              ForEach-Object { [string]$_ } |
+              Where-Object { $_ -like '{"status":"BACKUP_RESTORE_VERIFIED"*' }
+          )
+          if ($receiptLines.Count -ne 1) {
+            throw "Backup smoke did not emit exactly one verified receipt"
+          }
+          $receipt = $receiptLines[0] | ConvertFrom-Json
+
+          if (-not $env:RUNNER_TEMP) {
+            throw "RUNNER_TEMP is required for the immutable rollback checkpoint"
+          }
+          $checkpointRoot = Join-Path $env:RUNNER_TEMP "rp-a5-2-checkpoint"
+          $checkpointArchive = Join-Path $env:RUNNER_TEMP "rp-a5-2-checkpoint.tar"
+          if ((Test-Path -LiteralPath $checkpointRoot) -or (Test-Path -LiteralPath $checkpointArchive)) {
+            throw "RP-A5 checkpoint target unexpectedly exists"
+          }
+          New-Item -ItemType Directory -Path $checkpointRoot | Out-Null
+          git archive --format=tar --output=$checkpointArchive rp-a5-2
+          if ($LASTEXITCODE -ne 0) { throw "Could not export immutable rp-a5-2" }
+          tar -xf $checkpointArchive -C $checkpointRoot
+          if ($LASTEXITCODE -ne 0) { throw "Could not extract immutable rp-a5-2" }
+
+          ./scripts/b5_a5_rollback_drill.ps1 `
+            -EnvFile (Resolve-Path .env.ci) `
+            -ProjectName $env:COMPOSE_PROJECT_NAME `
+            -ExpectedApiImage $env:PCR_API_IMAGE `
+            -ExpectedSchedulerImage $env:PCR_SCHEDULER_IMAGE `
+            -ExpectedApiPort ([int]$env:API_PORT) `
+            -ExpectedWebPort ([int]$env:WEB_PORT) `
+            -ExpectedSchedulerPort ([int]$env:SCHEDULER_HEALTH_PORT) `
+            -A5CheckpointRoot $checkpointRoot `
+            -VerifiedBackupPath $receipt.path `
+            -VerifiedBackupSha256 $receipt.sha256
+      - name: Capture container state
+        if: always()
+        run: |
+          docker compose --env-file .env.ci --project-name "$COMPOSE_PROJECT_NAME" -f infra/compose.yml ps --all
+          docker compose --env-file .env.ci --project-name "$COMPOSE_PROJECT_NAME" -f infra/compose.yml logs --no-color > compose.log
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: compose-logs
+          path: compose.log
+          retention-days: 7
+      - name: Stop stack and remove CI volumes
+        if: always()
+        run: docker compose --env-file .env.ci --project-name "$COMPOSE_PROJECT_NAME" -f infra/compose.yml down --volumes --remove-orphans
