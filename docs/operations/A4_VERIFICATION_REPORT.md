@@ -123,4 +123,5 @@ A4_A3_ROLLBACK_DRILL_OK
   `rp-a4-1`。Tag 不取代 DB backup／restore drill。
 - Data Gate A／B／C 仍為 false；ARTIFACT_READY 預期 exit 1。
 - Gates D–G 尚未宣稱，scheduler 仍 disabled Shadow Mode，沒有 canonical publisher。
-- A5 的下一個真實 PVE 垂直切片仍須依同一 Evidence 與 fail-closed 規則研究後才可加入。
+- 下一正式里程碑依 v3 企劃為 B3＋A5 Arena；剩餘三個成熟 PVE 關卡仍屬 A3 content
+  expansion，日後加入時須沿用同一 Evidence 與 fail-closed 規則。

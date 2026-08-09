@@ -16,6 +16,7 @@ from .research_core_snapshot import (
     EXPECTED_MANIFEST_SHA256,
     RP_A2_MANIFEST_SHA256,
     RP_A3_MANIFEST_SHA256,
+    RP_A4_MANIFEST_SHA256,
     load_research_core_snapshot,
 )
 
@@ -23,7 +24,7 @@ from .research_core_snapshot import (
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_BASELINE_CHECKER = REPOSITORY_ROOT / "scripts" / "check_research_baseline.py"
 PINNED_ROLLBACK_MANIFESTS = frozenset(
-    {RP_A2_MANIFEST_SHA256, RP_A3_MANIFEST_SHA256}
+    {RP_A2_MANIFEST_SHA256, RP_A3_MANIFEST_SHA256, RP_A4_MANIFEST_SHA256}
 )
 
 

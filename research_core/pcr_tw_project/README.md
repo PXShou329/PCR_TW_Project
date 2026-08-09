@@ -19,7 +19,7 @@ SUPERSEDED＋新建 CURRENT-0802；next_review_due=2026-08-09（含 08/08 日服
 - 新增：18 公共角色可用性（PVE／Arena／P-Arena 可用性唯一來源）、25 PVE 隊伍層、45 Gacha 社群來源索引、46 Arena 來源 Registry。
 - 測試集＝Guide-Only 41（A1–A3、T1、T2、T13、T14、T16–T18、T22–T52）；17 為 21 欄公共 Schema。
 
-**Phase 狀態**：Baseline Current through 2026/08/08｜PVE Registry 10 VERIFIED（紅焰／蒼波 8-10 均為 VERIFIED／CONFIRMED，各 5 隊成熟結構門檻已達；紅焰 10-10 仍 IN_RESEARCH）｜Arena Registry 0（Checkpoint D）
+**Phase 狀態**：Baseline Current through 2026/08/08｜PVE Registry 10 VERIFIED（紅焰／蒼波 8-10 均為 VERIFIED／CONFIRMED，各 5 隊成熟結構門檻已達；紅焰 10-10 仍 IN_RESEARCH）｜Arena 39 現有 2 筆 SINGLE_REPORT、成熟防守案例 0（Checkpoint D）
 ｜P-Arena 理論模型 3（Checkpoint E 組合求解）｜Gacha MATURE 2＋RESEARCH 1（Checkpoint C 社群整合）｜Suite 全 NOT_RUN（部署後）。
 
 **R3i（2026/08/08）**：PVE Gate 已封住 PROVISIONAL／缺失 unit_key 灌水路徑；TM-F810-01 已以
@@ -41,6 +41,8 @@ VERIFIED effective teams（詳見 22／23／25）。相同五人多來源只計�
 關卡與 Boss HP 歸零，模式依序為 `MANUAL_TIMELINE／SEMI_AUTO／AUTO／AUTO／AUTO`。五隊仍只有同一玩家來源，
 所以 Claim 固定 D 並保留 Gate C blocking warnings；另將一支未清場及一支 `TIME UP` 影片明列為 `REJECTED`，
 不得進有效隊伍。有效隊 predicate 同步要求所有 Team Evidence 均為 `ACTIVE`，並由 Mutation M71 鎖定。
+
+**A5 Arena 暫行成熟度（2026/08/09）**：`VERIFIED` 只承認 B／C 的可機械驗證多來源閉合；`source_record_count` 與實戰 `sample_size` 分離，scalar Tier／筆數不代表來源獨立。SELF_TESTED 尚無可追溯 run registry，因此不得以本人實測聲明或手填 CONFIRMED 升級。Arena Gate 計 mature defenses：同環境同防守至少兩支不同成熟 exact counters 才算一案；目前兩筆同作者單次 Win 均維持 SINGLE_REPORT，Gate 為 0。
 
 ## 檔案清單（唯一權威清單）
 
@@ -81,7 +83,7 @@ VERIFIED effective teams（詳見 22／23／25）。相同五人多來源只計�
 | 36_PRINCESS_ARENA_STRATEGY_LIBRARY.md | 一般策略庫 | 是 |
 | 37_PRINCESS_ARENA_PLANNER_SCHEMA.md | 三隊規劃 Schema | 是 |
 | 38_PRINCESS_ARENA_RESEARCH_LOG.md | 公競日誌（PA1–PA3 理論案例） | 是 |
-| 39_ARENA_COUNTER_REGISTRY.csv | 競技場反制 Registry（Gate SSOT，23 欄含 tw_availability_check／來源涵蓋） | 是 |
+| 39_ARENA_COUNTER_REGISTRY.csv | 競技場反制 Registry（Gate SSOT，35 欄；exact 戰果、樣本、來源真值、台服可用性與成熟防守派生） | 是 |
 | 40_GACHA_FUTURE_SIGHT.md | 未來視公共流程 | 是 |
 | 41_GACHA_TIMELINE.csv | 時間線（35 欄含模型區間／方法／社群共識欄；MATURE 2＋RESEARCH 1） | 是 |
 | 42_CHARACTER_FUTURE_VALUE_SCHEMA.md | 價值評估 Schema | 是 |

@@ -23,6 +23,8 @@
 - **X 搜尋法**：`プリコネ アリーナ ＜敵核心角日文名＞ 対策`、`プリコネ アリーナ 最新環境`；注意發文日期，超過當期環境即 STALE 候選。
 - **掲示板／まとめ**：5ch 系まとめ站可提供線索，一律 D 級、需回溯原始出處。
 - **巴哈公連板**（台服）：台服環境實戰與作業串；台服快照的主要 C 級來源。
+- **ARENA-SRC-006／巴哈 2026-05-25 問答串**：主文與 B1／B2 原始圖片於 2026-08-08 實開；可支持兩筆 exact screenshot win，但兩筆同一回覆者、各一次，因此逐筆上限 `SINGLE_PLAYER_REPORT / D / SINGLE_REPORT`，不得合併成多來源 C 或勝率。
+- **DEFERRED_NOT_CANONICAL／巴哈樓層 2198（2025-01-14）**：2026-08-09 已實開[討論串頁](https://forum.gamer.com.tw/C.php?bsn=30861&snA=674&page=110)、[樓層直頁](https://forum.gamer.com.tw/Co.php?bsn=30861&sn=480801&subbsn=3&bPage=0)、[防守圖](https://truth.bahamut.com.tw/s01/202501/26eb8fb8772264e340b4c12ef169b75d.JPG)、[反制 1 Win 圖](https://truth.bahamut.com.tw/s01/202501/forum/30861/fea6b8b9eb636fbcb65c497d4b2ef1fc.JPG)與[反制 2 Win 圖](https://truth.bahamut.com.tw/s01/202501/forum/30861/5c885a0592381a5d87429df2024bc0f3.JPG)。兩名不同回覆者各提供一支完整五人 Win 候選，操作均為 UNKNOWN；另已實開台服官方 [#3721](https://www.princessconnect.so-net.tw/news/newsDetail/3721) 與 [#3728](https://www.princessconnect.so-net.tw/news/newsDetail/3728)，確認 `エキドナ（サマー）` 的官方名為「艾姬多娜（夏日）」且已實裝。敵我 11 個 role key 目前仍均不在 18，其中「禊（夏日）」尚缺可實開的台服官方正文，其餘逐角可用性／Evidence 也未完成 canonical 閉合，故只作待辦線索，不進 39／Evidence／Claim／Gate。
 
 ## 更新頻率與舊版本可查性
 

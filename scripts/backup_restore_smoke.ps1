@@ -6,7 +6,7 @@ param(
     [string]$SourceDatabase = "pcr_tw",
     [switch]$SeedRevisionHistory,
     [switch]$KeepBackup,
-    [Parameter(HelpMessage = "Keep the restored database at V0005 after the intentionally rejected borrowed-state downgrade probe.")]
+    [Parameter(HelpMessage = "Keep the restored database at V0006 after the intentionally rejected non-empty Arena downgrade probe.")]
     [switch]$KeepRestoredDatabase
 )
 
@@ -252,6 +252,12 @@ try {
     if (-not (Test-Path -LiteralPath $backupPath -PathType Leaf)) {
         throw "Database dump was not copied to the verified local backup path"
     }
+    $backupSha256 = (Get-FileHash -LiteralPath $backupPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    $backupBytes = (Get-Item -LiteralPath $backupPath).Length
+    if ($backupBytes -lt 1) {
+        throw "Database dump is empty"
+    }
+    Write-Host "BACKUP_ARTIFACT_VERIFIED sha256=$backupSha256 bytes=$backupBytes path=$backupPath"
 
     Invoke-DockerChecked exec -T db createdb `
         --username=$PostgresUser `
@@ -361,7 +367,7 @@ try {
     Invoke-DockerChecked run --rm --no-deps `
         --env "PCR_DATABASE_URL=$apiRestoreUrl" `
         round-trip-smoke
-    Write-Host "RESTORED_ROUND_TRIP_OK role=pcr_api files=48 csv=13 rows=325"
+    Write-Host "RESTORED_ROUND_TRIP_OK role=pcr_api files=48 csv=13 rows=356"
 
     Invoke-DockerChecked run --detach --no-deps `
         --name $apiContainer `
@@ -385,15 +391,17 @@ try {
         throw "Restored API revision metadata contract failed"
     }
     $expectedCounts = @{
-        stages = 3; teams = 10; team_members = 50; characters = 25; evidence = 55; claims = 53;
-        operation_timelines = 15; timeline_steps = 37
+        stages = 3; teams = 10; team_members = 50; characters = 35; evidence = 64; claims = 62;
+        operation_timelines = 15; timeline_steps = 37;
+        arena_defenses = 1; arena_defense_members = 5; arena_counters = 2;
+        arena_counter_members = 10; arena_counter_evidence = 4; arena_counter_claims = 4
     }
     foreach ($name in $expectedCounts.Keys) {
         if ([int]$baseline.data.counts.$name -ne $expectedCounts[$name]) {
             throw "Restored API count mismatch for $name"
         }
     }
-    if ($baseline.data.application_version -ne "3.0.0-a4") {
+    if ($baseline.data.application_version -ne "3.0.0-a5") {
         throw "Restored API application version mismatch"
     }
     $stage = Invoke-RestMethod -Uri "http://127.0.0.1:${apiPort}/api/v1/stages/TW_DEEP_FIRE_08_10_20260802" -TimeoutSec 5
@@ -405,7 +413,16 @@ try {
     $waterTimeline = Invoke-RestMethod -Uri "http://127.0.0.1:${apiPort}/api/v1/teams/TM-W810-01/timelines" -TimeoutSec 5
     $waterAutoTeam = Invoke-RestMethod -Uri "http://127.0.0.1:${apiPort}/api/v1/teams/TM-W810-05" -TimeoutSec 5
     $waterEvidence = Invoke-RestMethod -Uri "http://127.0.0.1:${apiPort}/api/v1/evidence/ev084" -TimeoutSec 5
+    $arena = Invoke-RestMethod -Uri "http://127.0.0.1:${apiPort}/api/v1/pvp/counters" -TimeoutSec 5
     $sourceTextSteps = @($sourceTextTimeline.data.sources[0].steps)
+    $arenaRows = @($arena.data)
+    $arenaWarnings = @($arena.meta.warnings)
+    $arenaMembers = @(
+        $arenaRows | ForEach-Object {
+            $_.defense_members
+            $_.counter_members
+        }
+    )
     if (
         $stage.data.status -ne "VERIFIED" -or
         [int]$stage.data.team_count -ne 5 -or
@@ -444,11 +461,18 @@ try {
         $waterTimeline.data.sources[0].steps.Count -ne 9 -or
         $waterAutoTeam.data.operation_mode -ne "AUTO" -or
         $waterAutoTeam.data.timeline.sources[0].steps.Count -ne 1 -or
-        $waterEvidence.data.evidence_id -ne "ev084"
+        $waterEvidence.data.evidence_id -ne "ev084" -or
+        $arenaRows.Count -ne 2 -or
+        @($arenaRows | Where-Object { $_.status -ne "SINGLE_REPORT" }).Count -ne 0 -or
+        @($arenaRows | Where-Object { $_.tw_availability_check -ne "PASS" }).Count -ne 0 -or
+        @($arenaRows | Where-Object { $_.defense_members.Count -ne 5 -or $_.counter_members.Count -ne 5 }).Count -ne 0 -or
+        @($arenaMembers | Where-Object { $_.display_name_source -ne "TW_OFFICIAL" }).Count -ne 0 -or
+        $arenaWarnings -notcontains "NO_VERIFIED_COUNTER" -or
+        $arenaWarnings -notcontains "SINGLE_REPORT_REFERENCE_ONLY"
     ) {
         throw "Restored API critical read path failed"
     }
-    Write-Host "RESTORED_API_READINESS_OK role=pcr_api stages=3 teams=10 timelines=15 steps=37 fire=VERIFIED water=VERIFIED evidence=ev052,ev084"
+    Write-Host "RESTORED_API_READINESS_OK role=pcr_api stages=3 teams=10 timelines=15 steps=37 arena_defenses=1 arena_counters=2 fire=VERIFIED water=VERIFIED arena=SINGLE_REPORT"
 
     Invoke-DockerChecked run --detach --no-deps `
         --name $webContainer `
@@ -475,14 +499,18 @@ try {
     }
     Write-Host "RESTORED_WEB_EVIDENCE_OK stage=VERIFIED evidence=ev052"
 
-    # NULL is canonical source truth when the evidence does not establish which
-    # member was borrowed.  V0005 -> V0004 must therefore fail transactionally
-    # instead of coercing NULL to false.  UNKNOWN operation modes are checked as
-    # an additional invariant; their V0004 -> V0003 boundary is covered by the
-    # offline migration regression suite.
+    # V0006 owns the normalized Arena serving closure.  Downgrading while any
+    # Arena row exists must fail transactionally instead of silently erasing it.
+    # A5 -> A4 activation/downgrade and the older borrowed-state boundary are
+    # exercised separately by the rollback drills and migration regressions.
     $borrowedNullBefore = [int](Get-Scalar -Database $restoreDatabase -Sql "SELECT COUNT(*) FROM team_members WHERE is_borrowed IS NULL")
     if ($borrowedNullBefore -lt 1) {
         throw "Restored database has no canonical unknown borrowed-state rows"
+    }
+    $arenaRowsBefore = [int](Get-Scalar -Database $restoreDatabase -Sql "SELECT (SELECT COUNT(*) FROM arena_defenses) + (SELECT COUNT(*) FROM arena_defense_members) + (SELECT COUNT(*) FROM arena_counters) + (SELECT COUNT(*) FROM arena_counter_members) + (SELECT COUNT(*) FROM arena_counter_evidence) + (SELECT COUNT(*) FROM arena_counter_claims)")
+    $activeRevisionBefore = Get-Scalar -Database $restoreDatabase -Sql "SELECT active_revision_id FROM materialization_state WHERE id=1"
+    if ($arenaRowsBefore -lt 1) {
+        throw "Restored database has no Arena serving rows for downgrade protection"
     }
     Stop-DisposableContainer -Container $webContainer
     $webContainerCreated = $false
@@ -491,20 +519,22 @@ try {
     $downgradeOutput = & docker @compose run --rm --no-deps `
         --env "PCR_DATABASE_URL=$ownerRestoreMigrationUrl" `
         migration `
-        alembic -c database/alembic.ini downgrade v0004_unknown_operation_mode 2>&1
+        alembic -c database/alembic.ini downgrade v0005_borrowed_tristate 2>&1
     $downgradeExit = $LASTEXITCODE
     $postDowngradeRevision = Get-Scalar -Database $restoreDatabase -Sql "SELECT version_num FROM alembic_version"
     $borrowedNullAfter = [int](Get-Scalar -Database $restoreDatabase -Sql "SELECT COUNT(*) FROM team_members WHERE is_borrowed IS NULL")
-    $unknownTimelineCount = [int](Get-Scalar -Database $restoreDatabase -Sql "SELECT COUNT(*) FROM operation_timelines WHERE operation_mode='UNKNOWN'")
+    $arenaRowsAfter = [int](Get-Scalar -Database $restoreDatabase -Sql "SELECT (SELECT COUNT(*) FROM arena_defenses) + (SELECT COUNT(*) FROM arena_defense_members) + (SELECT COUNT(*) FROM arena_counters) + (SELECT COUNT(*) FROM arena_counter_members) + (SELECT COUNT(*) FROM arena_counter_evidence) + (SELECT COUNT(*) FROM arena_counter_claims)")
+    $activeRevisionAfter = Get-Scalar -Database $restoreDatabase -Sql "SELECT active_revision_id FROM materialization_state WHERE id=1"
     if (
         $downgradeExit -eq 0 -or
-        $postDowngradeRevision -ne "v0005_borrowed_tristate" -or
+        $postDowngradeRevision -ne "v0006_arena_counter_slice" -or
         $borrowedNullAfter -ne $borrowedNullBefore -or
-        $unknownTimelineCount -lt 1
+        $arenaRowsAfter -ne $arenaRowsBefore -or
+        $activeRevisionAfter -ne $activeRevisionBefore
     ) {
-        throw "Lossy borrowed-state downgrade was not rejected transactionally"
+        throw "Lossy non-empty Arena downgrade was not rejected transactionally"
     }
-    Write-Host "BORROWED_TRISTATE_DOWNGRADE_BLOCKED_OK alembic=$postDowngradeRevision borrowed_nulls=$borrowedNullAfter unknown_timelines=$unknownTimelineCount"
+    Write-Host "ARENA_DOWNGRADE_BLOCKED_OK alembic=$postDowngradeRevision arena_rows=$arenaRowsAfter borrowed_nulls=$borrowedNullAfter active_revision=$activeRevisionAfter"
 
     Write-Host "BACKUP_RESTORE_OK source=$SourceDatabase restore=$restoreDatabase tables=$($tables.Count) source_alembic=$sourceRevision restored_alembic=$postDowngradeRevision"
     Write-Host "Backup: $backupPath"

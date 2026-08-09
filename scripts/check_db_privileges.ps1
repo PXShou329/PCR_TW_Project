@@ -32,7 +32,9 @@ $servingTables = @(
     "import_runs", "characters", "claims", "evidence", "stages", "teams",
     "team_members", "stage_evidence", "stage_claims", "team_evidence", "claim_evidence",
     "operation_timelines", "timeline_steps", "core_revisions", "core_files",
-    "core_csv_rows", "materialization_state", "revision_activations"
+    "core_csv_rows", "materialization_state", "revision_activations",
+    "arena_defenses", "arena_defense_members", "arena_counters", "arena_counter_members",
+    "arena_counter_evidence", "arena_counter_claims"
 )
 $appendOnlyTables = @("revision_activations")
 $controlTables = @("scheduler_leases", "scheduler_runs")
@@ -132,12 +134,14 @@ foreach ($table in $controlTables) {
 # checks. WHERE FALSE and ROLLBACK guarantee that an accidentally allowed DML or
 # DDL statement still leaves no data/schema change.
 Assert-SqlDenied "api-serving-update" "BEGIN; SET LOCAL ROLE pcr_api; UPDATE stages SET notes=notes WHERE FALSE; ROLLBACK"
+Assert-SqlDenied "api-arena-update" "BEGIN; SET LOCAL ROLE pcr_api; UPDATE arena_counters SET notes=notes WHERE FALSE; ROLLBACK"
 Assert-SqlDenied "api-core-update" "BEGIN; SET LOCAL ROLE pcr_api; UPDATE core_revisions SET status=status WHERE FALSE; ROLLBACK"
 Assert-SqlDenied "api-scheduler-update" "BEGIN; SET LOCAL ROLE pcr_api; UPDATE scheduler_runs SET status=status WHERE FALSE; ROLLBACK"
 Assert-SqlDenied "importer-scheduler-update" "BEGIN; SET LOCAL ROLE pcr_importer; UPDATE scheduler_runs SET status=status WHERE FALSE; ROLLBACK"
 Assert-SqlDenied "importer-activation-update" "BEGIN; SET LOCAL ROLE pcr_importer; UPDATE revision_activations SET reason=reason WHERE FALSE; ROLLBACK"
 Assert-SqlDenied "importer-activation-delete" "BEGIN; SET LOCAL ROLE pcr_importer; DELETE FROM revision_activations WHERE FALSE; ROLLBACK"
 Assert-SqlDenied "scheduler-serving-update" "BEGIN; SET LOCAL ROLE pcr_scheduler; UPDATE stages SET notes=notes WHERE FALSE; ROLLBACK"
+Assert-SqlDenied "scheduler-arena-update" "BEGIN; SET LOCAL ROLE pcr_scheduler; UPDATE arena_counters SET notes=notes WHERE FALSE; ROLLBACK"
 Assert-SqlDenied "scheduler-core-update" "BEGIN; SET LOCAL ROLE pcr_scheduler; UPDATE core_files SET size_bytes=size_bytes WHERE FALSE; ROLLBACK"
 Assert-SqlDenied "scheduler-control-delete" "BEGIN; SET LOCAL ROLE pcr_scheduler; DELETE FROM scheduler_runs WHERE FALSE; ROLLBACK"
 Assert-SqlDenied "api-schema-create" "BEGIN; SET LOCAL ROLE pcr_api; CREATE TABLE pcr_b0_forbidden_probe(id integer); ROLLBACK"
@@ -152,8 +156,10 @@ Assert-SqlDenied "active-revision-run-pair-fk" "BEGIN; INSERT INTO import_runs (
 
 foreach ($allowedSql in @(
     "BEGIN; SET LOCAL ROLE pcr_api; SELECT 1 FROM stages LIMIT 0; ROLLBACK",
+    "BEGIN; SET LOCAL ROLE pcr_api; SELECT 1 FROM arena_counters LIMIT 0; ROLLBACK",
     "BEGIN; SET LOCAL ROLE pcr_api; SELECT 1 FROM core_revisions LIMIT 0; ROLLBACK",
     "BEGIN; SET LOCAL ROLE pcr_importer; UPDATE stages SET notes=notes WHERE FALSE; ROLLBACK",
+    "BEGIN; SET LOCAL ROLE pcr_importer; UPDATE arena_counters SET notes=notes WHERE FALSE; ROLLBACK",
     "BEGIN; SET LOCAL ROLE pcr_importer; UPDATE core_files SET size_bytes=size_bytes WHERE FALSE; ROLLBACK",
     "BEGIN; SET LOCAL ROLE pcr_importer; INSERT INTO revision_activations (activation_id,sequence_no,to_revision_id,kind,reason,actor,epoch) SELECT '00000000-0000-0000-0000-000000000000',1,repeat('0',64),'IMPORT','probe','probe',0 WHERE FALSE; ROLLBACK",
     "BEGIN; SET LOCAL ROLE pcr_scheduler; UPDATE scheduler_runs SET status=status WHERE FALSE; ROLLBACK"
@@ -162,7 +168,7 @@ foreach ($allowedSql in @(
     $allowedSmokes += 1
 }
 
-if ($actualDenials -ne 18 -or $allowedSmokes -ne 6) {
+if ($actualDenials -ne 20 -or $allowedSmokes -ne 8) {
     throw "Privilege probe coverage drifted (denials=$actualDenials allowed=$allowedSmokes)"
 }
 Write-Host "DB_PRIVILEGES_OK matrix_checks=$matrixChecks actual_denials=$actualDenials allowed_smokes=$allowedSmokes"

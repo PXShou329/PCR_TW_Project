@@ -1,4 +1,4 @@
-name: A4 full-core parity validation
+name: RP-A5 full-core parity validation
 
 on:
   push:
@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: a4-${{ github.workflow }}-${{ github.ref }}
+  group: rp-a5-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -23,6 +23,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13.14"
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - name: Install locked runtime dependencies
+        run: python -m pip install --requirement requirements.txt
       - name: Run five commands in a disposable copy
         run: python scripts/check_research_baseline.py
 

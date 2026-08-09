@@ -4,14 +4,14 @@
 > （ST38）；區塊外的敘述不得重複統計數字。手改 AUTO 區會被自動修復並記錄。
 
 <!-- AUTO_STATS_START -->
-**程式化統計（validator 生成即核對；生成日 2026-08-08／版本 v1.5／Release 2026-08-02／Mode PRE_SUITE）**
+**程式化統計（validator 生成即核對；生成日 2026-08-09／版本 v1.5／Release 2026-08-02／Mode PRE_SUITE）**
 
 - 檔案 44（編號 43＋README）＋tools×4｜Knowledge 42｜Fixture 37
-- Gate 成熟資料：PVE VERIFIED 2（24）｜Arena VERIFIED 0（39）｜P-Arena 0（47）｜Timeline MATURE 2（41）
-- 92 Evidence 104 列｜Tier {'OFFICIAL': 67, 'MAJOR_GUIDE': 10, 'SINGLE_PLAYER_REPORT': 18, 'MULTI_PLAYER_REPORT': 5, 'STRUCTURED_DB': 1, 'UNKNOWN': 3}｜evidence_confidence {'A': 67, 'D': 37}｜PENDING_REVIEW 1
-- 93 Claim 119 列｜claim_confidence {'A': 60, 'D': 32, 'C': 2, 'B': 25}｜claim_type {'SOURCE_FACT': 74, 'DERIVED_CALCULATION': 6, 'ANALYTICAL_JUDGMENT': 39}
-- Gate A=FAIL｜B=FAIL｜C=FAIL｜阻擋 Gate C 警告 15
-- 靜態檢查 133 項｜FAIL 0｜WARN 23
+- Gate 成熟資料：PVE VERIFIED 2（24）｜Arena 成熟反制列 0／成熟防守 0（39）｜P-Arena 0（47）｜Timeline MATURE 2（41）
+- 92 Evidence 113 列｜Tier {'OFFICIAL': 73, 'MAJOR_GUIDE': 10, 'SINGLE_PLAYER_REPORT': 21, 'MULTI_PLAYER_REPORT': 5, 'STRUCTURED_DB': 1, 'UNKNOWN': 3}｜evidence_confidence {'A': 73, 'D': 40}｜PENDING_REVIEW 1
+- 93 Claim 128 列｜claim_confidence {'A': 66, 'D': 35, 'C': 2, 'B': 25}｜claim_type {'SOURCE_FACT': 83, 'DERIVED_CALCULATION': 6, 'ANALYTICAL_JUDGMENT': 39}
+- Gate A=FAIL｜B=FAIL｜C=FAIL｜阻擋 Gate C 警告 16
+- 靜態檢查 154 項｜FAIL 0｜WARN 24
 <!-- AUTO_STATS_END -->
 
 ## 帳號層狀態

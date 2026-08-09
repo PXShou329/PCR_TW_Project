@@ -5,16 +5,20 @@ from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from pcr_database.models import Claim, Evidence, Stage, Team
+from pcr_database.models import Claim, Evidence, Stage, Team, arena_formation_signature
 
 from ..database import get_session
 from ..repository import (
+    ResponseMetaRecord,
     active_revision,
+    arena_counter_results,
     baseline_data,
     claim_detail,
     evidence_detail,
+    has_arena_materialization,
     latest_import,
     mirror_readiness,
+    pvp_character_options,
     response_meta,
     stage_detail,
     stage_summary,
@@ -23,10 +27,12 @@ from ..repository import (
     timeline_warnings,
 )
 from ..schemas import (
+    ArenaCounterData,
     BaselineData,
     ClaimData,
     Envelope,
     EvidenceData,
+    PvpCharacterData,
     StageDetail,
     StageSummary,
     TeamDetail,
@@ -188,18 +194,109 @@ def get_claim(claim_id: str, session: Session = Depends(get_session)) -> Envelop
     )
 
 
-@router.get("/pvp/counters", response_model=Envelope[list[dict[str, object]]])
+def _exact_defense_signature(value: str | None) -> str | None:
+    if value is None:
+        return None
+    try:
+        return arena_formation_signature(value.split(";"))
+    except ValueError as error:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "INVALID_DEFENSE_SIGNATURE",
+                "resource": "arena_defense",
+                "id": value,
+                "reason": str(error),
+            },
+        ) from error
+
+
+@router.get("/pvp/characters", response_model=Envelope[list[PvpCharacterData]])
+def pvp_characters(
+    session: Session = Depends(get_session),
+) -> Envelope[list[PvpCharacterData]]:
+    run, revision = _run_or_503(session)
+    try:
+        characters, records = pvp_character_options(session)
+    except RuntimeError as error:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "FIXTURE_DRIFT",
+                "resource": "pvp_characters",
+                "id": None,
+                "reason": "character_serving_closure_invalid",
+            },
+        ) from error
+    return Envelope(
+        data=characters,
+        meta=response_meta(run, revision, records=records),
+    )
+
+
+def _arena_meta_records(counters: list[dict]) -> list[ResponseMetaRecord]:
+    """Aggregate only mechanically closed counter facts at envelope scope.
+
+    Freshness and confidence remain unknown until defense, Claim, and Evidence
+    records participate in one typed metadata closure.
+    """
+
+    return [
+        ResponseMetaRecord(
+            server=counter["server"],
+            environment_version=counter["environment_version"],
+            evidence_ids=tuple(counter["evidence_ids"]),
+            claim_ids=tuple(counter["claim_ids"]),
+        )
+        for counter in counters
+    ]
+
+
+@router.get("/pvp/counters", response_model=Envelope[list[ArenaCounterData]])
 def pvp_counters(
     defense_signature: str | None = Query(default=None, max_length=600),
     session: Session = Depends(get_session),
-) -> Envelope[list[dict[str, object]]]:
-    del defense_signature
+) -> Envelope[list[ArenaCounterData]]:
+    exact_signature = _exact_defense_signature(defense_signature)
     run, revision = _run_or_503(session)
+    if not has_arena_materialization(run):
+        return Envelope(
+            data=[],
+            meta=response_meta(
+                run,
+                revision,
+                extra_warnings=["NO_ARENA_MATERIALIZATION", "NO_VERIFIED_COUNTER"],
+            ),
+        )
+
+    try:
+        counters = arena_counter_results(
+            session,
+            defense_signature=exact_signature,
+        )
+    except RuntimeError as error:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "FIXTURE_DRIFT",
+                "resource": "arena_materialization",
+                "id": exact_signature,
+                "reason": "arena_serving_closure_invalid",
+            },
+        ) from error
+    warnings: list[str] = []
+    if exact_signature is not None and not counters:
+        warnings.append("NO_EXACT_COUNTER")
+    if not any(counter["status"] == "VERIFIED" for counter in counters):
+        warnings.append("NO_VERIFIED_COUNTER")
+    if any(counter["status"] == "SINGLE_REPORT" for counter in counters):
+        warnings.append("SINGLE_REPORT_REFERENCE_ONLY")
     return Envelope(
-        data=[],
+        data=counters,
         meta=response_meta(
             run,
             revision,
-            extra_warnings=["NO_VERIFIED_COUNTER"],
+            records=_arena_meta_records(counters),
+            extra_warnings=warnings,
         ),
     )

@@ -53,8 +53,8 @@
    "cols": 16,
    "min_rows": 0
   },
-  "39_ARENA_COUNTER_REGISTRY.csv": {
-   "cols": 23,
+ "39_ARENA_COUNTER_REGISTRY.csv": {
+   "cols": 35,
    "min_rows": 0
   },
   "18_TW_CHARACTER_AVAILABILITY.csv": {
@@ -143,6 +143,39 @@
    "PASS",
    "FAIL",
    "UNVERIFIED"
+  ],
+  "arena_status": [
+   "VERIFIED",
+   "PROVISIONAL",
+   "SINGLE_REPORT",
+   "STALE",
+   "REJECTED"
+  ],
+  "arena_source_tier": [
+   "OFFICIAL",
+   "MAJOR_GUIDE",
+   "STRUCTURED_DB",
+   "COMMUNITY_WIKI",
+   "MULTI_PLAYER_REPORT",
+   "SINGLE_PLAYER_REPORT",
+   "UNKNOWN",
+   "RESTRICTED"
+  ],
+  "arena_claim_confidence": [
+   "B",
+   "C",
+   "D",
+   "E"
+  ],
+  "arena_verified_claim_confidence": [
+   "B",
+   "C"
+  ],
+  "arena_reproducibility": [
+   "CONFIRMED",
+   "UNVERIFIED_REPEATABILITY",
+   "UNVERIFIED_ON_TW",
+   "UNKNOWN"
   ],
   "pve_operation_mode": [
    "AUTO",
@@ -762,7 +795,32 @@
  "arena_gate_row": {
   "status": "VERIFIED",
   "team_size": 5,
-  "repro_required": true
+  "repro_required": true,
+  "allowed_claim_confidence": ["B", "C"],
+  "allowed_source_tiers": [
+   "OFFICIAL",
+   "MAJOR_GUIDE",
+   "STRUCTURED_DB",
+   "COMMUNITY_WIKI",
+   "MULTI_PLAYER_REPORT"
+  ],
+  "allowed_evidence_source_tiers": [
+   "OFFICIAL",
+   "MAJOR_GUIDE",
+   "STRUCTURED_DB",
+   "COMMUNITY_WIKI",
+   "MULTI_PLAYER_REPORT",
+   "SINGLE_PLAYER_REPORT"
+  ],
+  "minimum_source_records": 2,
+  "minimum_observed_samples": 2,
+  "minimum_observed_wins": 2,
+  "outcome": "WIN",
+  "environment_match": "EXACT",
+  "result_claim_count": 1,
+  "independent_evidence_count": 2,
+  "required_evidence_url_scheme": "https",
+  "self_tested_run_registry_available": false
  },
  "timeline_gate_row": {
   "status": "ACTIVE",

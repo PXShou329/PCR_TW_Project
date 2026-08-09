@@ -34,7 +34,7 @@ from .conftest import make_factory
 
 GUIDE_ID = "TW_DEEP_FIRE_08_10_20260802"
 WATER_GUIDE_ID = "TW_DEEP_WATER_08_10_20260808"
-APPLICATION_VERSION = "3.0.0-a4"
+APPLICATION_VERSION = "3.0.0-a5"
 
 
 def test_postgresql_engine_uses_repeatable_read_for_route_snapshot(
@@ -65,6 +65,12 @@ def test_postgresql_engine_uses_repeatable_read_for_route_snapshot(
 def assert_meta(payload: dict) -> None:
     meta = payload["meta"]
     assert meta["api_version"] == "v1"
+    assert meta["server"] in {"TW", "JP", "MIXED", "UNKNOWN"}
+    assert isinstance(meta["environment_version"], str)
+    assert meta["stale_status"] in {"CURRENT", "STALE", "UNKNOWN"}
+    assert meta["confidence"] in {"A", "B", "C", "D", "E", "UNKNOWN"}
+    assert meta["evidence_ids"] == sorted(set(meta["evidence_ids"]))
+    assert meta["claim_ids"] == sorted(set(meta["claim_ids"]))
     assert len(meta["source"]["fixture_sha256"]) == 64
     assert meta["source"]["canonical_source"] == "research_core_file_ssot"
     assert meta["source"]["research_core_version"] == "v1.5"
@@ -72,6 +78,7 @@ def assert_meta(payload: dict) -> None:
     assert len(meta["source"]["raw_tree_sha256"]) == 64
     assert len(meta["source"]["semantic_tree_sha256"]) == 64
     assert len(meta["source"]["materialization_sha256"]) == 64
+    assert meta["data_revision"] == meta["source"]["revision_id"]
 
 
 def test_environment_settings_require_database_url(monkeypatch) -> None:
@@ -115,6 +122,7 @@ def test_database_unavailable_is_a_uniform_structured_503() -> None:
         "/api/v1/teams/TM-F810-01/timelines",
         "/api/v1/evidence/ev050",
         "/api/v1/claims/CLM-PVE-F810-MAIN",
+        "/api/v1/pvp/characters",
         "/api/v1/pvp/counters",
     ]
     expected = {
@@ -530,6 +538,7 @@ def test_all_strategy_reads_fail_closed_on_timeline_materialization_drift() -> N
         "/api/v1/teams/TM-F810-02/timelines",
         "/api/v1/evidence/ev073",
         "/api/v1/claims/CLM-PVE-F810-SHIZURU",
+        "/api/v1/pvp/characters",
         "/api/v1/pvp/counters",
     ]
     with TestClient(app) as drifted_client:
@@ -608,16 +617,22 @@ def test_baseline_reports_real_counts_and_research_gates(client: TestClient) -> 
     assert_meta(payload)
     data = payload["data"]
     assert data["research_core_version"] == "v1.5"
-    assert data["application_version"] == "3.0.0-a4"
+    assert data["application_version"] == "3.0.0-a5"
     assert data["counts"] == {
         "stages": 3,
         "teams": 10,
         "team_members": 50,
-        "characters": 25,
-        "evidence": 55,
-        "claims": 53,
+        "characters": 35,
+        "evidence": 64,
+        "claims": 62,
         "operation_timelines": 15,
         "timeline_steps": 37,
+        "arena_defenses": 1,
+        "arena_defense_members": 5,
+        "arena_counters": 2,
+        "arena_counter_members": 10,
+        "arena_counter_evidence": 4,
+        "arena_counter_claims": 4,
     }
     assert data["gates"]["gate_a"] is False
     assert data["gates"]["gate_b"] is False
@@ -891,7 +906,7 @@ def test_source_text_only_timeline_does_not_invent_actions(client: TestClient) -
     assert all(step["criticality"] == "UNKNOWN" for step in source["steps"])
 
 
-def test_evidence_claim_drawer_and_pvp_no_result(client: TestClient) -> None:
+def test_evidence_claim_drawer_and_pvp_single_reports(client: TestClient) -> None:
     evidence = client.get("/api/v1/evidence/ev050")
     assert evidence.status_code == 200
     evidence_data = evidence.json()["data"]
@@ -903,10 +918,39 @@ def test_evidence_claim_drawer_and_pvp_no_result(client: TestClient) -> None:
     assert claim.status_code == 200
     assert "ev050" in claim.json()["data"]["evidence_ids"]
 
-    no_result = client.get("/api/v1/pvp/counters")
-    assert no_result.status_code == 200
-    assert no_result.json()["data"] == []
-    assert "NO_VERIFIED_COUNTER" in no_result.json()["meta"]["warnings"]
+    pvp = client.get("/api/v1/pvp/counters")
+    assert pvp.status_code == 200
+    assert [row["counter_id"] for row in pvp.json()["data"]] == [
+        "TW_ARENA_20260525_01",
+        "TW_ARENA_20260525_02",
+    ]
+    assert all(row["tw_availability_check"] == "PASS" for row in pvp.json()["data"])
+    assert "NO_VERIFIED_COUNTER" in pvp.json()["meta"]["warnings"]
+    assert "SINGLE_REPORT_REFERENCE_ONLY" in pvp.json()["meta"]["warnings"]
+
+
+def test_pvp_character_picker_options_are_tw_available_and_stably_sorted(
+    client: TestClient,
+) -> None:
+    response = client.get("/api/v1/pvp/characters")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert_meta(payload)
+    assert payload["data"]
+    assert all(
+        row["tw_availability_status"] == "AVAILABLE" for row in payload["data"]
+    )
+    assert all(row["tw_name"] not in {"UNKNOWN", "【待查證】"} for row in payload["data"])
+    assert [
+        (row["tw_name"], row["unit_key"]) for row in payload["data"]
+    ] == sorted((row["tw_name"], row["unit_key"]) for row in payload["data"])
+    assert payload["meta"]["server"] == "TW"
+    assert payload["meta"]["environment_version"] == "UNKNOWN"
+    assert payload["meta"]["verified_at"] is None
+    assert payload["meta"]["stale_status"] == "UNKNOWN"
+    assert payload["meta"]["confidence"] == "UNKNOWN"
+    assert payload["meta"]["claim_ids"] == []
 
 
 def test_unknown_resource_is_structured_404(client: TestClient) -> None:
@@ -931,6 +975,7 @@ def test_openapi_contains_only_get_for_public_strategy_routes(client: TestClient
         "/api/v1/teams/{team_id}/timelines",
         "/api/v1/evidence/{evidence_id}",
         "/api/v1/claims/{claim_id}",
+        "/api/v1/pvp/characters",
         "/api/v1/pvp/counters",
     }
     assert expected <= schema["paths"].keys()

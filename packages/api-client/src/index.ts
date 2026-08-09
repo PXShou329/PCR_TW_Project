@@ -6,6 +6,7 @@ import type {
   Baseline,
   Claim,
   Evidence,
+  PvpCharacter,
   PvpCounter,
   StageDetail,
   StageSummary,
@@ -69,6 +70,12 @@ export function createApiClient({ baseUrl, fetchImpl = fetch }: ApiClientOptions
       get<Evidence>(`/api/v1/evidence/${encodeURIComponent(evidenceId)}`),
     getClaim: (claimId: string) =>
       get<Claim>(`/api/v1/claims/${encodeURIComponent(claimId)}`),
-    getPvpCounters: () => get<PvpCounter[]>("/api/v1/pvp/counters"),
+    getPvpCharacters: () => get<PvpCharacter[]>("/api/v1/pvp/characters"),
+    getPvpCounters: (defenseSignature?: string) => {
+      const query = defenseSignature
+        ? `?defense_signature=${encodeURIComponent(defenseSignature)}`
+        : "";
+      return get<PvpCounter[]>(`/api/v1/pvp/counters${query}`);
+    },
   };
 }
