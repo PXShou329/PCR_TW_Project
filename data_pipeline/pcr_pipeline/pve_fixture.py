@@ -583,6 +583,40 @@ def _stored_official_name(value: str) -> str | None:
     return normalized
 
 
+def _has_active_tw_official_a_evidence(
+    character: dict[str, str],
+    *,
+    evidence_by_id: dict[str, dict[str, str]],
+) -> bool:
+    return any(
+        evidence_id in evidence_by_id
+        and evidence_by_id[evidence_id]["status"] == "ACTIVE"
+        and evidence_by_id[evidence_id]["server"] == "TW"
+        and evidence_by_id[evidence_id]["source_tier"] == "OFFICIAL"
+        and evidence_by_id[evidence_id]["evidence_confidence"] == "A"
+        for evidence_id in _split_ids(character["source_evidence_ids"])
+    )
+
+
+def _validate_available_character_source(
+    character: dict[str, str],
+    *,
+    evidence_by_id: dict[str, dict[str, str]],
+) -> None:
+    unit_key = character["unit_key"]
+    if _stored_official_name(character["tw_name"]) is None:
+        raise FixtureValidationError(
+            f"AVAILABLE character {unit_key} has no stored TW official display name"
+        )
+    if not _has_active_tw_official_a_evidence(
+        character,
+        evidence_by_id=evidence_by_id,
+    ):
+        raise FixtureValidationError(
+            f"AVAILABLE character {unit_key} lacks ACTIVE TW OFFICIAL/A Evidence"
+        )
+
+
 def _arena_evidence_identity(evidence: dict[str, str]) -> str:
     """Return the same conservative source identity used by research ST49."""
 
@@ -791,28 +825,6 @@ def _validate_arena_rows(
                 f"{counter_id}.unavailable_unit_ids must exactly list TW "
                 "NOT_RELEASED members"
             )
-        if expected_tw_check == "PASS":
-            for unit_key in sorted(all_members):
-                character = characters_by_id[unit_key]
-                if _stored_official_name(character["tw_name"]) is None:
-                    raise FixtureValidationError(
-                        f"{counter_id} PASS member {unit_key} has no stored TW "
-                        "official display name"
-                    )
-                source_evidence_ids = _split_ids(character["source_evidence_ids"])
-                if not any(
-                    evidence_id in evidence_by_id
-                    and evidence_by_id[evidence_id]["status"] == "ACTIVE"
-                    and evidence_by_id[evidence_id]["server"] == "TW"
-                    and evidence_by_id[evidence_id]["source_tier"] == "OFFICIAL"
-                    and evidence_by_id[evidence_id]["evidence_confidence"] == "A"
-                    for evidence_id in source_evidence_ids
-                ):
-                    raise FixtureValidationError(
-                        f"{counter_id} PASS member {unit_key} lacks ACTIVE TW "
-                        "OFFICIAL/A Evidence"
-                    )
-
         source_platforms = _split_ids(row["source_platforms"])
         if not source_platforms or len(source_platforms) != len(set(source_platforms)):
             raise FixtureValidationError(
@@ -1509,6 +1521,12 @@ def load_pve_closure(research_core: Path) -> FixtureClosure:
     guides_by_id = {row["guide_id"]: row for row in guides_all}
     evidence_by_id = {row["evidence_id"]: row for row in evidence_all}
     claims_by_id = {row["claim_id"]: row for row in claims_all}
+    for character in characters:
+        if character["availability_status"] == "AVAILABLE":
+            _validate_available_character_source(
+                character,
+                evidence_by_id=evidence_by_id,
+            )
     dangling_declared_claims = sorted(
         {
             evidence["claim_id"].strip()

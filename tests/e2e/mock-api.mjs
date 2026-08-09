@@ -278,9 +278,18 @@ const fireResearchStageSummary = {
   verified_date: "2026-08-02",
 };
 
-const meta = (warnings = []) => ({
+const meta = (warnings = [], details = {}) => ({
   api_version: "v1",
   generated_at: "2026-08-08T00:00:00Z",
+  server: "UNKNOWN",
+  environment_version: "UNKNOWN",
+  verified_at: null,
+  stale_status: "UNKNOWN",
+  confidence: "UNKNOWN",
+  evidence_ids: [],
+  claim_ids: [],
+  data_revision: "a".repeat(64),
+  ...details,
   source: {
     canonical_source: "research_core_file_ssot",
     fixture_sha256: "a".repeat(64),
@@ -295,7 +304,10 @@ const meta = (warnings = []) => ({
   warnings,
 });
 
-const envelope = (data, warnings = []) => ({ data, meta: meta(warnings) });
+const envelope = (data, warnings = [], details = {}) => ({
+  data,
+  meta: meta(warnings, details),
+});
 
 // Keep typed baseline totals in one place so they can be reconciled with the
 // importer output whenever the canonical closure changes.
@@ -970,6 +982,18 @@ const arenaCounters = arenaCounterMembers.map((counter_members, index) => ({
     : ["CLM-ARENA-TW-DEF-20260525", "CLM-ARENA-TW-COUNTER-20260525-02"],
 }));
 
+const arenaCharacters = [...new Map(
+  [...arenaDefenseMembers, ...arenaCounterMembers.flat()].map((member) => [
+    member.unit_key,
+    {
+      unit_key: member.unit_key,
+      tw_name: member.display_name,
+      jp_name: "UNKNOWN",
+      tw_availability_status: "AVAILABLE",
+    },
+  ]),
+).values()];
+
 function arenaEvidence(evidenceId, claimId, summary) {
   const isCanonicalEv114 = evidenceId === "ev114";
   return envelope({
@@ -1060,11 +1084,36 @@ const server = createServer((request, response) => {
     const stageDetail = stageDetailsByGuide.get(decodeURIComponent(stageMatch[1]));
     if (stageDetail) return send(response, 200, stageDetail);
   }
+  if (url.pathname === "/api/v1/pvp/characters") {
+    return send(response, 200, envelope(arenaCharacters, [], {
+      server: "TW",
+      evidence_ids: ["ev041", "ev107", "ev108", "ev109", "ev110", "ev111", "ev112"],
+    }));
+  }
   if (url.pathname === "/api/v1/pvp/counters") {
-    return send(response, 200, envelope(arenaCounters, [
-      "NO_VERIFIED_COUNTER",
-      "SINGLE_REPORT_REFERENCE_ONLY",
-    ]));
+    const requestedSignature = url.searchParams.get("defense_signature");
+    const canonicalSignature = requestedSignature
+      ? requestedSignature.split(";").map((unitKey) => unitKey.trim()).sort().join(";")
+      : null;
+    const matchingCounters = canonicalSignature === null
+      ? arenaCounters
+      : arenaCounters.filter((counter) => counter.defense_signature === canonicalSignature);
+    const warnings = matchingCounters.length === 0
+      ? ["NO_EXACT_COUNTER", "NO_VERIFIED_COUNTER"]
+      : ["NO_VERIFIED_COUNTER", "SINGLE_REPORT_REFERENCE_ONLY"];
+    const details = matchingCounters.length === 0
+      ? {}
+      : {
+          server: "TW",
+          environment_version: "TW-2026-05-25",
+          evidence_ids: ["ev113", "ev114", "ev115"],
+          claim_ids: [
+            "CLM-ARENA-TW-DEF-20260525",
+            "CLM-ARENA-TW-COUNTER-20260525-01",
+            "CLM-ARENA-TW-COUNTER-20260525-02",
+          ],
+        };
+    return send(response, 200, envelope(matchingCounters, warnings, details));
   }
   const evidenceMatch = url.pathname.match(/^\/api\/v1\/evidence\/(ev\d+)$/);
   if (evidenceMatch && evidenceFixtures.has(evidenceMatch[1])) {

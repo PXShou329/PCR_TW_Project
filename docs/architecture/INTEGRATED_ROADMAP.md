@@ -16,6 +16,9 @@
 - RP-A5：48 檔 manifest SHA-256
   `1826c8493d40f71a6d0bb9096f57b92fe4e839d52bddf021b0c51e0186dcbda7`；15 條來源操作軸、
   37 個原子步驟與首個 Arena exact defense slice 已完成 research→DB→API→UI 實測。
+- RP-B3-D0：research pins 與 V0006 schema 不變；已完成五角色 exact picker、AVAILABLE
+  官方名稱 Evidence closure、required-but-conservative Strategy Metadata，以及只回報
+  `BLOCKED_BY_DATA_GATES` 的 Application/Data structural verifier。
 
 ## 實作順序
 
@@ -30,14 +33,16 @@
    B3／A4 milestone。
 7. ✅ RP-A5：Arena Gate correctness 與首個 exact defense→typed DB→API→UI／Evidence
    Drawer 垂直切片。
-8. ⏳ B3＋A5 content expansion：目前 2 筆 counter 都是 `SINGLE_REPORT`，Arena mature
+8. ✅ B3／D0：五角色 exact picker、order-insensitive query、保守 metadata、OpenAPI/client
+   parity 與 structural Gate-D verifier；Similar 維持 disabled，Gate D 仍未通過。
+9. ⏳ B3＋A5 content expansion：目前 2 筆 counter 都是 `SINGLE_REPORT`，Arena mature
    defenses 仍為 0；擴充到具多來源 VERIFIED closure 的 Gate B／C 成熟案例。
-9. B4＋A6：Princess Arena Planner 與成熟三隊案例。
-10. 正式 A4＋B5：Gacha／News data 與 UI。
-11. B6 Shadow → B7 Review／Audit／Rollback。
-12. A7：Data Gate A／B／C PASS；其中 A3 expansion 尚須把 PVE 由 2 個成熟關卡擴至 5。
-13. B8：writable SSOT 原子切換。
-14. B9／B10：效能、安全、備援與 Production Gate G。
+10. B4＋A6：Princess Arena Planner 與成熟三隊案例。
+11. 正式 A4＋B5：Gacha／News data 與 UI。
+12. B6 Shadow → B7 Review／Audit／Rollback。
+13. A7：Data Gate A／B／C PASS；其中 A3 expansion 尚須把 PVE 由 2 個成熟關卡擴至 5。
+14. B8：writable SSOT 原子切換。
+15. B9／B10：效能、安全、備援與 Production Gate G。
 
 ## B1 明確保留的非阻斷債務
 
@@ -57,13 +62,14 @@
   已是 15／37。Artifact／row mirror 保存原始內容，只有 typed serving closure 正規化；
   import replay、完整 fixture fingerprint 與 serving-boundary drift 均 fail-closed。
 - 正式 A3 PVE expansion 已交付 RP-A3／RP-A4 兩個成熟關卡；PVE Gate B 的數量條件
-  為 2/2，Gate C 仍為 2/5。RP-A5 首切片已完成，但 Arena Gate 仍為 0；下一步是
+  為 2/2，Gate C 仍為 2/5。RP-A5 與 B3／D0 picker 已完成，但 Arena Gate 仍為 0；下一步是
   B3＋A5 content expansion，並依賴其後 B4＋A6 的 Princess Arena 成熟案例。Data Gate
   A／B／C 與 Gates D–G 仍未宣稱通過。
 - 回滾點：A2 research core 使用 `rp-a2-2`；A2＋B2 通過 Compose CI 的完整切片使用
   `rp-a2-b2-2`；A3 使用 `rp-a3-1`；本次 A4 通過完整驗證後使用 `rp-a4-1`。
   `rp-a2-b2-1` 僅保留作 CI parity 修正前的稽核 checkpoint；`rp-a5-1` 同樣保留作 CI
-  runtime 依賴安裝修正前的稽核 checkpoint，RP-A5 目前使用 `rp-a5-2`，
+  runtime 依賴安裝修正前的稽核 checkpoint；RP-A5 使用 `rp-a5-2`，本次 B3／D0 使用
+  `rp-b3-d0-1`，
   A5→A4→A5 依 [`A5_ROLLBACK_RUNBOOK.md`](../operations/A5_ROLLBACK_RUNBOOK.md)。任何已有
   較新 schema 的資料庫都不得只 checkout 舊 tag，必須同時依版本回滾手冊處理 DB。
 

@@ -26,8 +26,16 @@ export interface SourceMetadata {
 }
 
 export interface ApiMetadata {
-  api_version: string;
+  api_version: "v1";
   generated_at: string;
+  server: "TW" | "JP" | "MIXED" | "UNKNOWN";
+  environment_version: string;
+  verified_at: string | null;
+  stale_status: "CURRENT" | "STALE" | "UNKNOWN";
+  confidence: "A" | "B" | "C" | "D" | "E" | "UNKNOWN";
+  evidence_ids: string[];
+  claim_ids: string[];
+  data_revision: string;
   source: SourceMetadata;
   warnings: string[];
 }
@@ -317,6 +325,13 @@ export interface ArenaMember {
   unit_key: string;
   display_name: string;
   display_name_source: "TW_OFFICIAL" | "JP_OFFICIAL";
+}
+
+export interface PvpCharacter {
+  unit_key: string;
+  tw_name: string;
+  jp_name: string;
+  tw_availability_status: "AVAILABLE";
 }
 
 export interface PvpCounter {

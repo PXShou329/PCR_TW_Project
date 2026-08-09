@@ -71,9 +71,9 @@ Rollback drill 不取代備份。執行任何 A4 activation 或 schema downgrade
 本次已驗證並供 default rollback drill 使用的 backup：
 
 ```text
-path       .runtime/backups/pcr_tw_20260809115858_dca6bb.dump
-sha256     511c36816cd5ff3a3551f78e096c8017b973e3dbc09e34c6844b88d8b68cefb9
-bytes      1541877
+path       .runtime/backups/pcr_tw_20260809135027_dc304a.dump
+sha256     c4d89d9ac7a9554b7ce2fc08c749dbd6a379f4f02863559819913c3d527f59fc
+bytes      1541961
 ```
 
 必須保存命令輸出的 backup 絕對路徑與 SHA-256，並確認 restore、revision history、ACL、
@@ -110,8 +110,8 @@ $ProjectName = "<exact-compose-project-name>"
 $ExpectedApiImage = "<exact-api-image-ref>"
 $ExpectedSchedulerImage = "<exact-scheduler-image-ref>"
 $ExpectedApiPort = 8000
-$VerifiedBackupPath = (Resolve-Path ".runtime/backups/pcr_tw_20260809115858_dca6bb.dump").Path
-$VerifiedBackupSha256 = "511c36816cd5ff3a3551f78e096c8017b973e3dbc09e34c6844b88d8b68cefb9"
+$VerifiedBackupPath = (Resolve-Path ".runtime/backups/pcr_tw_20260809135027_dc304a.dump").Path
+$VerifiedBackupSha256 = "c4d89d9ac7a9554b7ce2fc08c749dbd6a379f4f02863559819913c3d527f59fc"
 
 ./scripts/a5_a4_rollback_drill.ps1 `
   -EnvFile .env `
@@ -128,12 +128,22 @@ $VerifiedBackupSha256 = "511c36816cd5ff3a3551f78e096c8017b973e3dbc09e34c6844b88d
 同一 `ProjectName` 的 `docker compose ... config --format json`／`docker compose ... port`
 結果為準，不可猜測或沿用另一個 stack。腳本會在第一次 DB access 與 quiesce 前 fail closed。
 
+`materialization_state.epoch` 是 serving state 的單調 epoch；consistency／cache smoke 的
+typed DML 與 cleanup 會合法推進它，但不新增 `revision_activations`。因此 preflight 要求
+`0 < latest activation epoch <= current state epoch`，不要求兩者相等；latest activation
+本身仍須精確指向 active A5 revision／import run／materialization。新 A5→A4 activation
+epoch 必須嚴格大於演練起點的 current state epoch，後續 A4→A5 audit chain 仍須連續且
+final state epoch 必須精確等於 reactivation audit epoch。Epoch 放寬前仍須由目前 A5 API
+readiness 在 quiesce 前重算 typed materialization manifest，且精確回報
+`database=ok／fixture=imported`；只有 stored digest、pointer 與 row count 相同不足以繼續。
+
 演練腳本會：
 
 1. 在任何服務或 DB mutation 前重新驗證 backup 檔案與 SHA-256，並要求
    `SCHEDULER_ENABLED=false`、`SHADOW_MODE=true`、`AUTO_PUBLISH=false`。
 2. 確認起點為 V0006、A5 portable identity、該 instance 的 typed materialization，以及
-   1 defense／2 counters 的完整 Arena closure。
+   1 defense／2 counters 的完整 Arena closure；再從目標 Compose project 解析實際 API port，
+   由 readiness 依目前 state epoch 重算 materialization，並確認檢查前後 epoch 未變。
 3. 停止 Web、API、Scheduler。
 4. 以 A5 importer 讀取完整 A4 raw tree，並要求唯一一筆 `PINNED_ROLLBACK_SOURCE_OK`；
    proof 必須是 48 files、325 CSV rows 與上述 A4 manifest／revision。
@@ -147,9 +157,11 @@ $VerifiedBackupSha256 = "511c36816cd5ff3a3551f78e096c8017b973e3dbc09e34c6844b88d
 本次 default drill 的實際 chronology／final markers：
 
 ```text
-A5_ORIGIN_VERIFIED_OK       activation_sequence=9   epoch=7481
-A4_LEGACY_MATERIALIZATION_OK activation_sequence=10 epoch=8095 materialization=f5d3ae8b…
+A5_ORIGIN_READINESS_OK      api_port=8300 state_epoch=11348 database=ok fixture=imported
+A5_ORIGIN_VERIFIED_OK       activation_sequence=15 activation_epoch=11348 state_epoch=11348
+A4_LEGACY_MATERIALIZATION_OK activation_sequence=16 epoch=11962 materialization=f5d3ae8b…
 A5_A4_ROLLBACK_READY_OK     alembic=v0005_borrowed_tristate arena_tables=0
+A5_FINAL_DB_READBACK        activation_sequence=17 epoch=12634 active_revision=1962881faf1d84057efdcccb6e22c28de32ea4c47f5acbf57a5d48adc631555c
 A5_RESTORED_OK              active_revision=1962881faf1d84057efdcccb6e22c28de32ea4c47f5acbf57a5d48adc631555c
 A5_SERVICES_READY_OK
 A5_A4_ROLLBACK_DRILL_OK

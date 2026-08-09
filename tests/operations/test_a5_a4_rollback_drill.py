@@ -228,6 +228,57 @@ def test_a5_recovery_chain_requires_exact_append_only_audit_identity() -> None:
     assert "-Sequence $reactivationSequence" in source
 
 
+def test_origin_activation_anchor_allows_only_monotonic_non_activation_epoch_advance() -> None:
+    source = SCRIPT.read_text(encoding="utf-8")
+    anchor_start = source.index("function Assert-OriginActivationAnchor")
+    anchor_end = source.index("function Assert-A4RecoveryState", anchor_start)
+    anchor = source[anchor_start:anchor_end]
+
+    assert "$originActivationEpoch = [long]0" in source
+    assert (
+        '$originActivationEpoch = [long](Get-Scalar "SELECT epoch FROM '
+        'revision_activations WHERE sequence_no=$originActivationSequence")'
+        in source
+    )
+    assert "$originActivationEpoch -le 0" in anchor
+    assert "$originActivationEpoch -gt $originEpoch" in anchor
+    assert "-ExpectedEpoch $originActivationEpoch" in anchor
+    assert "-ExpectedEpoch $originEpoch" not in anchor
+    assert "$rollbackEpoch -le $originEpoch" in source
+
+
+def test_origin_readiness_recomputes_materialization_before_quiesce() -> None:
+    source = SCRIPT.read_text(encoding="utf-8")
+    readiness_function = source.index("function Assert-OriginApiReadiness")
+    readiness_function_end = source.index(
+        "function Assert-A4RecoveryState", readiness_function
+    )
+    actual_port = source.index("$actualApiPort = Get-ActualApiPort", readiness_function)
+    readiness_request = source.index(
+        'http://127.0.0.1:${actualApiPort}/health/ready', actual_port
+    )
+    materialization_guard = source.index(
+        "Assert-A5DatabaseState `", source.index("$originA5ImportRunId =")
+    )
+    readiness_call = source.index("Assert-OriginApiReadiness", materialization_guard)
+    first_side_effect = source.index("Invoke-Compose stop web api scheduler")
+
+    assert (
+        readiness_function
+        < actual_port
+        < readiness_request
+        < readiness_function_end
+        < materialization_guard
+        < readiness_call
+        < first_side_effect
+    )
+    assert 'http://127.0.0.1:$ExpectedApiPort/health/ready' not in source
+    assert '$readiness.checks.database -ne "ok"' in source
+    assert '$readiness.checks.fixture -ne "imported"' in source
+    assert '$epochAfterReadiness -ne $originEpoch' in source
+    assert "A5_ORIGIN_READINESS_OK" in source
+
+
 def test_compose_target_preflight_is_explicit_and_precedes_database_access() -> None:
     source = SCRIPT.read_text(encoding="utf-8")
 

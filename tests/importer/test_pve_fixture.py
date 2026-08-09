@@ -682,6 +682,54 @@ def test_arena_pass_member_requires_tw_official_name_and_evidence(tmp_path: Path
         load_pve_closure(core)
 
 
+def test_non_arena_available_character_requires_tw_official_name(
+    tmp_path: Path,
+) -> None:
+    core = tmp_path / "pcr_tw_project"
+    shutil.copytree(RESEARCH_CORE, core)
+
+    def remove_official_name(rows):
+        next(row for row in rows if row["unit_key"] == "shiori_win")["tw_name"] = (
+            "【待查證】"
+        )
+
+    rewrite_csv(core / "18_TW_CHARACTER_AVAILABILITY.csv", remove_official_name)
+
+    with pytest.raises(
+        FixtureValidationError,
+        match="AVAILABLE character shiori_win has no stored TW official display name",
+    ):
+        load_pve_closure(core)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("source_tier", "COMMUNITY_WIKI"),
+        ("status", "PENDING_REVIEW"),
+    ],
+)
+def test_non_arena_available_character_requires_active_tw_official_a_evidence(
+    tmp_path: Path,
+    field: str,
+    value: str,
+) -> None:
+    core = tmp_path / "pcr_tw_project"
+    shutil.copytree(RESEARCH_CORE, core)
+
+    def weaken_tw_evidence(rows):
+        evidence = next(row for row in rows if row["evidence_id"] == "ev028")
+        evidence[field] = value
+
+    rewrite_csv(core / "92_EVIDENCE_LEDGER.csv", weaken_tw_evidence)
+
+    with pytest.raises(
+        FixtureValidationError,
+        match="AVAILABLE character shiori_win lacks ACTIVE TW OFFICIAL/A Evidence",
+    ):
+        load_pve_closure(core)
+
+
 def test_borrowed_member_projection_is_tri_state() -> None:
     closure = load_pve_closure(RESEARCH_CORE)
     teams = {row["team_id"]: row for row in closure.teams}

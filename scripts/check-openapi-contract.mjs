@@ -65,6 +65,8 @@ const schemaToInterface = {
   EvidenceData: "Evidence",
   ArenaCounterData: "PvpCounter",
   ArenaMemberData: "ArenaMember",
+  PvpCharacterData: "PvpCharacter",
+  ResponseMeta: "ApiMetadata",
   SourceMeta: "SourceMetadata",
   StageCoverage: "Coverage",
   StageDetail: "StageDetail",

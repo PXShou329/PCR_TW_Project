@@ -6,16 +6,19 @@ from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine, event, select
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from pcr_api.config import Settings
 from pcr_api.main import create_app
 from pcr_api.repository import (
+    ResponseMetaRecord,
     _arena_display_name,
     _arena_verified_serving_closure_is_mature,
     arena_counter_results,
+    conservative_response_metadata,
+    pvp_character_options,
 )
 from pcr_api.routes import v1 as v1_routes
 from pcr_database.models import (
@@ -157,7 +160,11 @@ def _seed_arena(session: Session, *, include_jp_future: bool) -> None:
             six_star_status="UNKNOWN",
             connect_rank_status="UNKNOWN",
             element="UNKNOWN",
-            source_evidence_ids=[],
+            source_evidence_ids=(
+                []
+                if unit_key == JP_FUTURE_KEY
+                else [f"ev-official-{unit_key}"]
+            ),
             last_verified=today,
             last_review_due=None,
             notes="Arena API fixture",
@@ -221,6 +228,31 @@ def _seed_arena(session: Session, *, include_jp_future: bool) -> None:
             import_run_id=RUN_ID,
         )
         for evidence_id, claim_id in evidence_claims.items()
+    )
+    session.add_all(
+        Evidence(
+            evidence_id=f"ev-official-{unit_key}",
+            declared_claim_id=None,
+            linked_claim_id=None,
+            module="availability",
+            server="TW",
+            source_tier="OFFICIAL",
+            evidence_confidence="A",
+            source_title=f"台服官方角色公告 {TW_NAMES[unit_key]}",
+            source_url=f"https://example.test/official/{unit_key}",
+            source_locator=f"official-{unit_key}",
+            published_date=date(2026, 1, 1),
+            published_date_precision="DAY",
+            verified_date=today,
+            claim_summary="台服官方名稱與 AVAILABLE 狀態",
+            limitations="只證明台服官方名稱與已實裝。",
+            affected_files="18_TW_CHARACTER_AVAILABILITY.csv",
+            status="ACTIVE",
+            source_payload={},
+            import_run_id=RUN_ID,
+        )
+        for unit_key in all_keys
+        if unit_key != JP_FUTURE_KEY
     )
     defense_id = "TW-2026-05-25:" + arena_formation_signature(DEFENSE_KEYS)
     session.add(
@@ -316,6 +348,14 @@ def _client(
         include_jp_future=include_jp_future,
     )
 
+    return _client_for_factory(monkeypatch, factory)
+
+
+def _client_for_factory(
+    monkeypatch: pytest.MonkeyPatch,
+    factory: sessionmaker[Session],
+) -> TestClient:
+
     def ready(session: Session):
         return session.get(ImportRun, RUN_ID), SimpleNamespace(
             revision_id=HASH,
@@ -347,6 +387,18 @@ def test_pvp_returns_typed_exact_single_reports(monkeypatch: pytest.MonkeyPatch)
         "NO_VERIFIED_COUNTER",
         "SINGLE_REPORT_REFERENCE_ONLY",
     ]
+    assert payload["meta"]["server"] == "TW"
+    assert payload["meta"]["environment_version"] == "TW-2026-05-25"
+    assert payload["meta"]["verified_at"] is None
+    assert payload["meta"]["stale_status"] == "UNKNOWN"
+    assert payload["meta"]["confidence"] == "UNKNOWN"
+    assert payload["meta"]["evidence_ids"] == ["ev113", "ev114", "ev115"]
+    assert payload["meta"]["claim_ids"] == [
+        "CLM-ARENA-01",
+        "CLM-ARENA-02",
+        "CLM-ARENA-DEF",
+    ]
+    assert payload["meta"]["data_revision"] == HASH
     for row in payload["data"]:
         assert row["status"] == "SINGLE_REPORT"
         assert row["claim_confidence"] == "D"
@@ -365,6 +417,199 @@ def test_pvp_returns_typed_exact_single_reports(monkeypatch: pytest.MonkeyPatch)
             member["display_name_source"] == "TW_OFFICIAL"
             for member in [*row["defense_members"], *row["counter_members"]]
         )
+
+
+def test_pvp_character_options_exclude_not_released_and_are_stable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with _client(
+        monkeypatch,
+        include_arena=True,
+        materialization_version=3,
+        include_jp_future=True,
+    ) as client:
+        response = client.get("/api/v1/pvp/characters")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert JP_FUTURE_KEY not in {row["unit_key"] for row in payload["data"]}
+    assert all(
+        row["tw_availability_status"] == "AVAILABLE" for row in payload["data"]
+    )
+    assert [
+        (row["tw_name"], row["unit_key"]) for row in payload["data"]
+    ] == sorted((row["tw_name"], row["unit_key"]) for row in payload["data"])
+    assert payload["meta"]["server"] == "TW"
+    assert payload["meta"]["environment_version"] == "UNKNOWN"
+    assert payload["meta"]["verified_at"] is None
+    assert payload["meta"]["stale_status"] == "UNKNOWN"
+    assert payload["meta"]["confidence"] == "UNKNOWN"
+    assert payload["meta"]["evidence_ids"] == sorted(
+        f"ev-official-{row['unit_key']}" for row in payload["data"]
+    )
+    assert payload["meta"]["claim_ids"] == []
+
+
+def test_tw_available_picker_character_without_official_name_fails_closed() -> None:
+    factory = _factory(include_arena=True, materialization_version=3)
+    with factory() as session:
+        character = session.get(Character, DEFENSE_KEYS[0])
+        assert character is not None
+        character.tw_name = "UNKNOWN"
+        session.flush()
+        with pytest.raises(RuntimeError, match="no stored official name"):
+            pvp_character_options(session)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("source_tier", "COMMUNITY_WIKI"),
+        ("status", "PENDING_REVIEW"),
+    ],
+)
+def test_pvp_character_picker_rejects_weak_or_inactive_referenced_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+    value: str,
+) -> None:
+    factory = _factory(include_arena=True, materialization_version=3)
+    with factory() as session:
+        evidence = session.get(Evidence, f"ev-official-{DEFENSE_KEYS[0]}")
+        assert evidence is not None
+        setattr(evidence, field, value)
+        session.commit()
+
+    with _client_for_factory(monkeypatch, factory) as client:
+        response = client.get("/api/v1/pvp/characters")
+
+    assert response.status_code == 503
+    assert response.json() == {
+        "detail": {
+            "code": "FIXTURE_DRIFT",
+            "resource": "pvp_characters",
+            "id": None,
+            "reason": "character_serving_closure_invalid",
+        }
+    }
+
+
+def test_pvp_character_picker_rejects_missing_referenced_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    factory = _factory(include_arena=True, materialization_version=3)
+    with factory() as session:
+        character = session.get(Character, DEFENSE_KEYS[0])
+        assert character is not None
+        character.source_evidence_ids = ["ev-does-not-exist"]
+        session.commit()
+
+    with _client_for_factory(monkeypatch, factory) as client:
+        response = client.get("/api/v1/pvp/characters")
+
+    assert response.status_code == 503
+    assert response.json()["detail"]["reason"] == "character_serving_closure_invalid"
+
+
+def test_pvp_character_picker_evidence_query_count_is_constant() -> None:
+    factory = _factory(include_arena=True, materialization_version=3)
+    statements: list[str] = []
+
+    def track_query(_connection, _cursor, statement, _parameters, _context, _many):
+        statements.append(statement)
+
+    with factory() as session:
+        bind = session.get_bind()
+        event.listen(bind, "before_cursor_execute", track_query)
+        try:
+            characters, _records = pvp_character_options(session)
+        finally:
+            event.remove(bind, "before_cursor_execute", track_query)
+
+    assert len(characters) == len(TW_NAMES)
+    assert len(statements) == 2
+
+
+def test_pvp_counter_meta_does_not_infer_freshness_or_confidence_from_counter(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    factory = _factory(include_arena=True, materialization_version=3)
+    with factory() as session:
+        defense = session.scalar(select(ArenaDefense))
+        claim = session.get(Claim, "CLM-ARENA-DEF")
+        assert defense is not None
+        assert claim is not None
+        defense.verified_date = date(2026, 7, 1)
+        claim.claim_confidence = "E"
+        session.commit()
+
+    with _client_for_factory(monkeypatch, factory) as client:
+        response = client.get("/api/v1/pvp/counters")
+
+    assert response.status_code == 200
+    meta = response.json()["meta"]
+    assert meta["server"] == "TW"
+    assert meta["environment_version"] == "TW-2026-05-25"
+    assert meta["evidence_ids"] == ["ev113", "ev114", "ev115"]
+    assert meta["claim_ids"] == [
+        "CLM-ARENA-01",
+        "CLM-ARENA-02",
+        "CLM-ARENA-DEF",
+    ]
+    assert meta["verified_at"] is None
+    assert meta["stale_status"] == "UNKNOWN"
+    assert meta["confidence"] == "UNKNOWN"
+
+
+def test_conservative_response_metadata_uses_complete_closure_only() -> None:
+    aggregate = conservative_response_metadata(
+        [
+            ResponseMetaRecord(
+                server="TW",
+                environment_version="TW-1",
+                verified_at=date(2026, 8, 8),
+                stale_status="CURRENT",
+                confidence="B",
+                evidence_ids=("ev-b", "ev-a"),
+                claim_ids=("clm-b",),
+            ),
+            ResponseMetaRecord(
+                server="JP",
+                environment_version="TW-1",
+                verified_at=date(2026, 8, 7),
+                stale_status="STALE",
+                confidence="D",
+                evidence_ids=("ev-a", "ev-c"),
+                claim_ids=("clm-a",),
+            ),
+        ]
+    )
+
+    assert aggregate == {
+        "server": "MIXED",
+        "environment_version": "TW-1",
+        "verified_at": date(2026, 8, 7),
+        "stale_status": "STALE",
+        "confidence": "D",
+        "evidence_ids": ["ev-a", "ev-b", "ev-c"],
+        "claim_ids": ["clm-a", "clm-b"],
+    }
+    unknown = conservative_response_metadata(
+        [
+            ResponseMetaRecord(
+                server="TW",
+                environment_version="TW-1",
+                verified_at=date(2026, 8, 8),
+                stale_status="CURRENT",
+                confidence="B",
+            ),
+            ResponseMetaRecord(server="TW"),
+        ]
+    )
+    assert unknown["environment_version"] == "UNKNOWN"
+    assert unknown["verified_at"] is None
+    assert unknown["stale_status"] == "UNKNOWN"
+    assert unknown["confidence"] == "UNKNOWN"
 
 
 def test_not_released_member_helper_uses_stored_jp_official_name() -> None:
@@ -612,6 +857,13 @@ def test_pvp_four_of_five_does_not_fallback_to_similar(monkeypatch: pytest.Monke
         "NO_EXACT_COUNTER",
         "NO_VERIFIED_COUNTER",
     ]
+    assert response.json()["meta"]["server"] == "UNKNOWN"
+    assert response.json()["meta"]["environment_version"] == "UNKNOWN"
+    assert response.json()["meta"]["verified_at"] is None
+    assert response.json()["meta"]["stale_status"] == "UNKNOWN"
+    assert response.json()["meta"]["confidence"] == "UNKNOWN"
+    assert response.json()["meta"]["evidence_ids"] == []
+    assert response.json()["meta"]["claim_ids"] == []
 
 
 @pytest.mark.parametrize(

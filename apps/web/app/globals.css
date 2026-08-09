@@ -726,6 +726,8 @@ code {
 }
 
 .arena-warning,
+.arena-search-heading,
+.arena-search-actions,
 .arena-defense__heading,
 .arena-counter-card__heading,
 .arena-counter-card__footer,
@@ -734,6 +736,90 @@ code {
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
+}
+
+.arena-search-panel {
+  margin-bottom: 1.25rem;
+  padding: clamp(1.3rem, 3vw, 2rem);
+}
+
+.arena-search-heading h2,
+.arena-search-heading p,
+.arena-search-actions p,
+.arena-search-disclosure {
+  margin-bottom: 0;
+}
+
+.arena-search-form {
+  margin-top: 1.4rem;
+}
+
+.arena-search-form fieldset {
+  min-width: 0;
+  padding: 0;
+  margin: 0;
+  border: 0;
+}
+
+.arena-search-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.arena-search-grid label {
+  display: grid;
+  min-width: 0;
+  gap: 0.35rem;
+}
+
+.arena-search-grid label > span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.arena-search-grid select {
+  width: 100%;
+  min-height: 48px;
+  padding: 0.65rem 2rem 0.65rem 0.75rem;
+  color: var(--ink);
+  background: var(--bg-raised);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+}
+
+.arena-search-grid option {
+  color: var(--ink);
+  background: var(--bg-raised);
+}
+
+.arena-search-actions {
+  justify-content: flex-start;
+  margin-top: 1rem;
+}
+
+.arena-search-actions p {
+  max-width: 650px;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.arena-search-scope {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 1.4rem 0 0;
+  gap: 0.65rem;
+}
+
+.arena-search-disclosure {
+  margin-top: 0.8rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.arena-search-feedback {
+  margin-bottom: 1.25rem;
 }
 
 .arena-warning {
@@ -1622,6 +1708,11 @@ code {
   .metadata-panel dl {
     grid-template-columns: repeat(2, 1fr);
   }
+
+  .arena-search-grid,
+  .arena-search-scope {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 620px) {
@@ -1713,11 +1804,24 @@ code {
   }
 
   .arena-warning,
+  .arena-search-heading,
+  .arena-search-actions,
   .arena-defense__heading,
   .arena-counter-card__heading,
   .arena-counter-card__footer,
   .arena-similar-panel {
     display: block;
+  }
+
+  .arena-search-grid,
+  .arena-search-scope {
+    grid-template-columns: 1fr;
+  }
+
+  .arena-search-actions .text-link,
+  .arena-search-actions p {
+    display: block;
+    margin-top: 0.8rem;
   }
 
   .arena-warning .badge-row,

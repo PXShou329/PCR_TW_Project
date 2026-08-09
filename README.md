@@ -1,10 +1,11 @@
 # 公主連結台服 AI 攻略研究所
 
-Guide-Only Strategy Platform v3.0 的 RP-A5 Arena release checkpoint，建立在
-RP-A4 Water 成熟切片與已封存的 B1 full-core round-trip 里程碑之上。這是一個可部署的
+Guide-Only Strategy Platform v3.0 的 B3／D0 exact-picker checkpoint，建立在
+RP-A5 Arena typed slice、RP-A4 Water 成熟切片與已封存的 B1 full-core round-trip 里程碑之上。這是一個可部署的
 **本機／私人 staging**，不是公開正式版，也尚未宣稱 Gates D–G 通過。
 
-`RP-A5` 以私人 tag `rp-a5-2` 封存首個 Arena 垂直切片；`rp-a5-1` 保留為 CI runtime
+本切片以私人 tag `rp-b3-d0-1` 封存五角色 exact picker、保守 Strategy Metadata 與
+Application/Data parity verifier；前一安全回滾點是 `rp-a5-2`。`rp-a5-1` 保留為 CI runtime
 依賴安裝修正前的稽核 checkpoint。RP-A4 仍保留為 Water／A3 PVE content expansion 的
 rollback checkpoint，不覆寫歷史 manifest。這個 release checkpoint
 不等於整個 B3＋A5 content expansion 已完成：Arena mature defenses 目前仍為 0。
@@ -12,7 +13,8 @@ rollback checkpoint，不覆寫歷史 manifest。這個 release checkpoint
 目前端到端垂直切片包含「紅焰深域 8-10」與「蒼波深域 8-10」，各提供五支不同五人的實際通關隊伍、逐 Slot
 條件、來源分離的操作軸、逐步 Evidence Drawer，以及誠實的 `UNKNOWN`／結構化操作軸缺口。競技場
 research core 已加入同環境、實際勝利截圖支持的兩筆 `SINGLE_REPORT` exact counter；不把單次
-回報包裝成勝率，也不建立示意隊。
+回報包裝成勝率，也不建立示意隊。`/pvp` 現在以五個 AVAILABLE 台服官方名稱角色建立
+可分享的 exact query；不足五人、重複角色與四人重疊都 fail closed，Similar 仍未啟用。
 
 ## 真相與安全邊界
 
@@ -44,6 +46,7 @@ flowchart LR
 
 ```powershell
 python scripts/check_research_baseline.py
+python scripts/check_application_data_parity.py --run-round-trip
 python -m pytest -q
 npm ci
 npm run check:contract
@@ -68,6 +71,8 @@ python tools/mutation_test.py
 重現；完整 fresh-stack、ACL、scheduler、backup／restore、A5→A4→A5 rollback 與
 desktop/mobile 實跑輸出見
 [`docs/operations/A5_VERIFICATION_REPORT.md`](docs/operations/A5_VERIFICATION_REPORT.md)。
+本次 B3／D0 picker、metadata、重建 A5 stack、backup／restore 與 rollback 實跑輸出見
+[`docs/operations/B3_D0_VERIFICATION_REPORT.md`](docs/operations/B3_D0_VERIFICATION_REPORT.md)。
 RP-A4 的 round-trip、PostgreSQL、瀏覽器、E2E、restore 與 A4→A3 rollback drill 歷史輸出仍見
 [`docs/operations/A4_VERIFICATION_REPORT.md`](docs/operations/A4_VERIFICATION_REPORT.md)；
 B1 的歷史基線仍保留於

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from collections import OrderedDict, defaultdict
-from datetime import datetime, timezone
+from dataclasses import dataclass
+from datetime import date, datetime, timezone
 from threading import Lock
 from typing import Any
 from urllib.parse import urlsplit
@@ -95,6 +96,86 @@ _ARENA_VERIFIED_EVIDENCE_TIERS = frozenset(
         "SINGLE_PLAYER_REPORT",
     }
 )
+_CONFIDENCE_RANK = {value: rank for rank, value in enumerate("ABCDE")}
+
+
+@dataclass(frozen=True)
+class ResponseMetaRecord:
+    """Typed facts contributed by one record to envelope-level metadata."""
+
+    server: str | None = None
+    environment_version: str | None = None
+    verified_at: date | None = None
+    stale_status: str | None = None
+    confidence: str | None = None
+    evidence_ids: tuple[str, ...] = ()
+    claim_ids: tuple[str, ...] = ()
+
+
+def _aggregate_dimension(values: list[str | None]) -> str:
+    """Return a homogeneous value, MIXED known values, or fail-closed UNKNOWN."""
+
+    if not values or any(not value or value == "UNKNOWN" for value in values):
+        return "UNKNOWN"
+    distinct = set(values)
+    return next(iter(distinct)) if len(distinct) == 1 else "MIXED"
+
+
+def conservative_response_metadata(
+    records: list[ResponseMetaRecord],
+) -> dict[str, Any]:
+    """Aggregate only facts proven by the complete returned record closure.
+
+    A missing fact makes that aggregate UNKNOWN (or null for ``verified_at``).
+    This intentionally never substitutes import time for content verification.
+    """
+
+    servers = [record.server for record in records]
+    environments = [record.environment_version for record in records]
+    verified_dates = [record.verified_at for record in records]
+    stale_statuses = [record.stale_status for record in records]
+    confidences = [record.confidence for record in records]
+
+    verified_at = (
+        min(verified_dates)
+        if verified_dates and all(value is not None for value in verified_dates)
+        else None
+    )
+    if not stale_statuses or any(
+        value not in {"CURRENT", "STALE"} for value in stale_statuses
+    ):
+        stale_status = "UNKNOWN"
+    else:
+        stale_status = "STALE" if "STALE" in stale_statuses else "CURRENT"
+
+    if not confidences or any(value not in _CONFIDENCE_RANK for value in confidences):
+        confidence = "UNKNOWN"
+    else:
+        confidence = max(confidences, key=lambda value: _CONFIDENCE_RANK[value])
+
+    return {
+        "server": _aggregate_dimension(servers),
+        "environment_version": _aggregate_dimension(environments),
+        "verified_at": verified_at,
+        "stale_status": stale_status,
+        "confidence": confidence,
+        "evidence_ids": sorted(
+            {
+                identifier
+                for record in records
+                for identifier in record.evidence_ids
+                if identifier
+            }
+        ),
+        "claim_ids": sorted(
+            {
+                identifier
+                for record in records
+                for identifier in record.claim_ids
+                if identifier
+            }
+        ),
+    }
 
 
 def latest_import(session: Session) -> ImportRun | None:
@@ -372,14 +453,19 @@ def response_meta(
     run: ImportRun,
     revision: CoreRevision,
     *,
+    records: list[ResponseMetaRecord] | None = None,
     extra_warnings: list[str] | None = None,
 ) -> ResponseMeta:
     if revision.materialization_sha256 is None:
         raise RuntimeError("active revision has no materialization digest")
     warnings = list(run.manifest.get("warnings", []))
     warnings.extend(extra_warnings or [])
+    aggregate = conservative_response_metadata(records or [])
     return ResponseMeta(
+        api_version="v1",
         generated_at=datetime.now(timezone.utc),
+        **aggregate,
+        data_revision=revision.revision_id,
         source=SourceMeta(
             canonical_source=run.canonical_source,
             fixture_sha256=run.fixture_sha256,
@@ -753,6 +839,29 @@ def _stored_official_name(value: Any) -> str | None:
     return normalized
 
 
+def _referenced_evidence_ids(value: Any) -> tuple[str, ...]:
+    """Normalize a stored JSON ID list, failing closed on malformed values."""
+
+    if not isinstance(value, list):
+        return ()
+    normalized: list[str] = []
+    for identifier in value:
+        if not isinstance(identifier, str) or not identifier.strip():
+            return ()
+        normalized.append(identifier.strip())
+    return tuple(normalized)
+
+
+def _is_active_tw_official_a_evidence(evidence: Evidence | None) -> bool:
+    return bool(
+        evidence is not None
+        and evidence.status == "ACTIVE"
+        and evidence.server == "TW"
+        and evidence.source_tier == "OFFICIAL"
+        and evidence.evidence_confidence == "A"
+    )
+
+
 def _arena_display_name(
     *,
     unit_key: str,
@@ -772,6 +881,71 @@ def _arena_display_name(
             return official_jp_name, "JP_OFFICIAL"
 
     raise RuntimeError(f"Arena member has no stored official display name: {unit_key}")
+
+
+def pvp_character_options(
+    session: Session,
+) -> tuple[list[dict[str, str]], list[ResponseMetaRecord]]:
+    """Return deterministic, canonical TW-available options for the Arena picker."""
+
+    characters = session.scalars(
+        select(Character).where(Character.availability_status == "AVAILABLE")
+    ).all()
+    evidence_ids_by_unit = {
+        character.unit_key: _referenced_evidence_ids(character.source_evidence_ids)
+        for character in characters
+    }
+    referenced_evidence_ids = sorted(
+        {
+            evidence_id
+            for evidence_ids in evidence_ids_by_unit.values()
+            for evidence_id in evidence_ids
+        }
+    )
+    evidence_by_id = {
+        evidence.evidence_id: evidence
+        for evidence in session.scalars(
+            select(Evidence).where(Evidence.evidence_id.in_(referenced_evidence_ids))
+        ).all()
+    }
+    rows: list[tuple[str, str, str, Character]] = []
+    for character in characters:
+        tw_name = _stored_official_name(character.tw_name)
+        if tw_name is None:
+            raise RuntimeError(
+                f"TW-available picker character has no stored official name: "
+                f"{character.unit_key}"
+            )
+        source_evidence_ids = evidence_ids_by_unit[character.unit_key]
+        if not any(
+            _is_active_tw_official_a_evidence(evidence_by_id.get(evidence_id))
+            for evidence_id in source_evidence_ids
+        ):
+            raise RuntimeError(
+                "TW-available picker character lacks ACTIVE TW OFFICIAL/A "
+                f"Evidence: {character.unit_key}"
+            )
+        jp_name = _stored_official_name(character.jp_name) or "UNKNOWN"
+        rows.append((tw_name, character.unit_key, jp_name, character))
+    rows.sort(key=lambda row: (row[0], row[1]))
+
+    payload = [
+        {
+            "unit_key": unit_key,
+            "tw_name": tw_name,
+            "jp_name": jp_name,
+            "tw_availability_status": "AVAILABLE",
+        }
+        for tw_name, unit_key, jp_name, _character in rows
+    ]
+    records = [
+        ResponseMetaRecord(
+            server="TW",
+            evidence_ids=evidence_ids_by_unit[character.unit_key],
+        )
+        for _tw_name, _unit_key, _jp_name, character in rows
+    ]
+    return payload, records
 
 
 def _arena_verified_serving_closure_is_mature(

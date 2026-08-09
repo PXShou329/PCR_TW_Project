@@ -525,14 +525,36 @@ function Assert-OriginActivationAnchor {
     if ($originKind -notin @("IMPORT", "REACTIVATE")) {
         throw "Origin A5 activation kind is not a forward activation"
     }
+    if ($originActivationEpoch -le 0 -or $originActivationEpoch -gt $originEpoch) {
+        throw "Origin A5 activation epoch is ahead of the current materialization state"
+    }
     $originFrom = Get-Scalar "SELECT COALESCE(from_revision_id, '') FROM revision_activations WHERE sequence_no=$originActivationSequence"
     Assert-Activation `
         -Sequence $originActivationSequence `
         -FromRevision $originFrom `
         -ToRevision $a5Revision `
         -Kind $originKind `
-        -ExpectedEpoch $originEpoch `
+        -ExpectedEpoch $originActivationEpoch `
         -Label "Origin A5"
+}
+
+function Assert-OriginApiReadiness {
+    $actualApiPort = Get-ActualApiPort
+    $readiness = Invoke-RestMethod `
+        -Uri "http://127.0.0.1:${actualApiPort}/health/ready" `
+        -TimeoutSec 30
+    if (
+        $readiness.status -ne "ok" -or
+        $readiness.checks.database -ne "ok" -or
+        $readiness.checks.fixture -ne "imported"
+    ) {
+        throw "Origin A5 API readiness did not verify the current materialization"
+    }
+    $epochAfterReadiness = [long](Get-Scalar "SELECT epoch FROM materialization_state WHERE id=1")
+    if ($epochAfterReadiness -ne $originEpoch) {
+        throw "Origin A5 materialization epoch changed during readiness verification"
+    }
+    Write-Host "A5_ORIGIN_READINESS_OK api_port=$actualApiPort database=ok fixture=imported state_epoch=$epochAfterReadiness"
 }
 
 function Assert-A4RecoveryState {
@@ -718,6 +740,7 @@ $primaryError = $null
 $originA5ImportRunId = ""
 $originA5Materialization = ""
 $originActivationSequence = [long]0
+$originActivationEpoch = [long]0
 $originEpoch = [long]0
 $a4ActivationVerified = $false
 $a4ActivationEpoch = [long]0
@@ -725,12 +748,17 @@ try {
     $originA5ImportRunId = Get-Scalar "SELECT active_import_run_id FROM materialization_state WHERE id=1"
     $originA5Materialization = Get-Scalar "SELECT materialization_sha256 FROM materialization_state WHERE id=1"
     $originActivationSequence = [long](Get-Scalar "SELECT MAX(sequence_no) FROM revision_activations")
+    $originActivationEpoch = [long](Get-Scalar "SELECT epoch FROM revision_activations WHERE sequence_no=$originActivationSequence")
     $originEpoch = [long](Get-Scalar "SELECT epoch FROM materialization_state WHERE id=1")
     Assert-A5DatabaseState `
         -ExpectedImportRunId $originA5ImportRunId `
         -ExpectedMaterializationSha256 $originA5Materialization
     Assert-OriginActivationAnchor
-    Write-Host "A5_ORIGIN_VERIFIED_OK alembic=v0006_arena_counter_slice active_revision=$a5Revision import_run=$originA5ImportRunId materialization=$originA5Materialization activation_sequence=$originActivationSequence epoch=$originEpoch arena_defenses=1 arena_counters=2"
+    # Readiness recomputes the typed materialization manifest whenever the
+    # monotonic state epoch changes.  This distinguishes fully cleaned runtime
+    # smokes from same-count serving-row drift before any service is quiesced.
+    Assert-OriginApiReadiness
+    Write-Host "A5_ORIGIN_VERIFIED_OK alembic=v0006_arena_counter_slice active_revision=$a5Revision import_run=$originA5ImportRunId materialization=$originA5Materialization activation_sequence=$originActivationSequence activation_epoch=$originActivationEpoch state_epoch=$originEpoch arena_defenses=1 arena_counters=2"
 
     # Mark recovery before the native command. Docker may stop only a subset
     # before returning a non-zero exit, so finally must always attempt restart.

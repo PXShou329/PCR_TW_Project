@@ -9,6 +9,7 @@ from pcr_database.models import Claim, Evidence, Stage, Team, arena_formation_si
 
 from ..database import get_session
 from ..repository import (
+    ResponseMetaRecord,
     active_revision,
     arena_counter_results,
     baseline_data,
@@ -17,6 +18,7 @@ from ..repository import (
     has_arena_materialization,
     latest_import,
     mirror_readiness,
+    pvp_character_options,
     response_meta,
     stage_detail,
     stage_summary,
@@ -30,6 +32,7 @@ from ..schemas import (
     ClaimData,
     Envelope,
     EvidenceData,
+    PvpCharacterData,
     StageDetail,
     StageSummary,
     TeamDetail,
@@ -208,6 +211,47 @@ def _exact_defense_signature(value: str | None) -> str | None:
         ) from error
 
 
+@router.get("/pvp/characters", response_model=Envelope[list[PvpCharacterData]])
+def pvp_characters(
+    session: Session = Depends(get_session),
+) -> Envelope[list[PvpCharacterData]]:
+    run, revision = _run_or_503(session)
+    try:
+        characters, records = pvp_character_options(session)
+    except RuntimeError as error:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "FIXTURE_DRIFT",
+                "resource": "pvp_characters",
+                "id": None,
+                "reason": "character_serving_closure_invalid",
+            },
+        ) from error
+    return Envelope(
+        data=characters,
+        meta=response_meta(run, revision, records=records),
+    )
+
+
+def _arena_meta_records(counters: list[dict]) -> list[ResponseMetaRecord]:
+    """Aggregate only mechanically closed counter facts at envelope scope.
+
+    Freshness and confidence remain unknown until defense, Claim, and Evidence
+    records participate in one typed metadata closure.
+    """
+
+    return [
+        ResponseMetaRecord(
+            server=counter["server"],
+            environment_version=counter["environment_version"],
+            evidence_ids=tuple(counter["evidence_ids"]),
+            claim_ids=tuple(counter["claim_ids"]),
+        )
+        for counter in counters
+    ]
+
+
 @router.get("/pvp/counters", response_model=Envelope[list[ArenaCounterData]])
 def pvp_counters(
     defense_signature: str | None = Query(default=None, max_length=600),
@@ -252,6 +296,7 @@ def pvp_counters(
         meta=response_meta(
             run,
             revision,
+            records=_arena_meta_records(counters),
             extra_warnings=warnings,
         ),
     )

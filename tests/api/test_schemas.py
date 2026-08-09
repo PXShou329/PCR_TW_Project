@@ -5,7 +5,7 @@ from copy import deepcopy
 import pytest
 from pydantic import ValidationError
 
-from pcr_api.schemas import SourceMeta
+from pcr_api.schemas import ResponseMeta, SourceMeta
 
 
 VALID_SOURCE = {
@@ -37,3 +37,43 @@ def test_source_meta_requires_uuid_and_lowercase_sha256_provenance() -> None:
         payload[field] = invalid
         with pytest.raises(ValidationError):
             SourceMeta.model_validate(payload)
+
+
+def test_response_meta_requires_conservative_gate_d_fields() -> None:
+    payload = {
+        "api_version": "v1",
+        "generated_at": "2026-08-09T00:00:00Z",
+        "server": "UNKNOWN",
+        "environment_version": "UNKNOWN",
+        "verified_at": None,
+        "stale_status": "UNKNOWN",
+        "confidence": "UNKNOWN",
+        "evidence_ids": [],
+        "claim_ids": [],
+        "data_revision": "a" * 64,
+        "source": VALID_SOURCE,
+        "warnings": [],
+    }
+
+    meta = ResponseMeta.model_validate(payload)
+    assert meta.data_revision == VALID_SOURCE["revision_id"]
+    assert meta.verified_at is None
+
+    for field, invalid in (
+        ("server", "CN"),
+        ("stale_status", "FRESH_ENOUGH"),
+        ("confidence", "Z"),
+        ("data_revision", "short"),
+    ):
+        candidate = deepcopy(payload)
+        candidate[field] = invalid
+        with pytest.raises(ValidationError):
+            ResponseMeta.model_validate(candidate)
+
+    mismatched_revision = deepcopy(payload)
+    mismatched_revision["data_revision"] = "d" * 64
+    with pytest.raises(
+        ValidationError,
+        match="data_revision must equal source.revision_id",
+    ):
+        ResponseMeta.model_validate(mismatched_revision)

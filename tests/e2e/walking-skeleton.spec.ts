@@ -157,6 +157,40 @@ test("PVP 顯示 exact 單筆戰果且完整揭露限制與 Evidence", async ({ 
   await page.goto("/pvp");
 
   await expect(page.getByRole("heading", { name: "競技場精確解陣" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "選擇完整防守五人" })).toBeVisible();
+  await expect(page.getByText("這是目前研究鏡像範圍，不是全角色百科。", { exact: false })).toBeVisible();
+  const firstPicker = page.getByLabel("防守位置 1");
+  const availableCharacterCount = (await firstPicker.locator("option").count()) - 1;
+  expect(availableCharacterCount).toBeGreaterThanOrEqual(5);
+  await expect(
+    page.getByText(`${availableCharacterCount} 位 AVAILABLE 角色`, { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.locator(".definition").filter({ hasText: "資料修訂" }).locator("code"),
+  ).toHaveAttribute("title", /^[0-9a-f]{64}$/);
+  await expect(page.locator(".arena-counter-card")).toHaveCount(0);
+
+  const defenseKeys = [
+    "eris_orig",
+    "presia_fallen",
+    "rei_ny",
+    "neya_orig",
+    "matsuri_orig",
+  ];
+  for (const [index, unitKey] of defenseKeys.entries()) {
+    const picker = page.getByLabel(`防守位置 ${index + 1}`);
+    await expect(picker.locator("option")).toHaveCount(availableCharacterCount + 1);
+    await expect(picker).not.toContainText("UNKNOWN");
+    await picker.selectOption(unitKey);
+  }
+  await page.getByRole("button", { name: "搜尋精確反制" }).click();
+  await expect(page).toHaveURL(/\/pvp\?slot1=eris_orig/);
+
+  const sharedUrl = new URL(page.url());
+  for (const [index, unitKey] of defenseKeys.entries()) {
+    expect(sharedUrl.searchParams.get(`slot${index + 1}`)).toBe(unitKey);
+  }
+
   await expect(page.getByText("NO_VERIFIED_COUNTER", { exact: true })).toBeVisible();
   await expect(page.getByText("SINGLE_REPORT_REFERENCE_ONLY", { exact: true })).toBeVisible();
   await expect(page.getByText("目前沒有 VERIFIED counter；現有資料不會被提升為成熟結論。", { exact: true })).toBeVisible();
@@ -199,4 +233,42 @@ test("PVP 顯示 exact 單筆戰果且完整揭露限制與 Evidence", async ({ 
   await expect(drawer.getByText("巴哈姆特回覆 B1 台服競技場勝利戰果", { exact: true })).toBeVisible();
   await expect(drawer.getByText("單一作者單次截圖；只證明一次 exact composition 勝利，不代表穩定率或多次重現；戰果未載版本與練度", { exact: true })).toBeVisible();
   await expect(drawer.getByText("Evidence 登錄定位：B1 憂姫 2026-05-25 10:41:38＋原圖 https://truth.bahamut.com.tw/s01/202605/forum/30861/acb01f479fdbfae7011c6eb730769599.JPG", { exact: true })).toBeVisible();
+});
+
+test("PVP exact 無命中時 fail closed 且不回退 Similar", async ({ page }) => {
+  await page.goto("/pvp");
+
+  const noHitKeys = ["kaya_orig", "aira_orig", "rem_orig", "yuki_orig", "saren_sum"];
+  for (const [index, unitKey] of noHitKeys.entries()) {
+    await page.getByLabel(`防守位置 ${index + 1}`).selectOption(unitKey);
+  }
+  await page.getByRole("button", { name: "搜尋精確反制" }).click();
+
+  await expect(page).toHaveURL(/\/pvp\?slot1=kaya_orig/);
+  await expect(page.getByRole("heading", { name: "目前沒有 VERIFIED 精確反制" })).toBeVisible();
+  await expect(page.getByText("NO_EXACT_COUNTER", { exact: true })).toBeVisible();
+  await expect(page.getByText("NO_VERIFIED_COUNTER", { exact: true })).toBeVisible();
+  await expect(page.locator(".arena-counter-card")).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Similar 未啟用" })).toBeVisible();
+  await expect(page.getByText("相似防守不會冒充 exact counter", { exact: false })).toBeVisible();
+
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "目前沒有 VERIFIED 精確反制" })).toBeVisible();
+  for (const [index, unitKey] of noHitKeys.entries()) {
+    await expect(page.getByLabel(`防守位置 ${index + 1}`)).toHaveValue(unitKey);
+  }
+});
+
+test("PVP 重複或不完整五人簽章在 server-side fail closed", async ({ page }) => {
+  await page.goto(
+    "/pvp?slot1=eris_orig&slot2=eris_orig&slot3=rei_ny&slot4=neya_orig&slot5=matsuri_orig",
+  );
+
+  await expect(page.getByRole("heading", { name: "需要剛好五個不同角色" })).toBeVisible();
+  await expect(page.getByText("未符合時不會送出反制查詢。", { exact: false })).toBeVisible();
+  await expect(page.locator(".arena-counter-card")).toHaveCount(0);
+
+  await page.goto("/pvp?slot1=eris_orig&slot2=presia_fallen&slot3=rei_ny&slot4=neya_orig");
+  await expect(page.getByRole("heading", { name: "需要剛好五個不同角色" })).toBeVisible();
+  await expect(page.locator(".arena-counter-card")).toHaveCount(0);
 });

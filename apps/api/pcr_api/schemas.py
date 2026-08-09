@@ -4,7 +4,7 @@ from datetime import date, datetime
 from typing import Annotated, Any, Generic, Literal, TypeAlias, TypeVar
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 Sha256Hex: TypeAlias = Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
@@ -50,6 +50,9 @@ ArenaEnvironmentMatchValue: TypeAlias = Literal[
     "MISMATCH",
     "UNKNOWN",
 ]
+ResponseServerValue: TypeAlias = Literal["TW", "JP", "MIXED", "UNKNOWN"]
+ResponseStaleStatusValue: TypeAlias = Literal["CURRENT", "STALE", "UNKNOWN"]
+ResponseConfidenceValue: TypeAlias = Literal["A", "B", "C", "D", "E", "UNKNOWN"]
 
 
 class SourceMeta(BaseModel):
@@ -69,10 +72,24 @@ class SourceMeta(BaseModel):
 class ResponseMeta(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    api_version: str = "v1"
+    api_version: Literal["v1"]
     generated_at: datetime
+    server: ResponseServerValue
+    environment_version: str
+    verified_at: date | None
+    stale_status: ResponseStaleStatusValue
+    confidence: ResponseConfidenceValue
+    evidence_ids: list[str]
+    claim_ids: list[str]
+    data_revision: Sha256Hex
     source: SourceMeta
-    warnings: list[str] = Field(default_factory=list)
+    warnings: list[str]
+
+    @model_validator(mode="after")
+    def require_active_revision_identity(self) -> ResponseMeta:
+        if self.data_revision != self.source.revision_id:
+            raise ValueError("data_revision must equal source.revision_id")
+        return self
 
 
 DataT = TypeVar("DataT")
@@ -339,6 +356,17 @@ class ArenaMemberData(BaseModel):
     unit_key: str
     display_name: str
     display_name_source: Literal["TW_OFFICIAL", "JP_OFFICIAL"]
+
+
+class PvpCharacterData(BaseModel):
+    """One canonical TW-available character option for the Arena picker."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    unit_key: str
+    tw_name: str
+    jp_name: str
+    tw_availability_status: Literal["AVAILABLE"]
 
 
 class ArenaCounterData(BaseModel):
