@@ -280,5 +280,40 @@ Community 2/2 與 Gacha walking slice 不會補出 Arena、P-Arena、PVE、Timel
 其餘缺口。`17_TEST_EXECUTION_LOG.csv` 仍是 header-only；在沒有 response artifact／人工 reviewer
 與 P-Arena／Gacha 內容前，不會語法性填入 41 個假 PASS。
 
-私人 GitHub CI／commit／annotated tag：**PENDING**。只有 branch 的最終 private Actions run
-全綠後，才可建立新的 immutable `rp-b5-1`；既有 `rp-a5-*`／`rp-b3-d0-1` tags 不移動。
+## Private GitHub Actions
+
+Private draft PR：[#8](https://github.com/PXShou329/PCR_TW_Project/pull/8)。候選程式 commit
+`a0b53705facdc5446efc7129b46a0c5b64094429` 的 private Actions
+[run 31327303994](https://github.com/PXShou329/PCR_TW_Project/actions/runs/31327303994)
+四個 jobs 全部 `success`：
+
+```text
+Research core exact baseline                 SUCCESS
+API, importer, and scheduler tests           SUCCESS (314 passed / 6 skipped)
+Web typecheck and production build           SUCCESS (schemas=28)
+Compose health and browser E2E                SUCCESS (real E2E 26 passed)
+```
+
+遠端 fresh stack 亦實際輸出：
+
+```text
+DB_PRIVILEGES_OK matrix_checks=651 actual_denials=23 allowed_smokes=10
+SCHEDULER_SHADOW_SMOKE_OK first=SHADOW_NOOP second=DUPLICATE_SKIPPED
+BACKUP_ARTIFACT_VERIFIED sha256=9515cbed55b334633652263c55f0a38a7fbe6d0640f06107f61116b2ed1a6469 bytes=558192
+GACHA_DOWNGRADE_BLOCKED_OK gacha_rows=0 gacha_tables=5
+B5_ORIGIN_VERIFIED_OK activation_sequence=1 activation_epoch=1150 state_epoch=1159
+A5_DATA_ROLLBACK_OK activation_sequence=2 epoch=2253 gacha_rows=0
+B5_A5_SCHEMA_ROLLBACK_OK alembic=v0006_arena_counter_slice
+B5_RESTORED_OK mode=A5_REACTIVATE gacha_events=5
+B5_SERVICES_READY_OK database=ok fixture=imported gacha_events=5
+B5_A5_ROLLBACK_DRILL_OK
+```
+
+第一次候選 run `31326736118` 已完整通過 backup／restore，後因 PostgreSQL UID 建立的
+`.runtime` 目錄令 runner 無法建立 sibling A5 checkpoint 而失敗；`a0b5370` 將 immutable
+checkpoint 移至 GitHub 保證可寫的 `$RUNNER_TEMP`，沒有放寬任何 DB／Gate／rollback guard，
+上述第二次 run 已越過並完成雙向回滾。
+
+本段報告的文件 commit 仍須由相同 private workflow 再驗證後，才建立新的 immutable
+`rp-b5-1`；既有 `rp-a5-*`／`rp-b3-d0-1` tags 不移動。Data／Application／Automation／
+Production Gate 狀態不因 CI 全綠而改變。
