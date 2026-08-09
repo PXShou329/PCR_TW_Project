@@ -23,6 +23,8 @@ from pcr_pipeline.research_core_snapshot import (
     DEFAULT_MANIFEST,
     EXPECTED_MANIFEST_SHA256,
     ExportSafetyError,
+    RP_A6_0_MANIFEST_SHA256,
+    RP_A6_0_SNAPSHOT_CONTRACT,
     RP_A4_MANIFEST_SHA256,
     RP_A4_SNAPSHOT_CONTRACT,
     RP_A5_MANIFEST_SHA256,
@@ -52,11 +54,12 @@ from pcr_pipeline.verify_round_trip import run_round_trip_smoke
 
 ROOT = Path(__file__).resolve().parents[2]
 RESEARCH_CORE = ROOT / "research_core" / "pcr_tw_project"
-MANIFEST = ROOT / "scripts" / "research_core_rp_b5_1_manifest.sha256"
+MANIFEST = ROOT / "scripts" / "research_core_rp_a6_0_manifest.sha256"
+B5_MANIFEST = ROOT / "scripts" / "research_core_rp_b5_1_manifest.sha256"
 A5_MANIFEST = ROOT / "scripts" / "research_core_rp_a5_manifest.sha256"
 A4_MANIFEST = ROOT / "scripts" / "research_core_rp_a4_manifest.sha256"
-RAW_TREE_SHA256 = "d117be193802d459102708424c4b7f2a7e852b793ff38356e1977f44d507466d"
-SEMANTIC_TREE_SHA256 = "a7467a838c2a9cfdfe48bda4a3b158fb374dd023caa3478a84c07678532ea9f4"
+RAW_TREE_SHA256 = "3f5e738a6a7f0463583b38d0fc2ca1ae35bdc563f3815cf436dfc10913764d97"
+SEMANTIC_TREE_SHA256 = "82495781cca66b9ca3fc221e609a3cb6c06ebaa823f7a8613c9d5d1d01d9e1ee"
 
 
 def sqlite_engine():
@@ -189,6 +192,7 @@ def test_manifest_pinned_loader_preserves_exact_rows_and_directed_edges() -> Non
 @pytest.mark.parametrize(
     ("manifest", "expected_manifest_sha256", "contract"),
     [
+        (B5_MANIFEST, RP_B5_1_MANIFEST_SHA256, RP_B5_1_SNAPSHOT_CONTRACT),
         (A5_MANIFEST, RP_A5_MANIFEST_SHA256, RP_A5_SNAPSHOT_CONTRACT),
         (A4_MANIFEST, RP_A4_MANIFEST_SHA256, RP_A4_SNAPSHOT_CONTRACT),
     ],
@@ -212,13 +216,50 @@ def test_historical_manifests_and_contracts_remain_immutable(
     assert snapshot_contract_for_manifest(expected_manifest_sha256) == contract
 
 
-def test_rp_b5_1_is_the_current_default_snapshot_contract() -> None:
+def test_rp_a6_0_is_current_and_b5_1_remains_explicit_historical_contract() -> None:
     assert DEFAULT_MANIFEST == MANIFEST
-    assert EXPECTED_MANIFEST_SHA256 == RP_B5_1_MANIFEST_SHA256
-    assert CURRENT_SNAPSHOT_CONTRACT == RP_B5_1_SNAPSHOT_CONTRACT
+    assert EXPECTED_MANIFEST_SHA256 == RP_A6_0_MANIFEST_SHA256
+    assert CURRENT_SNAPSHOT_CONTRACT == RP_A6_0_SNAPSHOT_CONTRACT
+    assert RP_B5_1_SNAPSHOT_CONTRACT is not CURRENT_SNAPSHOT_CONTRACT
+    assert snapshot_contract_for_manifest(RP_A6_0_MANIFEST_SHA256) == (
+        RP_A6_0_SNAPSHOT_CONTRACT
+    )
     assert snapshot_contract_for_manifest(RP_B5_1_MANIFEST_SHA256) == (
         RP_B5_1_SNAPSHOT_CONTRACT
     )
+
+
+def test_a6_princess_arena_registry_header_is_exactly_24_fields() -> None:
+    snapshot = load_research_core_snapshot(RESEARCH_CORE, MANIFEST)
+    registry = snapshot.csv_file("47_PRINCESS_ARENA_CASE_REGISTRY.csv")
+
+    assert registry.header == (
+        "case_id",
+        "server",
+        "environment_version",
+        "enemy_team1",
+        "enemy_team2",
+        "enemy_team3",
+        "counter_team1",
+        "counter_team2",
+        "counter_team3",
+        "team1_result_claim_id",
+        "team2_result_claim_id",
+        "team3_result_claim_id",
+        "case_win_claim_id",
+        "hidden_team_mode",
+        "status",
+        "verified_date",
+        "source_ids",
+        "evidence_ids",
+        "claim_ids",
+        "tw_availability_check",
+        "non_overlap_check",
+        "reproducibility",
+        "last_review_due",
+        "notes",
+    )
+    assert registry.rows == ()
 
 
 @pytest.mark.parametrize(

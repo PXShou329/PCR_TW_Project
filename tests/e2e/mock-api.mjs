@@ -335,7 +335,7 @@ const typedBaselineCounts = {
 
 const baseline = envelope({
   research_core_version: "v1.5",
-  application_version: "3.0.0-b5",
+  application_version: "3.0.0-a6",
   canonical_source: "research_core_file_ssot",
   generated_at: "2026-08-09T00:00:00Z",
   counts: typedBaselineCounts,

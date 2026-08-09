@@ -1,6 +1,6 @@
 # 38 公主競技場研究日誌（PRINCESS ARENA RESEARCH LOG）
 
-> **成熟案例唯一登錄點＝`47_PRINCESS_ARENA_CASE_REGISTRY.csv`**（VERIFIED＋15 人不重複＋全員 TW_AVAILABLE＋FK 完整才計 Gate）；本檔 PA1–PA3 為 THEORY／EXAMPLE 模板，永不計 Gate。
+> **成熟案例唯一登錄點＝`47_PRINCESS_ARENA_CASE_REGISTRY.csv`**（24 欄；VERIFIED＋敵我各 15 人不重複＋全員 TW_AVAILABLE＋三組成熟 39 exact result Claims＋完整 case WIN Claim＋ACTIVE／fresh source FK 才計 Gate）；本檔 PA1–PA3 為 THEORY／EXAMPLE 模板，永不計 Gate。
 
 > 每次公主競技場研究記一筆。研究稽核用，不是回答模板。
 
@@ -13,9 +13,14 @@
 - 模式：公共三隊組合（Guide-Only）
 - 搜尋詞與採用來源：
 - 拒絕來源與原因：
+- 三組 exact 39 `counter_id`／`team*_result_claim_id`：
+- 完整三戰 `case_win_claim_id`／direct Evidence：
+- case Evidence confidence／published→verified chronology／46 matching source hostname：
+- case WIN Claim uniqueness 檢查（不得已被其他 VERIFIED case 使用）：
 - 理論三隊摘要＋出隊順序理由：
 - 組合取捨說明：
-- 實測結果（勝負場次）：
+- 來源明示的完整三戰結果（勝負場次；非編輯者自填）：
+- 編輯者實測 run_id（尚無獨立 run registry 時固定 `NOT_AVAILABLE`，不得藉此升 VERIFIED）：
 - 檢討與策略庫回饋（是否抽象化進 36）：
 ```
 

@@ -2,7 +2,7 @@
 """PCR TW Project static validator（v1.5 Guide-Only）。
 產品：台服公共攻略資訊整合；帳號層 REMOVED_FROM_ACTIVE_SCOPE（封存於外部 archive ZIP）。
 順序：資料計算 → Warning 計算 → blocking_c → Gate A/B/C → Mode Enforcement → Report。
-Gate 數量由結構化 Registry（24 PVE／39 Arena／41 Timeline）中「成熟且可追溯」的列計算，不計假列。
+Gate 數量由結構化 Registry（24 PVE／39 Arena／41 Timeline／47 P-Arena）中「成熟且可追溯」的列計算，不計假列。
 13 由 validator 依 17 current result 自動覆寫 AUTO_RESULTS 區。
 Mode：PRE_SUITE／OPERATIONAL／ARTIFACT_READY。Canonical 15/16/stats 僅在 Mode 通過時覆寫。
 用法：python3 tools/validate_project.py [--mode MODE] [--write]。exit 0＝該 Mode 通過。"""
@@ -83,6 +83,9 @@ pi = h92.index('published_date_precision'); ui = h92.index('source_url'); li = h
 pdi = h92.index('published_date'); tri = h92.index('source_tier'); eci = h92.index('evidence_confidence')
 loci = h92.index('source_locator'); sti = h92.index('source_title'); si92 = h92.index('status')
 ck("92：evidence_confidence 欄名", 'evidence_confidence' in h92 and 'claim_confidence' not in h92)
+ck("92：evidence_confidence Enum", all(
+    r[eci] in CFG['enums']['evidence_confidence'] for r in r92[1:]
+))
 ck("92：URL 標準化", all(r[ui] == '' or r[ui].startswith('https://') for r in r92[1:]))
 ck("ST73：92 status Enum", all(r[si92] in CFG['enums']['evidence_status'] for r in r92[1:]), ",".join({r[si92] for r in r92[1:]} - set(CFG['enums']['evidence_status'])))
 ck("92：source_tier Enum", all(
@@ -264,6 +267,10 @@ ck("39：Arena status／source tier／confidence／reproducibility enums", all(
     and row['reproducibility'] in CFG['enums']['arena_reproducibility']
     for row in t39
 ))
+ck("39：required_upgrade_check Enum", all(
+    row['required_upgrade_check'] in CFG['enums']['arena_required_upgrade_check']
+    for row in t39
+))
 ck("39：Arena outcome／verification／risk／environment enums", all(
     row['outcome'] in {'WIN', 'LOSS', 'MIXED', 'UNKNOWN'}
     and row['verification'] in {'SCREENSHOT_RESULT', 'VIDEO_RESULT', 'TEXT_REPORT', 'UNKNOWN'}
@@ -354,6 +361,7 @@ def _arena_verified_multisource_ok(row):
     evidence_ids = [e for e in row['evidence_ids'].split(';') if e]
     claim_ids = [c for c in row['claim_ids'].split(';') if c]
     if (row['claim_confidence'] not in contract['allowed_claim_confidence']
+            or row['required_upgrade_check'] != 'PASS'
             or not _arena_nonnegative_int(row['source_record_count'])
             or int(row['source_record_count']) < contract['minimum_source_records']
             or not _arena_nonnegative_int(row['sample_size'])
@@ -756,6 +764,15 @@ ck("46：欄位標頭符合規格", h46 == CFG['t46_header'])
 _ac46 = h46.index('access_status'); _cc46 = h46.index('confidence_cap')
 ck("46：access_status Enum", all(r[_ac46] in CFG['enums']['arena_access_status'] for r in r46[1:]))
 ck("46：來源信心上限 ≤C", all(r[_cc46] in ('C', 'D', 'E') for r in r46[1:]))
+_arena_sources46 = {r[0]: dict(zip(h46, r)) for r in r46[1:]}
+def _arena_source_fresh(row):
+    try:
+        checked = date.fromisoformat(row['last_checked'])
+        match = re.fullmatch(r'([1-9]\d*)d', row['freshness_window'])
+        return bool(match and checked <= date.fromisoformat(TODAY)
+                    and checked + timedelta(days=int(match.group(1))) >= date.fromisoformat(TODAY))
+    except (TypeError, ValueError):
+        return False
 ck("41：社群共識欄存在（官方／錨點／社群分欄）", all(c in r41[0] for c in ['community_estimate_start', 'community_estimate_end', 'community_source_ids', 'community_last_checked', 'community_disagreement']))
 
 # ========== test definitions / fixtures ==========
@@ -905,6 +922,7 @@ pve_ok = [g for g in pve_ok if g in _pve_count_consistent_guides and valid_teams
 PVE_V = len(pve_ok)
 # Arena mature rows from 39
 arena_ok = []
+_arena_gate_rows = []
 c39 = {c: col(h39, c) for c in ['counter_id', 'server', 'environment_version', 'enemy_team_ids', 'counter_team_ids', 'status', 'verified_date', 'evidence_ids', 'claim_ids', 'reproducibility', 'last_review_due']}
 _arena_gate_groups = defaultdict(set)
 for r in r39[1:]:
@@ -925,12 +943,19 @@ for r in r39[1:]:
             and r[c39['reproducibility']] == 'CONFIRMED' and bool(r[c39['environment_version']])
             and fresh and eids and cids and twc == 'PASS'):
         arena_ok.append(r[c39['counter_id']])
+        _arena_gate_rows.append(row)
         if r[c39['server']] == 'TW':
             defense_key = (r[c39['server']], r[c39['environment_version']], tuple(sorted(en)))
             _arena_gate_groups[defense_key].add(tuple(sorted(co)))
 ARENA_F = sum(1 for counters in _arena_gate_groups.values()
               if len(counters) >= CFG['gate_thresholds']['B']['counters_per_defense'])
 ARENA_VERIFIED_ROWS = len(arena_ok)
+_arena_gate_pair_index = defaultdict(list)
+for row in _arena_gate_rows:
+    key = (row['server'], row['environment_version'],
+           _arena_team_signature(row, 'enemy_team_ids'),
+           _arena_team_signature(row, 'counter_team_ids'))
+    _arena_gate_pair_index[key].append(row)
 # Timeline mature rows from 41
 tl_ok = []
 c41 = {c: col(h41, c) for c in ['event_id', 'jp_date', 'tw_estimate_start', 'tw_estimate_end', 'confidence', 'pool_type', 'evidence_ids', 'claim_ids', 'anchor_track', 'anchor_count', 'forecast_basis', 'last_verified', 'status', 'maturity']}
@@ -944,23 +969,240 @@ for r in r41[1:]:
 TIMELINE = len(tl_ok)
 h47 = r47[0]
 ck("47：欄位標頭符合規格", h47 == CFG['t47_header'])
-_pa_ok = []
-for r in r47[1:]:
-    d = dict(zip(h47, r))
-    if d['status'] != 'VERIFIED': continue
-    teams = [[u for u in d[f'counter_team{i}'].split(';') if u] for i in (1, 2, 3)]
-    members = [u for t in teams for u in t]
-    eids = [e for e in d['evidence_ids'].split(';') if e]; cids = [c for c in d['claim_ids'].split(';') if c]
-    fresh = (not d['last_review_due']) or d['last_review_due'] >= TODAY
-    if (all(len(t) == 5 and len(set(t)) == 5 for t in teams) and len(set(members)) == 15
-            and d['tw_availability_check'] == 'PASS' and d['non_overlap_check'] == 'PASS'
-            and all(u in TW_UNITS for u in members)
-            and date_ok(d['verified_date']) and eids and cids
-            and all(e in set(ids92) for e in eids) and all(cc in set(ids93) for cc in cids)
-            and d['reproducibility'] and fresh):
-        _pa_ok.append(d['case_id'])
-parena = len(_pa_ok)
-ck("ST81：P-Arena Gate 由 47 成熟列計算（THEORY 模板不計）", True, f"{parena} 成熟")
+_pa_rows = [dict(zip(h47, r)) for r in r47[1:]]
+_pa_contract = CFG['parena_gate_row']
+_pa_result_claim_fields = [f'team{i}_result_claim_id' for i in (1, 2, 3)]
+def _pa_ids(row, field):
+    return [value for value in row[field].split(';') if value]
+def _pa_team(row, prefix, number):
+    return _pa_ids(row, f'{prefix}_team{number}')
+def _pa_team_shape_ok(team):
+    return not team or (len(team) == _pa_contract['team_size']
+                        and len(set(team)) == _pa_contract['team_size']
+                        and all(unit_key in ALL_UNITS for unit_key in team))
+ck("47：all-row status／server／hidden／check／reproducibility enums", all(
+    row['server'] in {'TW', 'JP'}
+    and row['status'] in CFG['enums']['arena_status']
+    and row['hidden_team_mode'] in CFG['enums']['parena_hidden_team_mode']
+    and row['tw_availability_check'] in CFG['enums']['tw_check']
+    and row['non_overlap_check'] in CFG['enums']['parena_non_overlap_check']
+    and row['reproducibility'] in CFG['enums']['arena_reproducibility']
+    for row in _pa_rows
+))
+ck("47：all-row team shape／unit FK／hidden relation", all(
+    all(_pa_team_shape_ok(_pa_team(row, side, number))
+        for side in ('enemy', 'counter') for number in (1, 2, 3))
+    and (row['hidden_team_mode'] != 'TEAMS_2_3_HIDDEN'
+         or (bool(_pa_team(row, 'enemy', 1))
+             and not _pa_team(row, 'enemy', 2)
+             and not _pa_team(row, 'enemy', 3)))
+    for row in _pa_rows
+))
+ck("47：all-row source／Evidence／Claim FK 與 ID 不重複", all(
+    len(_pa_ids(row, 'source_ids')) == len(set(_pa_ids(row, 'source_ids')))
+    and len(_pa_ids(row, 'evidence_ids')) == len(set(_pa_ids(row, 'evidence_ids')))
+    and len(_pa_ids(row, 'claim_ids')) == len(set(_pa_ids(row, 'claim_ids')))
+    and all(source_id in _arena_sources46 for source_id in _pa_ids(row, 'source_ids'))
+    and all(evidence_id in _arena_evidence for evidence_id in _pa_ids(row, 'evidence_ids'))
+    and all(claim_id in _arena_claims for claim_id in _pa_ids(row, 'claim_ids'))
+    and all(not row[field] or row[field] in _arena_claims
+            for field in _pa_result_claim_fields + ['case_win_claim_id'])
+    and (not row['verified_date'] or date_ok(row['verified_date']))
+    and (not row['last_review_due'] or date_ok(row['last_review_due']))
+    for row in _pa_rows
+))
+def _pa_direct_evidence_ids(claim_id):
+    claim = _arena_claims.get(claim_id)
+    return [] if not claim else _pa_ids(claim, 'evidence_ids')
+def _pa_case_win_claim_ok(claim_id):
+    claim = _arena_claims.get(claim_id)
+    if not claim or not (
+            claim['status'] == 'ACTIVE'
+            and claim['server'] == _pa_contract['server']
+            and claim['module'] == _pa_contract['case_win_claim_module']
+            and claim['claim_type'] == _pa_contract['case_win_claim_type']
+            and claim['claim_confidence'] in _pa_contract['allowed_case_win_claim_confidence']
+            and claim['version_match'] == 'YES'):
+        return False
+    evidence_ids = _pa_direct_evidence_ids(claim_id)
+    minimum = 1 if claim['claim_confidence'] == 'D' else 2
+    if (len(evidence_ids) < minimum or len(evidence_ids) != len(set(evidence_ids))
+            or (claim['claim_confidence'] in {'B', 'C'}
+                and (claim['independence_check'] != 'YES' or not independent(evidence_ids)))):
+        return False
+    for evidence_id in evidence_ids:
+        evidence = _arena_evidence.get(evidence_id)
+        if not evidence:
+            return False
+        try:
+            parsed = urlparse(evidence['source_url'])
+        except (TypeError, ValueError):
+            return False
+        if not (evidence['status'] == 'ACTIVE'
+                and evidence['server'] == _pa_contract['server']
+                and evidence['module'] == _pa_contract['case_win_claim_module']
+                and evidence['claim_id'] == claim_id
+                and evidence['source_tier'] in CFG['arena_gate_row']['allowed_evidence_source_tiers']
+                and parsed.scheme.lower() == _pa_contract['required_evidence_url_scheme']
+                and parsed.hostname):
+            return False
+    return True
+def _pa_case_win_evidence_confidence_ok(row):
+    """A malformed closure is handled by ST81; this guard owns confidence semantics."""
+    claim_id = row['case_win_claim_id']
+    if not claim_id or claim_id not in _arena_claims:
+        return True
+    evidence_ids = _pa_direct_evidence_ids(claim_id)
+    if not evidence_ids or not all(evidence_id in _arena_evidence for evidence_id in evidence_ids):
+        return True
+    return all(
+        _arena_evidence[evidence_id]['evidence_confidence']
+        in _pa_contract['allowed_case_win_evidence_confidence']
+        for evidence_id in evidence_ids
+    )
+def _pa_case_source_hostname_ok(row):
+    """A valid row must index every direct case-WIN Evidence hostname in 46."""
+    if not _pa_contract['require_source_hostname_coverage']:
+        return True
+    claim_id = row['case_win_claim_id']
+    evidence_ids = _pa_direct_evidence_ids(claim_id) if claim_id in _arena_claims else []
+    source_ids = _pa_ids(row, 'source_ids')
+    if (not evidence_ids or not source_ids
+            or not all(evidence_id in _arena_evidence for evidence_id in evidence_ids)
+            or not all(source_id in _arena_sources46 for source_id in source_ids)):
+        return True
+    evidence_hosts = {host(_arena_evidence[evidence_id]['source_url']) for evidence_id in evidence_ids}
+    source_hosts = {host(_arena_sources46[source_id]['url']) for source_id in source_ids}
+    return bool(evidence_hosts) and '' not in evidence_hosts and evidence_hosts <= source_hosts
+def _pa_case_evidence_chronology_ok(row):
+    """Known case-WIN publication dates cannot postdate their verification."""
+    if not _pa_contract['require_case_win_evidence_published_not_after_verified']:
+        return True
+    claim_id = row['case_win_claim_id']
+    evidence_ids = _pa_direct_evidence_ids(claim_id) if claim_id in _arena_claims else []
+    if not evidence_ids or not all(evidence_id in _arena_evidence for evidence_id in evidence_ids):
+        return True
+    for evidence_id in evidence_ids:
+        evidence = _arena_evidence[evidence_id]
+        verified = evidence['verified_date']
+        if not date_ok(verified):
+            return True
+        precision = evidence['published_date_precision']
+        published = evidence['published_date']
+        if precision == 'DAY' and (not date_ok(published) or published > verified):
+            return False
+        if precision == 'MONTH' and published > verified[:7]:
+            return False
+        if precision == 'YEAR' and published > verified[:4]:
+            return False
+    return True
+def _pa_defense_key(row):
+    enemy_teams = [_pa_team(row, 'enemy', number) for number in (1, 2, 3)]
+    if not all(len(team) == _pa_contract['team_size'] for team in enemy_teams):
+        return None
+    return (row['server'], row['environment_version'],
+            tuple(sorted(tuple(sorted(team)) for team in enemy_teams)))
+def _pa_maturity_ok(row):
+    if not (row['status'] == _pa_contract['status']
+            and row['server'] == _pa_contract['server']
+            and row['environment_version'] and row['environment_version'] != 'UNKNOWN'
+            and row['hidden_team_mode'] == _pa_contract['hidden_team_mode']
+            and row['tw_availability_check'] == _pa_contract['tw_availability_check']
+            and row['non_overlap_check'] == _pa_contract['non_overlap_check']
+            and row['reproducibility'] == _pa_contract['reproducibility']
+            and row['notes'].strip()):
+        return False
+    enemy_teams = [_pa_team(row, 'enemy', number) for number in (1, 2, 3)]
+    counter_teams = [_pa_team(row, 'counter', number) for number in (1, 2, 3)]
+    enemy_members = [unit_key for team in enemy_teams for unit_key in team]
+    counter_members = [unit_key for team in counter_teams for unit_key in team]
+    if not (all(len(team) == _pa_contract['team_size'] and len(set(team)) == _pa_contract['team_size']
+                for team in enemy_teams + counter_teams)
+            and len(set(enemy_members)) == _pa_contract['team_count'] * _pa_contract['team_size']
+            and len(set(counter_members)) == _pa_contract['team_count'] * _pa_contract['team_size']
+            and all(unit_key in TW_UNITS for unit_key in enemy_members + counter_members)):
+        return False
+    team_claim_ids = [row[field] for field in _pa_result_claim_fields]
+    case_claim_id = row['case_win_claim_id']
+    if (len(set(team_claim_ids)) != _pa_contract['team_result_claim_count']
+            or not all(team_claim_ids) or not case_claim_id
+            or case_claim_id in set(team_claim_ids)
+            or not _pa_case_win_claim_ok(case_claim_id)):
+        return False
+    matched_rows = []
+    for number, team_claim_id in zip((1, 2, 3), team_claim_ids):
+        key = (row['server'], row['environment_version'],
+               tuple(sorted(_pa_team(row, 'enemy', number))),
+               tuple(sorted(_pa_team(row, 'counter', number))))
+        matches = _arena_gate_pair_index.get(key, [])
+        if len(matches) != 1 or _pa_ids(matches[0], 'claim_ids') != [team_claim_id]:
+            return False
+        matched_rows.append(matches[0])
+    designated_claim_ids = team_claim_ids + [case_claim_id]
+    if set(_pa_ids(row, 'claim_ids')) != set(designated_claim_ids):
+        return False
+    expected_evidence_ids = set()
+    for claim_id in designated_claim_ids:
+        expected_evidence_ids.update(_pa_direct_evidence_ids(claim_id))
+    if set(_pa_ids(row, 'evidence_ids')) != expected_evidence_ids:
+        return False
+    source_ids = _pa_ids(row, 'source_ids')
+    if not source_ids or not all(
+            source_id in _arena_sources46
+            and _arena_sources46[source_id]['access_status'] == _pa_contract['required_source_access_status']
+            and _arena_sources46[source_id]['server'] == _pa_contract['required_source_server']
+            and _arena_source_fresh(_arena_sources46[source_id])
+            for source_id in source_ids):
+        return False
+    claim_rows = [_arena_claims[claim_id] for claim_id in designated_claim_ids]
+    direct_evidence_rows = [
+        _arena_evidence[evidence_id]
+        for claim_id in designated_claim_ids
+        for evidence_id in _pa_direct_evidence_ids(claim_id)
+    ]
+    verification_inputs = matched_rows + claim_rows + direct_evidence_rows
+    if not (date_ok(row['verified_date']) and row['verified_date'] <= TODAY
+            and all(date_ok(item['verified_date']) for item in verification_inputs)
+            and row['verified_date'] >= max(item['verified_date'] for item in verification_inputs)):
+        return False
+    due_dates = [item['last_review_due'] for item in matched_rows] + [item['next_review_due'] for item in claim_rows]
+    return (date_ok(row['last_review_due']) and row['last_review_due'] >= TODAY
+            and all(date_ok(value) for value in due_dates)
+            and row['last_review_due'] <= min(due_dates))
+_verified_pa_rows = [row for row in _pa_rows if row['status'] == _pa_contract['status']]
+ck("47：case WIN direct Evidence confidence 僅 A／B／C／D", all(
+    _pa_case_win_evidence_confidence_ok(row) for row in _verified_pa_rows
+))
+ck("47：source_ids hostname 覆蓋 case WIN direct Evidence", all(
+    _pa_case_source_hostname_ok(row) for row in _verified_pa_rows
+))
+ck("47：case WIN Evidence published_date 不晚於 verified_date", all(
+    _pa_case_evidence_chronology_ok(row) for row in _verified_pa_rows
+))
+_invalid_verified_pa = [row['case_id'] for row in _verified_pa_rows if not _pa_maturity_ok(row)]
+ck("ST81：P-Arena VERIFIED 需四 designated Claim＋三組 mature exact 39 closure",
+   not _invalid_verified_pa, ",".join(_invalid_verified_pa[:5]))
+_verified_pa_keys = [_pa_defense_key(row) for row in _verified_pa_rows if _pa_defense_key(row) is not None]
+ck("47：同 TW environment／相同三隊防守不得重複 VERIFIED case（重排亦同案）",
+   len(_verified_pa_keys) == len(set(_verified_pa_keys)))
+_verified_pa_case_claim_counts = Counter(
+    row['case_win_claim_id'] for row in _verified_pa_rows if row['case_win_claim_id']
+)
+_reused_pa_case_claims = sorted(
+    claim_id for claim_id, count in _verified_pa_case_claim_counts.items() if count > 1
+)
+ck("47：VERIFIED case_win_claim_id 不得跨 case 重用",
+   not _reused_pa_case_claims, ",".join(_reused_pa_case_claims[:5]))
+_pa_mature_rows = [
+    row for row in _verified_pa_rows
+    if (_pa_maturity_ok(row)
+        and _pa_case_win_evidence_confidence_ok(row)
+        and _pa_case_source_hostname_ok(row)
+        and _pa_case_evidence_chronology_ok(row)
+        and _verified_pa_case_claim_counts.get(row['case_win_claim_id']) == 1)
+]
+_pa_mature_case_keys = {_pa_defense_key(row) for row in _pa_mature_rows}
+parena = len(_pa_mature_case_keys)
 ck("ST68：PVE Gate Row 完整性（24 registry 成熟列）", True, f"{PVE_V} 成熟")
 ck("ST69：Arena Gate Row 完整性（39 registry 5v5）", True,
    f"{ARENA_VERIFIED_ROWS} 成熟反制列／{ARENA_F} 成熟防守")
@@ -1190,7 +1432,7 @@ ck("99 Stale 非空", 'nomae arenadb 全庫' in R['99_CHANGELOG.md'])
 
 # ========== WARNINGS (before gate) ==========
 # audit §16：只有「支撐 Gate 成熟資料」的問題才阻擋 Gate C；未被成熟列引用的研究中 D 結論僅顯示 Warning。
-# 蒐集被成熟 registry 列（24 PVE／39 Arena／41 Timeline）引用的 evidence_id 與 claim_id。
+# 蒐集被成熟 registry 列（24 PVE／39 Arena／41 Timeline／47 P-Arena）引用的 evidence_id 與 claim_id。
 mature_ev, mature_cl = set(), set()
 for r in r24[1:]:
     if r[c24['guide_id']] in set(pve_ok):
@@ -1201,6 +1443,8 @@ for r in r39[1:]:
 for r in r41[1:]:
     if r[c41['event_id']] in set(tl_ok):
         mature_ev |= {e for e in r[c41['evidence_ids']].split(';') if e}; mature_cl |= {c for c in r[c41['claim_ids']].split(';') if c}
+for row in _pa_mature_rows:
+    mature_ev |= set(_pa_ids(row, 'evidence_ids')); mature_cl |= set(_pa_ids(row, 'claim_ids'))
 # claim_id -> evidence_ids（用於把成熟 claim 的證據也視為成熟引用）
 for r in r93[1:]:
     if r[0] in mature_cl: mature_ev |= {e for e in r[ei].split(';') if e}
@@ -1215,6 +1459,12 @@ for r in r93[1:]:
         gc = r[0] in mature_cl
         wk(f"CLM-{r[0]}", "confidence_low", "warn" if gc else "info", gc, "93",
            f"{r[0]}＝D" + ("（成熟資料引用）" if gc else "（研究中，未被成熟資料引用）"), "補第二獨立來源或維持研究層")
+for case_claim_id in sorted({row['case_win_claim_id'] for row in _pa_mature_rows}):
+    case_claim = _arena_claims[case_claim_id]
+    if case_claim['claim_confidence'] == 'D':
+        wk(f"CLM-{case_claim_id}", "parena_single_source", "warn", True, "47",
+           f"{case_claim_id}＝D（P-Arena 實際整體 WIN 可計 Gate B，但不足 Gate C）",
+           "補第二個獨立同環境完整三隊 WIN 來源並升至 B／C")
 nrd = re.search(r'next_review_due：(20\d\d-\d\d-\d\d)', R['02_SERVER_BASELINE.md'])
 freshness_bad = bool(nrd and nrd.group(1) <= TODAY)
 if freshness_bad: wk("BASELINE-REVIEW", "freshness", "warn", True, "02", f"next_review_due {nrd.group(1)} 已到", "跑 91 §1")
@@ -1239,7 +1489,10 @@ gate_c_pass = (gate_a_pass and gate_b_pass and PVE_V >= Cth['pve_stages'] and AR
 GATE = {"pve_verified": PVE_V, "arena_formal": ARENA_F,
         "arena_verified_counter_rows": ARENA_VERIFIED_ROWS,
         "arena_mature_defenses": ARENA_F,
-        "parena": parena, "timeline": TIMELINE,
+        "parena": parena,
+        "parena_mature_rows": len(_pa_mature_rows),
+        "parena_mature_cases": parena,
+        "timeline": TIMELINE,
         "gate_a": gate_a_pass, "gate_b": gate_b_pass, "gate_c": gate_c_pass, "blocking_c": blocking_c}
 
 ck("ST52：Validation Mode 合法", MODE in ('PRE_SUITE', 'OPERATIONAL', 'ARTIFACT_READY'), MODE)
@@ -1279,7 +1532,7 @@ def build_reports():
 **程式化統計（validator 生成即核對；生成日 {TODAY}／版本 {CFG['project_version']}／Release {CFG['release_date']}／Mode {MODE}）**
 
 - 檔案 {len(files)}（編號 {len(numbered)}＋README）＋tools×{len(TOOLS)}｜Knowledge {len(knowledge)}｜Fixture {len(set(fxids))}
-- Gate 成熟資料：PVE VERIFIED {PVE_V}（24）｜Arena 成熟反制列 {ARENA_VERIFIED_ROWS}／成熟防守 {ARENA_F}（39）｜P-Arena {parena}（47）｜Timeline MATURE {TIMELINE}（41）
+- Gate 成熟資料：PVE VERIFIED {PVE_V}（24）｜Arena 成熟反制列 {ARENA_VERIFIED_ROWS}／成熟防守 {ARENA_F}（39）｜P-Arena 成熟列 {len(_pa_mature_rows)}／不同防守案例 {parena}（47）｜Timeline MATURE {TIMELINE}（41）
 - 92 Evidence {len(ids92)} 列｜Tier {dict(tier)}｜evidence_confidence {dict(evc)}｜PENDING_REVIEW {sum(1 for r in r92[1:] if r[si92]=='PENDING_REVIEW')}
 - 93 Claim {len(ids93)} 列｜claim_confidence {dict(cc)}｜claim_type {dict(ct)}
 - Gate A={'PASS' if gate_a_pass else 'FAIL'}｜B={'PASS' if gate_b_pass else 'FAIL'}｜C={'PASS' if gate_c_pass else 'FAIL'}｜阻擋 Gate C 警告 {blocking_c}

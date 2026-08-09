@@ -95,7 +95,7 @@
   }
  },
  "timeline_rows": 2,
- "checks": 156,
+ "checks": 166,
  "fail": 0,
  "warn": 22,
  "exec_rows": 0,
@@ -105,6 +105,8 @@
   "arena_verified_counter_rows": 0,
   "arena_mature_defenses": 0,
   "parena": 0,
+  "parena_mature_rows": 0,
+  "parena_mature_cases": 0,
   "timeline": 2,
   "gate_a": false,
   "gate_b": false,

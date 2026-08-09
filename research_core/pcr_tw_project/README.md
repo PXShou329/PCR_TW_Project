@@ -91,7 +91,7 @@ VERIFIED effective teams（詳見 22／23／25）。相同五人多來源只計�
 | 44_GACHA_RESEARCH_LOG.md | 未來視日誌 | 是 |
 | 45_GACHA_COMMUNITY_SOURCE_INDEX.csv | 台服社群未來視來源索引（14 欄；cap≤C） | 是 |
 | 46_ARENA_SOURCE_REGISTRY.csv | Arena 解陣來源 Registry（12 欄；nomae STALE-only） | 是 |
-| 47_PRINCESS_ARENA_CASE_REGISTRY.csv | P-Arena 成熟案例 Registry（Gate SSOT，20 欄；15 人不重複＋TW 可用） | 是 |
+| 47_PRINCESS_ARENA_CASE_REGISTRY.csv | P-Arena 成熟案例 Registry（Gate SSOT，24 欄；三組 exact 39 result Claim＋唯一整體 WIN Claim direct closure；A–D Evidence／source hostname／日期守門；敵我各 15 人不重複＋TW 可用） | 是 |
 | 90_MAINTENANCE_RUNBOOK.md | 維運（＋證據帳與 Suite 回歸） | 是 |
 | 91_PROMPT_LIBRARY.md | 提示庫（§10 四 Suite） | 是 |
 | 92_EVIDENCE_LEDGER.csv | 證據帳（16 欄；列數以 validator 生成統計為準，見 16／stats.json） | 是 |

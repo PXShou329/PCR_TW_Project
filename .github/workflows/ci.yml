@@ -1,4 +1,4 @@
-name: RP-B5-1 full-core parity validation
+name: RP-A6-0 full-core parity validation
 
 on:
   push:
@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: rp-b5-1-${{ github.workflow }}-${{ github.ref }}
+  group: rp-a6-0-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -92,9 +92,9 @@ jobs:
     needs: [research-core, python, web]
     timeout-minutes: 45
     env:
-      COMPOSE_PROJECT_NAME: pcr-tw-b5-ci
-      PCR_API_IMAGE: pcr-tw-platform-api:b5-ci
-      PCR_SCHEDULER_IMAGE: pcr-tw-platform-scheduler:b5-ci
+      COMPOSE_PROJECT_NAME: pcr-tw-a6-ci
+      PCR_API_IMAGE: pcr-tw-platform-api:a6-ci
+      PCR_SCHEDULER_IMAGE: pcr-tw-platform-scheduler:a6-ci
       API_PORT: "8000"
       WEB_PORT: "3000"
       SCHEDULER_HEALTH_PORT: "8081"
@@ -155,7 +155,7 @@ jobs:
         shell: pwsh
         run: ./scripts/check_db_privileges.ps1 -EnvFile .env.ci -ProjectName $env:COMPOSE_PROJECT_NAME
       - name: Verify scheduler lease and idempotency contract
-        run: docker compose --env-file .env.ci --project-name "$COMPOSE_PROJECT_NAME" --profile verification -f infra/compose.yml run --rm scheduler-smoke
+        run: docker compose --env-file .env.ci --project-name "$COMPOSE_PROJECT_NAME" --profile verification -f infra/compose.yml run --rm --no-deps scheduler-smoke
       - name: Verify read-only PostgreSQL round trip and exported five-command baseline
         run: docker compose --env-file .env.ci --project-name "$COMPOSE_PROJECT_NAME" --profile verification -f infra/compose.yml run --rm --no-deps round-trip-smoke
       - name: Verify one API request cannot observe a mixed importer snapshot
@@ -164,11 +164,7 @@ jobs:
         run: docker compose --env-file .env.ci --project-name "$COMPOSE_PROJECT_NAME" --profile verification -f infra/compose.yml run --rm --no-deps cache-epoch-smoke
       - name: Verify artifact writes serialize against revision finalization
         run: docker compose --env-file .env.ci --project-name "$COMPOSE_PROJECT_NAME" --profile verification -f infra/compose.yml run --rm --no-deps artifact-lock-smoke
-      - name: Install Chromium
-        run: npx playwright install --with-deps chromium
-      - name: Run browser E2E
-        run: npm run test:e2e
-      - name: Backup, empty-DB restore, and B5 to A5 to B5 rollback
+      - name: Backup, empty-DB restore, and A6 to B5 to A6 rollback
         shell: pwsh
         run: |
           $backupOutput = @(
@@ -196,18 +192,18 @@ jobs:
           if (-not $env:RUNNER_TEMP) {
             throw "RUNNER_TEMP is required for the immutable rollback checkpoint"
           }
-          $checkpointRoot = Join-Path $env:RUNNER_TEMP "rp-a5-2-checkpoint"
-          $checkpointArchive = Join-Path $env:RUNNER_TEMP "rp-a5-2-checkpoint.tar"
+          $checkpointRoot = Join-Path $env:RUNNER_TEMP "rp-b5-1-checkpoint"
+          $checkpointArchive = Join-Path $env:RUNNER_TEMP "rp-b5-1-checkpoint.tar"
           if ((Test-Path -LiteralPath $checkpointRoot) -or (Test-Path -LiteralPath $checkpointArchive)) {
-            throw "RP-A5 checkpoint target unexpectedly exists"
+            throw "RP-B5 checkpoint target unexpectedly exists"
           }
           New-Item -ItemType Directory -Path $checkpointRoot | Out-Null
-          git archive --format=tar --output=$checkpointArchive rp-a5-2
-          if ($LASTEXITCODE -ne 0) { throw "Could not export immutable rp-a5-2" }
+          git archive --format=tar --output=$checkpointArchive rp-b5-1
+          if ($LASTEXITCODE -ne 0) { throw "Could not export immutable rp-b5-1" }
           tar -xf $checkpointArchive -C $checkpointRoot
-          if ($LASTEXITCODE -ne 0) { throw "Could not extract immutable rp-a5-2" }
+          if ($LASTEXITCODE -ne 0) { throw "Could not extract immutable rp-b5-1" }
 
-          ./scripts/b5_a5_rollback_drill.ps1 `
+          ./scripts/a6_b5_rollback_drill.ps1 `
             -EnvFile (Resolve-Path .env.ci) `
             -ProjectName $env:COMPOSE_PROJECT_NAME `
             -ExpectedApiImage $env:PCR_API_IMAGE `
@@ -215,9 +211,17 @@ jobs:
             -ExpectedApiPort ([int]$env:API_PORT) `
             -ExpectedWebPort ([int]$env:WEB_PORT) `
             -ExpectedSchedulerPort ([int]$env:SCHEDULER_HEALTH_PORT) `
-            -A5CheckpointRoot $checkpointRoot `
+            -B5CheckpointRoot $checkpointRoot `
             -VerifiedBackupPath $receipt.path `
             -VerifiedBackupSha256 $receipt.sha256
+      - name: Verify immutable revision rollback chronology
+        run: docker compose --env-file .env.ci --project-name "$COMPOSE_PROJECT_NAME" --profile verification -f infra/compose.yml run --rm --no-deps revision-history-smoke
+      - name: Verify the resulting revision history
+        run: docker compose --env-file .env.ci --project-name "$COMPOSE_PROJECT_NAME" --profile verification -f infra/compose.yml run --rm --no-deps revision-history-verify
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Run browser E2E
+        run: npm run test:e2e
       - name: Capture container state
         if: always()
         run: |

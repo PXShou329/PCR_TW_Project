@@ -18,6 +18,7 @@ from .research_core_snapshot import (
     RP_A3_MANIFEST_SHA256,
     RP_A4_MANIFEST_SHA256,
     RP_A5_MANIFEST_SHA256,
+    RP_B5_1_MANIFEST_SHA256,
     load_research_core_snapshot,
 )
 
@@ -30,6 +31,7 @@ PINNED_ROLLBACK_MANIFESTS = frozenset(
         RP_A3_MANIFEST_SHA256,
         RP_A4_MANIFEST_SHA256,
         RP_A5_MANIFEST_SHA256,
+        RP_B5_1_MANIFEST_SHA256,
     }
 )
 

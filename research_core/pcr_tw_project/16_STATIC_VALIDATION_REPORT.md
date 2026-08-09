@@ -3,7 +3,7 @@
 > 由 `tools/validate_project.py` 生成（唯一路徑）；回歸驗證：`python3 tools/mutation_test.py`（Active 情境數見其輸出；退休 ID 見 Archive）。
 > 生成日：2026-08-10｜版本：v1.5｜Release：2026-08-09｜Mode：PRE_SUITE
 
-## 檢查結果（156 項）
+## 檢查結果（166 項）
 
 | 檢查 | 結果 | 明細 |
 |---|---|---|
@@ -28,9 +28,10 @@
 | 27：欄數 20＋列數 ≥0 | PASS | 37 列 |
 | 45：欄數 14＋列數 ≥2 | PASS | 4 列 |
 | 46：欄數 12＋列數 ≥2 | PASS | 6 列 |
-| 47：欄數 20＋列數 ≥0 | PASS | 0 列 |
+| 47：欄數 24＋列數 ≥0 | PASS | 0 列 |
 | ID 唯一（evidence／claim／event／sync／unit／team／counter／source） | PASS |  |
 | 92：evidence_confidence 欄名 | PASS |  |
+| 92：evidence_confidence Enum | PASS |  |
 | 92：URL 標準化 | PASS |  |
 | ST73：92 status Enum | PASS |  |
 | 92：source_tier Enum | PASS |  |
@@ -55,6 +56,7 @@
 | 39：同 server／environment 的相同敵我五人配對不得重複 | PASS |  |
 | 39：canonical Arena registry 僅保存 EXACT 配對 | PASS |  |
 | 39：Arena status／source tier／confidence／reproducibility enums | PASS |  |
+| 39：required_upgrade_check Enum | PASS |  |
 | 39：Arena outcome／verification／risk／environment enums | PASS |  |
 | 39：Arena operation_mode Enum | PASS |  |
 | 39：Arena bracket／speed／initial action 明示 UNKNOWN 而非留白 | PASS |  |
@@ -138,7 +140,15 @@
 | ST69：current 為 terminal node | PASS |  |
 | 25 與 24：所有 guide 的 team_count＝25 有效隊伍數 | PASS |  |
 | 47：欄位標頭符合規格 | PASS |  |
-| ST81：P-Arena Gate 由 47 成熟列計算（THEORY 模板不計） | PASS | 0 成熟 |
+| 47：all-row status／server／hidden／check／reproducibility enums | PASS |  |
+| 47：all-row team shape／unit FK／hidden relation | PASS |  |
+| 47：all-row source／Evidence／Claim FK 與 ID 不重複 | PASS |  |
+| 47：case WIN direct Evidence confidence 僅 A／B／C／D | PASS |  |
+| 47：source_ids hostname 覆蓋 case WIN direct Evidence | PASS |  |
+| 47：case WIN Evidence published_date 不晚於 verified_date | PASS |  |
+| ST81：P-Arena VERIFIED 需四 designated Claim＋三組 mature exact 39 closure | PASS |  |
+| 47：同 TW environment／相同三隊防守不得重複 VERIFIED case（重排亦同案） | PASS |  |
+| 47：VERIFIED case_win_claim_id 不得跨 case 重用 | PASS |  |
 | ST68：PVE Gate Row 完整性（24 registry 成熟列） | PASS | 2 成熟 |
 | ST69：Arena Gate Row 完整性（39 registry 5v5） | PASS | 0 成熟反制列／0 成熟防守 |
 | ST70：Timeline Maturity Row 完整性（41） | PASS | 2 MATURE |

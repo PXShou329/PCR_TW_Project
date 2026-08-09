@@ -21,6 +21,8 @@
 
 - 只依台服公共可用角色（18）與三隊不重複約束；對每支敵隊分別取得候選反制池後組合求解（對應 T33／T50）。
 - 每隊必須有可追溯解陣來源；無來源組合標【推測】並降信心。
+- 47 VERIFIED 的三個隊位須各以 `team*_result_claim_id` 對到同一台服 environment 的唯一成熟 39 exact 配對；另以 `case_win_claim_id` 保存完整三戰的實際 WIN。三筆單隊勝利不能反推整體已勝。
+- `case_win_claim_id` 為 D 時可保存實際單一完整戰果並計 Gate B，但會阻擋 Gate C；缺完整三戰 Evidence、後兩隊隱藏或任一必要強化 UNKNOWN 時維持研究層。
 - 不宣稱任何「帳號可用」；個人化問題依 Instructions §1 回答。
 
 ## 4. 輸出格式

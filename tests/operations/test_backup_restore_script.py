@@ -11,13 +11,13 @@ def source() -> str:
     return BACKUP_RESTORE_SCRIPT.read_text(encoding="utf-8")
 
 
-def test_b5_ci_uses_exact_stack_backup_and_rollback_contract() -> None:
+def test_a6_ci_uses_exact_stack_backup_and_rollback_contract() -> None:
     workflow = CI_WORKFLOW.read_text(encoding="utf-8")
     for marker in (
-        "group: rp-b5-1-",
-        "COMPOSE_PROJECT_NAME: pcr-tw-b5-ci",
-        "PCR_API_IMAGE: pcr-tw-platform-api:b5-ci",
-        "PCR_SCHEDULER_IMAGE: pcr-tw-platform-scheduler:b5-ci",
+        "group: rp-a6-0-",
+        "COMPOSE_PROJECT_NAME: pcr-tw-a6-ci",
+        "PCR_API_IMAGE: pcr-tw-platform-api:a6-ci",
+        "PCR_SCHEDULER_IMAGE: pcr-tw-platform-scheduler:a6-ci",
         "-ProjectName $env:COMPOSE_PROJECT_NAME",
         "-ExpectedApiImage $env:PCR_API_IMAGE",
         "-ExpectedSchedulerImage $env:PCR_SCHEDULER_IMAGE",
@@ -25,14 +25,14 @@ def test_b5_ci_uses_exact_stack_backup_and_rollback_contract() -> None:
         "-ExpectedWebPort ([int]$env:WEB_PORT)",
         "-ExpectedSchedulerPort ([int]$env:SCHEDULER_HEALTH_PORT)",
         'if (-not $env:RUNNER_TEMP)',
-        'Join-Path $env:RUNNER_TEMP "rp-a5-2-checkpoint"',
-        'Join-Path $env:RUNNER_TEMP "rp-a5-2-checkpoint.tar"',
-        "git archive --format=tar --output=$checkpointArchive rp-a5-2",
-        "./scripts/b5_a5_rollback_drill.ps1",
+        'Join-Path $env:RUNNER_TEMP "rp-b5-1-checkpoint"',
+        'Join-Path $env:RUNNER_TEMP "rp-b5-1-checkpoint.tar"',
+        "git archive --format=tar --output=$checkpointArchive rp-b5-1",
+        "./scripts/a6_b5_rollback_drill.ps1",
     ):
         assert marker in workflow
     assert "-SeedRevisionHistory" not in workflow
-    assert 'Join-Path $PWD ".runtime/rp-a5-2-checkpoint"' not in workflow
+    assert 'Join-Path $PWD ".runtime/rp-b5-1-checkpoint"' not in workflow
 
 
 def test_target_identity_is_mandatory_and_precedes_database_access() -> None:
@@ -49,7 +49,10 @@ def test_target_identity_is_mandatory_and_precedes_database_access() -> None:
     ):
         assert parameter in parameter_block
     assert text.count("[Parameter(Mandatory = $true)]") >= 7
-    assert '"pcr-tw-a5-arena", "pcr-tw-a4-water", "pcr-tw-b1"' in text
+    assert (
+        '"pcr-tw-b5-gacha", "pcr-tw-a5-arena", "pcr-tw-a4-water", "pcr-tw-b1"'
+        in text
+    )
     assert '"--project-name", $ProjectName' in text
     assert '"--profile", "verification"' in text
     assert "function Assert-ComposePreflight" in text
@@ -96,12 +99,13 @@ def test_preflight_pins_images_ports_network_and_scheduler_safety() -> None:
     assert '$scheduler.environment.AUTO_PUBLISH -cne "false"' in preflight
 
 
-def test_b5_identity_and_all_count_closures_are_exact() -> None:
+def test_a6_identity_and_all_count_closures_are_exact() -> None:
     text = source()
     for digest in (
-        "e74814d6433ee327611f10322937bdfa9687b9887f139ba6e6158a291dd12989",
-        "d117be193802d459102708424c4b7f2a7e852b793ff38356e1977f44d507466d",
-        "a7467a838c2a9cfdfe48bda4a3b158fb374dd023caa3478a84c07678532ea9f4",
+        "fbcac9cb9aadcd1569f881469189dc791c68a4a329637cc9db2c0d7263d68ed1",
+        "3f5e738a6a7f0463583b38d0fc2ca1ae35bdc563f3815cf436dfc10913764d97",
+        "82495781cca66b9ca3fc221e609a3cb6c06ebaa823f7a8613c9d5d1d01d9e1ee",
+        "e44a9fa38a89a5672d00c0a58d8b8946fecd41e541c08c9733fb3d06fbc1b88a",
         "a2fa8f263d612cd393bbd25d29d01f9ffde4015ed924e7b28a8ed909b99c67af",
         "24c1cbce3588926d4efe657c8da94b968aa25dd288e764ebbed0f18c1203d43c",
     ):
@@ -110,8 +114,8 @@ def test_b5_identity_and_all_count_closures_are_exact() -> None:
         "file_count || '|' || csv_file_count || '|' || csv_row_count",
         "SUCCEEDED|48|13|376|120",
         "research_core_file_ssot|4|$activeMaterialization|23",
-        "$b5RowCounts = [ordered]@{",
-        "$b5ServingCounts = [ordered]@{",
+        "$a6RowCounts = [ordered]@{",
+        "$a6ServingCounts = [ordered]@{",
         "evidence = 73",
         "claims = 69",
         "stage_evidence = 47",
@@ -126,23 +130,25 @@ def test_b5_identity_and_all_count_closures_are_exact() -> None:
     ):
         assert marker in text
     assert '"v0007_gacha_timeline_slice"' in text
-    assert '"3.0.0-b5"' in text
+    assert '"3.0.0-a6"' in text
+    assert "A6_ARTIFACT_DIAGNOSTIC_PINNED" in text
+    assert "artifact_mirror_diagnostic_sha256 = $a6ArtifactMirrorSha256" in text
 
 
 def test_source_identity_and_epoch_are_stable_across_dump_and_drill() -> None:
     text = source()
     source_identity = text.index(
-        '$sourceIdentity = Assert-B5DatabaseIdentity -Database $SourceDatabase'
+        '$sourceIdentity = Assert-A6DatabaseIdentity -Database $SourceDatabase'
     )
     dump = text.index("Invoke-DockerChecked exec -T db pg_dump", source_identity)
     after_dump = text.index(
-        '$sourceIdentityAfterDump = Assert-B5DatabaseIdentity', dump
+        '$sourceIdentityAfterDump = Assert-A6DatabaseIdentity', dump
     )
     restored = text.index(
-        '$restoreIdentity = Assert-B5DatabaseIdentity', after_dump
+        '$restoreIdentity = Assert-A6DatabaseIdentity', after_dump
     )
     final = text.index(
-        '$finalSourceIdentity = Assert-B5DatabaseIdentity', restored
+        '$finalSourceIdentity = Assert-A6DatabaseIdentity', restored
     )
 
     assert source_identity < dump < after_dump < restored < final
@@ -250,13 +256,13 @@ def test_backup_fallback_uses_verified_db_container_identity() -> None:
     assert 'cp "db:/backups/$backupName"' not in text
 
 
-def test_restored_acl_gate_requires_final_b5_matrix_marker() -> None:
+def test_restored_acl_gate_requires_final_a6_matrix_marker() -> None:
     text = source()
     helper = text[text.index("function Assert-DbPrivilegeContract") : text.index("$primaryError")]
     assert '"scripts\\check_db_privileges.ps1"' in helper
     assert "DB_PRIVILEGES_OK matrix_checks=651 actual_denials=23 allowed_smokes=10" in helper
     assert "privilegeExit -ne 0" in helper
-    assert "exact 7-privilege B5 contract" in helper
+    assert "exact 7-privilege A6 contract" in helper
     call = text.index("Assert-DbPrivilegeContract -Database $restoreDatabase")
     round_trip = text.index("round-trip-smoke", call)
     assert call < round_trip
@@ -266,6 +272,7 @@ def test_restored_acl_gate_requires_final_b5_matrix_marker() -> None:
 def test_api_image_contains_current_and_rollback_manifests() -> None:
     text = API_DOCKERFILE.read_text(encoding="utf-8")
 
+    assert "scripts/research_core_rp_a6_0_manifest.sha256" in text
     assert "scripts/research_core_rp_b5_1_manifest.sha256" in text
     assert "scripts/research_core_rp_a5_manifest.sha256" in text
     assert "scripts/research_core_rp_a4_manifest.sha256" in text

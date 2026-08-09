@@ -57,6 +57,22 @@ def mutate_gate_count(name, fn, expected_arena_formal):
     print(f"{'PASS' if ok else 'FAIL'}  {name}: exit {proc.returncode}＋Arena {actual}（預期 {expected_arena_formal}）")
     return ok
 
+def mutate_parena_count(name, fn, expected_parena):
+    """Run a valid mutation and assert distinct mature P-Arena cases."""
+    tmp = tempfile.mkdtemp(); d = os.path.join(tmp, 'p')
+    shutil.copytree(ROOT, d)
+    fn(d)
+    proc = run(d, mode='PRE_SUITE', write=True)
+    try:
+        stats = json.load(open(os.path.join(d, 'tools', 'stats.json'), encoding='utf-8'))
+        actual = stats['gate']['parena']
+    except (OSError, KeyError, json.JSONDecodeError):
+        actual = 'UNREADABLE'
+    ok = proc.returncode == 0 and actual == expected_parena
+    shutil.rmtree(tmp)
+    print(f"{'PASS' if ok else 'FAIL'}  {name}: exit {proc.returncode}＋P-Arena {actual}（預期 {expected_parena}）")
+    return ok
+
 def P(d, n): return os.path.join(d, n)
 def rd(p): return open(p, encoding='utf-8').read()
 def wr(p, s): open(p, 'w', encoding='utf-8').write(s)
@@ -183,6 +199,114 @@ def add_arena_row(d, counter_id, enemy=ARENA_ENEMY, counter=ARENA_COUNTER_A,
     })
     with open(path, 'w', encoding='utf-8', newline='') as f:
         writer = csv.DictWriter(f, fieldnames=fields); writer.writeheader(); writer.writerows(rows)
+
+PARENA_ENEMY_TEAMS = [
+    ['shiori_win', 'wakana_win', 'grace_bunny', 'neya_orig', 'pecorine_ny'],
+    ['kokkoro_ny', 'kyaru_ny', 'luisemarie_orig', 'croce_aerial', 'lailael_xmas'],
+    ['lind_orig', 'vurm_orig', 'shizuru_valentine', 'maho_summer', 'yui_xmas'],
+]
+PARENA_COUNTER_TEAMS = [
+    ['anne_grea_orig', 'mio_ngs', 'yukino_orig', 'ames_sum', 'sono_orig'],
+    ['ninon_sum', 'nanaka_sum', 'misora_xmas', 'violet_isanami', 'labyrista_alpha'],
+    ['eris_orig', 'presia_fallen', 'rei_ny', 'matsuri_orig', 'kaya_orig'],
+]
+
+def add_valid_parena_fixture(d, suffix='POS'):
+    """Create three mature exact Arena pairs plus one designated P-Arena overall WIN."""
+    environment = 'TW-2026-08-10'
+    team_claim_ids, team_evidence_ids, counter_ids = [], [], []
+    for index, (enemy, counter) in enumerate(zip(PARENA_ENEMY_TEAMS, PARENA_COUNTER_TEAMS), start=1):
+        evidence_ids, claim_id = add_verified_arena_provenance(d, suffix=f'PA-{suffix}-{index}')
+        counter_id = f'AR-PA-{suffix}-{index}'
+        add_arena_row(d, counter_id, enemy=enemy, counter=counter,
+                      environment=environment, evidence_id=evidence_ids,
+                      claim_id=claim_id, claim_confidence='B')
+        team_claim_ids.append(claim_id)
+        team_evidence_ids.extend(evidence_ids.split(';'))
+        counter_ids.append(counter_id)
+
+    case_claim_id = f'CLM-PARENA-WIN-MUT-{suffix}'
+    case_evidence_id = f'ev-parena-win-mut-{suffix.lower()}'
+    case_hostname = f'parena-win-{suffix.lower()}.example'
+    case_source_id = f'ARENA-SRC-PA-MUT-{suffix}'
+    evidence_path = P(d, '92_EVIDENCE_LEDGER.csv')
+    with open(evidence_path, encoding='utf-8', newline='') as f:
+        rows = list(csv.DictReader(f)); fields = list(rows[0].keys())
+    rows.append({
+        'evidence_id': case_evidence_id, 'claim_id': case_claim_id,
+        'module': 'parena', 'server': 'TW', 'source_tier': 'SINGLE_PLAYER_REPORT',
+        'evidence_confidence': 'D', 'source_title': 'TEST_ONLY complete P-Arena WIN',
+        'source_url': f'https://{case_hostname}/result',
+        'source_locator': f'test_only_parena_win_{suffix.lower()}',
+        'published_date': '2026-08-10', 'published_date_precision': 'DAY',
+        'verified_date': '2026-08-10',
+        'claim_summary': 'TEST_ONLY full three-team P-Arena battle was won',
+        'limitations': 'TEST_ONLY single complete result', 'affected_files': '47;92;93',
+        'status': 'ACTIVE',
+    })
+    with open(evidence_path, 'w', encoding='utf-8', newline='') as f:
+        writer = csv.DictWriter(f, fieldnames=fields); writer.writeheader(); writer.writerows(rows)
+
+    claim_path = P(d, '93_CLAIM_REGISTER.csv')
+    with open(claim_path, encoding='utf-8', newline='') as f:
+        rows = list(csv.DictReader(f)); fields = list(rows[0].keys())
+    rows.append({
+        'claim_id': case_claim_id, 'module': 'parena', 'server': 'TW',
+        'claim_text': 'TEST_ONLY complete P-Arena three-team plan produced an overall win',
+        'claim_type': 'SOURCE_FACT', 'claim_confidence': 'D',
+        'evidence_ids': case_evidence_id, 'independence_check': 'NO',
+        'version_match': 'YES', 'status': 'ACTIVE', 'verified_date': '2026-08-10',
+        'next_review_due': '2026-12-31', 'affected_files': '47;92;93',
+        'notes': 'TEST_ONLY designated case WIN Claim',
+    })
+    with open(claim_path, 'w', encoding='utf-8', newline='') as f:
+        writer = csv.DictWriter(f, fieldnames=fields); writer.writeheader(); writer.writerows(rows)
+
+    source_path = P(d, '46_ARENA_SOURCE_REGISTRY.csv')
+    with open(source_path, encoding='utf-8', newline='') as f:
+        rows = list(csv.DictReader(f)); fields = list(rows[0].keys())
+    rows.append({
+        'source_id': case_source_id, 'title': 'TEST_ONLY P-Arena complete result index',
+        'platform': 'TEST_ONLY', 'source_type': 'PLAYER_REPORT_INDEX', 'server': 'TW',
+        'url': f'https://{case_hostname}/source-index', 'last_checked': '2026-08-10',
+        'freshness_window': '90d', 'access_status': 'ACTIVE', 'confidence_cap': 'D',
+        'extraction_method': 'TEST_ONLY direct complete-result lookup',
+        'notes': 'TEST_ONLY same-host source index for case WIN Evidence',
+    })
+    with open(source_path, 'w', encoding='utf-8', newline='') as f:
+        writer = csv.DictWriter(f, fieldnames=fields); writer.writeheader(); writer.writerows(rows)
+
+    case_id = f'PA-MUT-{suffix}'
+    path = P(d, '47_PRINCESS_ARENA_CASE_REGISTRY.csv')
+    with open(path, encoding='utf-8', newline='') as f:
+        reader = csv.DictReader(f); fields = list(reader.fieldnames or []); rows = list(reader)
+    rows.append({
+        'case_id': case_id, 'server': 'TW', 'environment_version': environment,
+        'enemy_team1': ';'.join(PARENA_ENEMY_TEAMS[0]),
+        'enemy_team2': ';'.join(PARENA_ENEMY_TEAMS[1]),
+        'enemy_team3': ';'.join(PARENA_ENEMY_TEAMS[2]),
+        'counter_team1': ';'.join(PARENA_COUNTER_TEAMS[0]),
+        'counter_team2': ';'.join(PARENA_COUNTER_TEAMS[1]),
+        'counter_team3': ';'.join(PARENA_COUNTER_TEAMS[2]),
+        'team1_result_claim_id': team_claim_ids[0],
+        'team2_result_claim_id': team_claim_ids[1],
+        'team3_result_claim_id': team_claim_ids[2],
+        'case_win_claim_id': case_claim_id, 'hidden_team_mode': 'NONE',
+        'status': 'VERIFIED', 'verified_date': '2026-08-10',
+        'source_ids': case_source_id,
+        'evidence_ids': ';'.join(team_evidence_ids + [case_evidence_id]),
+        'claim_ids': ';'.join(team_claim_ids + [case_claim_id]),
+        'tw_availability_check': 'PASS', 'non_overlap_check': 'PASS',
+        'reproducibility': 'CONFIRMED', 'last_review_due': '2026-12-31',
+        'notes': 'TEST_ONLY three exact pairs plus complete overall WIN',
+    })
+    with open(path, 'w', encoding='utf-8', newline='') as f:
+        writer = csv.DictWriter(f, fieldnames=fields); writer.writeheader(); writer.writerows(rows)
+    return {
+        'case_id': case_id, 'case_claim_id': case_claim_id,
+        'case_evidence_id': case_evidence_id, 'team_claim_ids': team_claim_ids,
+        'counter_ids': counter_ids, 'source_id': case_source_id,
+    }
 
 EXEC_HDR = "run_id,test_id,suite,fixture_id,fixture_version,exact_prompt,execution_date,model,observed_result,evidence_ids,status,defect_id,retest_of,supersedes_run_id,is_current,reviewer,reviewed_at,review_method,expectation_checklist,response_reference,notes"
 def row(**kw):
@@ -1276,5 +1400,229 @@ def m108(d):
 results.append(mutate("M108 Gacha Official Override Weak Direct Evidence", m108, "FAIL",
                       mode="PRE_SUITE",
                       target_fail="ST85a：41 final interval method"))
+
+# M109: VERIFIED labels cannot turn an empty three-team shell into a mature P-Arena case.
+def m109(d):
+    def fn(rows):
+        h = rows[0]; row = [''] * len(h)
+        values = {
+            'case_id': 'PA-MUT-LABEL-ONLY', 'server': 'TW',
+            'environment_version': 'TW-2026-08-10', 'hidden_team_mode': 'NONE',
+            'status': 'VERIFIED', 'verified_date': '2026-08-10',
+            'tw_availability_check': 'PASS', 'non_overlap_check': 'PASS',
+            'reproducibility': 'CONFIRMED', 'last_review_due': '2026-12-31',
+            'notes': 'TEST_ONLY label-only shell',
+        }
+        for field, value in values.items(): row[h.index(field)] = value
+        rows.append(row)
+    rewrite_csv(P(d, '47_PRINCESS_ARENA_CASE_REGISTRY.csv'), fn)
+results.append(mutate("M109 P-Arena Label-Only VERIFIED Shell", m109, "FAIL", mode="PRE_SUITE",
+                      target_fail="ST81：P-Arena VERIFIED 需四 designated Claim＋三組 mature exact 39 closure"))
+
+# M110: The designated overall WIN must remain an ACTIVE TW parena direct Claim closure.
+def m110(d):
+    fixture = add_valid_parena_fixture(d, 'BAD-CASE-CLAIM')
+    def fn(rows):
+        h = rows[0]
+        row = next(item for item in rows[1:] if item[0] == fixture['case_claim_id'])
+        row[h.index('status')] = 'SUPERSEDED'
+        row[h.index('module')] = 'availability'
+    rewrite_csv(P(d, '93_CLAIM_REGISTER.csv'), fn)
+results.append(mutate("M110 P-Arena Superseded Wrong-Module Case WIN", m110, "FAIL", mode="PRE_SUITE",
+                      target_fail="ST81：P-Arena VERIFIED 需四 designated Claim＋三組 mature exact 39 closure"))
+
+# M111: All three result Claims must bind the exact same-environment 39 pair.
+def m111(d):
+    fixture = add_valid_parena_fixture(d, 'PAIR-ENV')
+    def fn(rows):
+        h = rows[0]
+        row = next(item for item in rows[1:] if item[0] == fixture['counter_ids'][2])
+        row[h.index('environment_version')] = 'TW-DIFFERENT-ENV'
+    rewrite_csv(P(d, '39_ARENA_COUNTER_REGISTRY.csv'), fn)
+results.append(mutate("M111 P-Arena Missing Same-Environment Exact Pair", m111, "FAIL", mode="PRE_SUITE",
+                      target_fail="ST81：P-Arena VERIFIED 需四 designated Claim＋三組 mature exact 39 closure"))
+
+# M112: JP research may exist, but cannot be labeled a VERIFIED TW P-Arena Gate case.
+def m112(d):
+    fixture = add_valid_parena_fixture(d, 'CROSS-SERVER')
+    def fn(rows):
+        h = rows[0]
+        row = next(item for item in rows[1:] if item[0] == fixture['case_id'])
+        row[h.index('server')] = 'JP'
+    rewrite_csv(P(d, '47_PRINCESS_ARENA_CASE_REGISTRY.csv'), fn)
+results.append(mutate("M112 JP P-Arena Row Cannot Count TW Gate", m112, "FAIL", mode="PRE_SUITE",
+                      target_fail="ST81：P-Arena VERIFIED 需四 designated Claim＋三組 mature exact 39 closure"))
+
+# M113: Reordering all three pairs is still the same defense case and must not inflate Gate counts.
+def m113(d):
+    fixture = add_valid_parena_fixture(d, 'DUP-DEFENSE')
+    replacement = add_valid_parena_fixture(d, 'DUP-DEFENSE-CASE-PROVENANCE')
+    def arena_fn(rows):
+        h = rows[0]
+        rows[:] = [h] + [row for row in rows[1:] if row[0] not in replacement['counter_ids']]
+    rewrite_csv(P(d, '39_ARENA_COUNTER_REGISTRY.csv'), arena_fn)
+    def fn(rows):
+        h = rows[0]
+        rows[:] = [h] + [row for row in rows[1:] if row[0] != replacement['case_id']]
+        original = next(item for item in rows[1:] if item[0] == fixture['case_id'])
+        duplicate = list(original); duplicate[0] = fixture['case_id'] + '-REORDERED'
+        for prefix in ('enemy_team', 'counter_team', 'team'):
+            if prefix == 'team':
+                fields = [f'team{i}_result_claim_id' for i in (1, 2, 3)]
+            else:
+                fields = [f'{prefix}{i}' for i in (1, 2, 3)]
+            values = [original[h.index(field)] for field in fields]
+            for field, value in zip(fields, reversed(values)):
+                duplicate[h.index(field)] = value
+        duplicate[h.index('case_win_claim_id')] = replacement['case_claim_id']
+        duplicate[h.index('source_ids')] = replacement['source_id']
+        claims = duplicate[h.index('claim_ids')].split(';')
+        claims[claims.index(fixture['case_claim_id'])] = replacement['case_claim_id']
+        duplicate[h.index('claim_ids')] = ';'.join(claims)
+        evidence = duplicate[h.index('evidence_ids')].split(';')
+        evidence[evidence.index(fixture['case_evidence_id'])] = replacement['case_evidence_id']
+        duplicate[h.index('evidence_ids')] = ';'.join(evidence)
+        rows.append(duplicate)
+    rewrite_csv(P(d, '47_PRINCESS_ARENA_CASE_REGISTRY.csv'), fn)
+results.append(mutate("M113 Reordered Duplicate P-Arena Defense", m113, "FAIL", mode="PRE_SUITE",
+                      target_fail="47：同 TW environment／相同三隊防守不得重複 VERIFIED case（重排亦同案）"))
+
+# M114: Source Registry closure and case dates are maturity inputs, not decorative strings.
+def m114(d):
+    fixture = add_valid_parena_fixture(d, 'STALE-SOURCE-DATE')
+    def fn(rows):
+        h = rows[0]
+        row = next(item for item in rows[1:] if item[0] == fixture['case_id'])
+        row[h.index('source_ids')] = 'ARENA-SRC-NOT-FOUND'
+        row[h.index('verified_date')] = '2099-01-01'
+        row[h.index('last_review_due')] = 'NOT_A_DATE'
+    rewrite_csv(P(d, '47_PRINCESS_ARENA_CASE_REGISTRY.csv'), fn)
+results.append(mutate("M114 P-Arena Missing Source And Invalid Dates", m114, "FAIL", mode="PRE_SUITE",
+                      target_fail=[
+                          "47：all-row source／Evidence／Claim FK 與 ID 不重複",
+                          "ST81：P-Arena VERIFIED 需四 designated Claim＋三組 mature exact 39 closure",
+                      ]))
+
+# M115: Unknown required upgrades cannot flow through a child 39 row into P-Arena maturity.
+def m115(d):
+    fixture = add_valid_parena_fixture(d, 'UPGRADE-UNKNOWN')
+    def fn(rows):
+        h = rows[0]
+        row = next(item for item in rows[1:] if item[0] == fixture['counter_ids'][0])
+        row[h.index('required_upgrade_check')] = 'UNKNOWN'
+    rewrite_csv(P(d, '39_ARENA_COUNTER_REGISTRY.csv'), fn)
+results.append(mutate("M115 P-Arena Child Upgrade UNKNOWN", m115, "FAIL", mode="PRE_SUITE",
+                      target_fail=[
+                          "39：VERIFIED Arena 僅承認獨立多來源 WIN Evidence／Claim closure",
+                          "ST81：P-Arena VERIFIED 需四 designated Claim＋三組 mature exact 39 closure",
+                      ]))
+
+# M116: Three exact mature pairs plus one direct complete-case WIN are the positive unit.
+def m116(d):
+    add_valid_parena_fixture(d, 'POSITIVE')
+results.append(mutate_parena_count("M116 Valid P-Arena Exact Closure", m116, 1))
+
+# M117: Three team results do not prove the complete three-battle outcome.
+def m117(d):
+    fixture = add_valid_parena_fixture(d, 'NO-CASE-WIN')
+    def fn(rows):
+        h = rows[0]
+        row = next(item for item in rows[1:] if item[0] == fixture['case_id'])
+        row[h.index('case_win_claim_id')] = ''
+    rewrite_csv(P(d, '47_PRINCESS_ARENA_CASE_REGISTRY.csv'), fn)
+results.append(mutate("M117 P-Arena Missing Designated Case WIN", m117, "FAIL", mode="PRE_SUITE",
+                      target_fail="ST81：P-Arena VERIFIED 需四 designated Claim＋三組 mature exact 39 closure"))
+
+# M118: Evidence confidence is a closed A–E vocabulary across the entire ledger.
+def m118(d):
+    def fn(rows):
+        h = rows[0]
+        row = next(item for item in rows[1:] if item[0] == 'ev009')
+        row[h.index('evidence_confidence')] = 'GARBAGE'
+    rewrite_csv(P(d, '92_EVIDENCE_LEDGER.csv'), fn)
+results.append(mutate("M118 Evidence Confidence Unknown Enum", m118, "FAIL", mode="PRE_SUITE",
+                      target_fail="92：evidence_confidence Enum"))
+
+# M119: E is globally valid research confidence, but cannot mature a complete P-Arena WIN.
+def m119(d):
+    fixture = add_valid_parena_fixture(d, 'CASE-E-CONFIDENCE')
+    def fn(rows):
+        h = rows[0]
+        row = next(item for item in rows[1:] if item[0] == fixture['case_evidence_id'])
+        row[h.index('evidence_confidence')] = 'E'
+    rewrite_csv(P(d, '92_EVIDENCE_LEDGER.csv'), fn)
+results.append(mutate("M119 P-Arena Case Evidence E Confidence", m119, "FAIL", mode="PRE_SUITE",
+                      target_fail="47：case WIN direct Evidence confidence 僅 A／B／C／D"))
+
+# M120: One complete-match Claim cannot certify two different defense cases.
+def m120(d):
+    first = add_valid_parena_fixture(d, 'CLAIM-UNIQUE-A')
+    second = add_valid_parena_fixture(d, 'CLAIM-UNIQUE-B')
+    second_environment = 'TW-2026-08-10-B'
+    def arena_fn(rows):
+        h = rows[0]
+        for counter_id in second['counter_ids']:
+            row = next(item for item in rows[1:] if item[0] == counter_id)
+            row[h.index('environment_version')] = second_environment
+    rewrite_csv(P(d, '39_ARENA_COUNTER_REGISTRY.csv'), arena_fn)
+    def case_fn(rows):
+        h = rows[0]
+        row = next(item for item in rows[1:] if item[0] == second['case_id'])
+        row[h.index('environment_version')] = second_environment
+        row[h.index('case_win_claim_id')] = first['case_claim_id']
+        row[h.index('source_ids')] = first['source_id']
+        claims = row[h.index('claim_ids')].split(';')
+        claims[claims.index(second['case_claim_id'])] = first['case_claim_id']
+        row[h.index('claim_ids')] = ';'.join(claims)
+        evidence = row[h.index('evidence_ids')].split(';')
+        evidence[evidence.index(second['case_evidence_id'])] = first['case_evidence_id']
+        row[h.index('evidence_ids')] = ';'.join(evidence)
+    rewrite_csv(P(d, '47_PRINCESS_ARENA_CASE_REGISTRY.csv'), case_fn)
+results.append(mutate("M120 P-Arena Case WIN Claim Reused Across Defenses", m120, "FAIL", mode="PRE_SUITE",
+                      target_fail="47：VERIFIED case_win_claim_id 不得跨 case 重用"))
+
+# M121: A legal but unrelated Claim cannot be smuggled into the aggregate closure.
+def m121(d):
+    fixture = add_valid_parena_fixture(d, 'EXTRA-CLAIM')
+    def fn(rows):
+        h = rows[0]
+        row = next(item for item in rows[1:] if item[0] == fixture['case_id'])
+        row[h.index('claim_ids')] += ';CLM-JP-DEEP-A10'
+    rewrite_csv(P(d, '47_PRINCESS_ARENA_CASE_REGISTRY.csv'), fn)
+results.append(mutate("M121 P-Arena Aggregate Extra Unrelated Claim", m121, "FAIL", mode="PRE_SUITE",
+                      target_fail="ST81：P-Arena VERIFIED 需四 designated Claim＋三組 mature exact 39 closure"))
+
+# M122: A legal but unrelated Evidence cannot be smuggled into the aggregate closure.
+def m122(d):
+    fixture = add_valid_parena_fixture(d, 'EXTRA-EVIDENCE')
+    def fn(rows):
+        h = rows[0]
+        row = next(item for item in rows[1:] if item[0] == fixture['case_id'])
+        row[h.index('evidence_ids')] += ';ev009'
+    rewrite_csv(P(d, '47_PRINCESS_ARENA_CASE_REGISTRY.csv'), fn)
+results.append(mutate("M122 P-Arena Aggregate Extra Unrelated Evidence", m122, "FAIL", mode="PRE_SUITE",
+                      target_fail="ST81：P-Arena VERIFIED 需四 designated Claim＋三組 mature exact 39 closure"))
+
+# M123: A fresh TW source scalar must still index the direct case Evidence hostname.
+def m123(d):
+    fixture = add_valid_parena_fixture(d, 'SOURCE-HOST')
+    def fn(rows):
+        h = rows[0]
+        row = next(item for item in rows[1:] if item[0] == fixture['case_id'])
+        row[h.index('source_ids')] = 'ARENA-SRC-006'
+    rewrite_csv(P(d, '47_PRINCESS_ARENA_CASE_REGISTRY.csv'), fn)
+results.append(mutate("M123 P-Arena Source Host Does Not Cover Case Evidence", m123, "FAIL", mode="PRE_SUITE",
+                      target_fail="47：source_ids hostname 覆蓋 case WIN direct Evidence"))
+
+# M124: A result cannot be published after the Evidence was verified.
+def m124(d):
+    fixture = add_valid_parena_fixture(d, 'FUTURE-PUBLISHED')
+    def fn(rows):
+        h = rows[0]
+        row = next(item for item in rows[1:] if item[0] == fixture['case_evidence_id'])
+        row[h.index('published_date')] = '2026-08-11'
+    rewrite_csv(P(d, '92_EVIDENCE_LEDGER.csv'), fn)
+results.append(mutate("M124 P-Arena Case Evidence Published After Verification", m124, "FAIL", mode="PRE_SUITE",
+                      target_fail="47：case WIN Evidence published_date 不晚於 verified_date"))
 print('MUTATION_TESTS', 'ALL_OK' if all(results) else 'FAILED', f'| active_scenarios={len(results)}')
 sys.exit(0 if all(results) else 1)
