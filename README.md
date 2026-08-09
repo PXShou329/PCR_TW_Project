@@ -4,8 +4,9 @@ Guide-Only Strategy Platform v3.0 的 RP-A5 Arena release checkpoint，建立在
 RP-A4 Water 成熟切片與已封存的 B1 full-core round-trip 里程碑之上。這是一個可部署的
 **本機／私人 staging**，不是公開正式版，也尚未宣稱 Gates D–G 通過。
 
-`RP-A5` 以私人 tag `rp-a5-1` 封存首個 Arena 垂直切片；RP-A4 仍保留為 Water／A3 PVE
-content expansion 的 rollback checkpoint，不覆寫歷史 manifest。這個 release checkpoint
+`RP-A5` 以私人 tag `rp-a5-2` 封存首個 Arena 垂直切片；`rp-a5-1` 保留為 CI runtime
+依賴安裝修正前的稽核 checkpoint。RP-A4 仍保留為 Water／A3 PVE content expansion 的
+rollback checkpoint，不覆寫歷史 manifest。這個 release checkpoint
 不等於整個 B3＋A5 content expansion 已完成：Arena mature defenses 目前仍為 0。
 
 目前端到端垂直切片包含「紅焰深域 8-10」與「蒼波深域 8-10」，各提供五支不同五人的實際通關隊伍、逐 Slot

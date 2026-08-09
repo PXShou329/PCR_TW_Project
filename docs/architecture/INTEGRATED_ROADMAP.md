@@ -62,7 +62,8 @@
   A／B／C 與 Gates D–G 仍未宣稱通過。
 - 回滾點：A2 research core 使用 `rp-a2-2`；A2＋B2 通過 Compose CI 的完整切片使用
   `rp-a2-b2-2`；A3 使用 `rp-a3-1`；本次 A4 通過完整驗證後使用 `rp-a4-1`。
-  `rp-a2-b2-1` 僅保留作 CI parity 修正前的稽核 checkpoint；RP-A5 使用 `rp-a5-1`，
+  `rp-a2-b2-1` 僅保留作 CI parity 修正前的稽核 checkpoint；`rp-a5-1` 同樣保留作 CI
+  runtime 依賴安裝修正前的稽核 checkpoint，RP-A5 目前使用 `rp-a5-2`，
   A5→A4→A5 依 [`A5_ROLLBACK_RUNBOOK.md`](../operations/A5_ROLLBACK_RUNBOOK.md)。任何已有
   較新 schema 的資料庫都不得只 checkout 舊 tag，必須同時依版本回滾手冊處理 DB。
 
