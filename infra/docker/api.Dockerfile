@@ -30,6 +30,7 @@ COPY --chown=10001:10001 scripts/research_core_rp_a2_manifest.sha256 ./scripts/r
 COPY --chown=10001:10001 scripts/research_core_rp_a3_manifest.sha256 ./scripts/research_core_rp_a3_manifest.sha256
 COPY --chown=10001:10001 scripts/research_core_rp_a4_manifest.sha256 ./scripts/research_core_rp_a4_manifest.sha256
 COPY --chown=10001:10001 scripts/research_core_rp_a5_manifest.sha256 ./scripts/research_core_rp_a5_manifest.sha256
+COPY --chown=10001:10001 scripts/research_core_rp_b5_1_manifest.sha256 ./scripts/research_core_rp_b5_1_manifest.sha256
 
 USER 10001:10001
 EXPOSE 8000

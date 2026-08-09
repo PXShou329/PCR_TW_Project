@@ -10,7 +10,7 @@
 PASS／FAIL／PARTIAL／NOT_RUN（全部測試皆為公共測試；退休 ID 見 99 RETIRED_ACCOUNT_SCOPE）
 
 <!-- AUTO_RESULTS_START -->
-**由 validator 依 17 current result 自動生成（唯一權威狀態表；生成日 2026-08-09）**
+**由 validator 依 17 current result 自動生成（唯一權威狀態表；生成日 2026-08-10）**
 
 | 測試 | current status | run_id | 執行日 | reviewer |
 |---|---|---|---|---|

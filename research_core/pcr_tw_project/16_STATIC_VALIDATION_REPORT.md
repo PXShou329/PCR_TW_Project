@@ -1,9 +1,9 @@
 # 16 靜態驗證報告（STATIC VALIDATION REPORT）
 
 > 由 `tools/validate_project.py` 生成（唯一路徑）；回歸驗證：`python3 tools/mutation_test.py`（Active 情境數見其輸出；退休 ID 見 Archive）。
-> 生成日：2026-08-09｜版本：v1.5｜Release：2026-08-02｜Mode：PRE_SUITE
+> 生成日：2026-08-10｜版本：v1.5｜Release：2026-08-09｜Mode：PRE_SUITE
 
-## 檢查結果（154 項）
+## 檢查結果（156 項）
 
 | 檢查 | 結果 | 明細 |
 |---|---|---|
@@ -16,9 +16,9 @@
 | Instructions §1–§12 連續 | PASS |  |
 | ST44：版本 SSOT 精確一致（v1.5） | PASS | 漂移: |
 | ST80：Active 檔無帳號匯入指令（Guide-Only） | PASS |  |
-| 41：欄數 35＋列數 ≥2 | PASS | 3 列 |
-| 92：欄數 16＋列數 ≥36 | PASS | 113 列 |
-| 93：欄數 14＋列數 ≥34 | PASS | 128 列 |
+| 41：欄數 36＋列數 ≥2 | PASS | 5 列 |
+| 92：欄數 16＋列數 ≥36 | PASS | 122 列 |
+| 93：欄數 14＋列數 ≥34 | PASS | 137 列 |
 | 17：欄數 21＋列數 ≥0 | PASS | 0 列 |
 | 24：欄數 16＋列數 ≥0 | PASS | 3 列 |
 | 39：欄數 35＋列數 ≥0 | PASS | 2 列 |
@@ -150,8 +150,10 @@
 | ST83：Anchor Schema／FK／日期（8 筆） | PASS |  |
 | ST84a：SYSTEM 軌不得混入角色卡池統計 | PASS |  |
 | ST84：四軌統計由 anchors 即時計算且與 02／40 口徑一致 | PASS |  |
-| ST85：41 anchor semantics（3 ACTIVE 列） | PASS |  |
-| ST85a：41 final interval method（3 列） | PASS |  |
+| ST85：41 anchor semantics（5 ACTIVE 列） | PASS |  |
+| ST85a：41 final interval method（5 列） | PASS |  |
+| ST85b：41 RESEARCH 不得夾帶抽取優先級 | PASS |  |
+| ST85c：41 limited 必須具 JP OFFICIAL／A direct Claim closure | PASS |  |
 | T41 單位分離 | PASS |  |
 | 三情境 | PASS |  |
 | 缺口公式 | PASS |  |
@@ -167,16 +169,16 @@
 | Gate | 狀態 | 依據 |
 |---|---|---|
 | A Guide Behavior | 未通過 | Guide-Only 41 項 current result 全 PASS＋Static FAIL=0＋無帳號指令（ST80） |
-| B 最低可用攻略 | 未通過 | PVE 關卡 2/≥2（每關≥5隊）｜Arena 防守 0/≥5（各≥2反制）｜P-Arena 0/≥3｜Timeline 2/≥6｜社群來源 0/≥2 |
-| C 攻略整合可發布 | 未通過 | Gate A＋B＋PVE≥5／Arena≥10／P-Arena≥5＋阻擋警告 16＝0＋新鮮度 |
+| B 最低可用攻略 | 未通過 | PVE 關卡 2/≥2（每關≥5隊）｜Arena 防守 0/≥5（各≥2反制）｜P-Arena 0/≥3｜Timeline 2/≥6｜社群來源 2/≥2 |
+| C 攻略整合可發布 | 未通過 | Gate A＋B＋PVE≥5／Arena≥10／P-Arena≥5＋阻擋警告 14＝0＋新鮮度 |
 
 ## 統計（程式化）
 
 - 檔案 44（編號 43＋README）＋tools×4；Knowledge 42
-- 92：113 列｜Tier {'OFFICIAL': 73, 'MAJOR_GUIDE': 10, 'SINGLE_PLAYER_REPORT': 21, 'MULTI_PLAYER_REPORT': 5, 'STRUCTURED_DB': 1, 'UNKNOWN': 3}｜93：128 列｜claim_type {'SOURCE_FACT': 83, 'DERIVED_CALCULATION': 6, 'ANALYTICAL_JUDGMENT': 39}
+- 92：122 列｜Tier {'OFFICIAL': 82, 'MAJOR_GUIDE': 10, 'SINGLE_PLAYER_REPORT': 21, 'MULTI_PLAYER_REPORT': 5, 'STRUCTURED_DB': 1, 'UNKNOWN': 3}｜93：137 列｜claim_type {'SOURCE_FACT': 92, 'DERIVED_CALCULATION': 6, 'ANALYTICAL_JUDGMENT': 39}
 - 數學重驗：canonical anchors 8 筆｜LIMITED n=5 median=123｜PERMANENT n=2 median=122.5｜ALL_NEW n=7 median=123｜SYSTEM n=1 median=75｜T41=120、三情境、缺口式——全部由 anchors 即時重算
 
-## FAIL：0｜WARN：24（阻擋 Gate C：16）
+## FAIL：0｜WARN：22（阻擋 Gate C：14）
 
 （無 FAIL）
 
@@ -201,11 +203,9 @@
 | CLM-CLM-PVE-W810-LABYRISTA-SONO | confidence_low | warn | Y | 93 | CLM-PVE-W810-LABYRISTA-SONO＝D（成熟資料引用） | 補第二獨立來源或維持研究層 |
 | CLM-CLM-PVE-W810-SONO-NANAKA | confidence_low | warn | Y | 93 | CLM-PVE-W810-SONO-NANAKA＝D（成熟資料引用） | 補第二獨立來源或維持研究層 |
 | CLM-CLM-PVE-W810-MISORA-SONO | confidence_low | warn | Y | 93 | CLM-PVE-W810-MISORA-SONO＝D（成熟資料引用） | 補第二獨立來源或維持研究層 |
-| BASELINE-REVIEW | freshness | warn | Y | 02 | next_review_due 2026-08-09 已到 | 跑 91 §1 |
 | GATE-PVE | gate_c_data | warn | Y | 24 | PVE 成熟關卡 2<5（每關≥5隊） | Checkpoint B PVE Wave |
 | GATE-ARENA | gate_c_data | warn | Y | 39 | Arena 防守案例 0<10（各≥2 TW_AVAILABLE 反制） | Checkpoint D Arena Ingestion |
 | GATE-TIMELINE | gate_c_data | warn | Y | 41 | Timeline MATURE 2<6 | Checkpoint C Gacha Integration |
-| GATE-COMMUNITY | gate_c_data | warn | Y | 45 | 社群未來視已核來源 0<2 | Checkpoint C 抓取現行版本 |
 | GATE-PARENA | gate_c_data | warn | Y | 47 | P-Arena 成熟案例 0<3（THEORY 不計） | Checkpoint E 組合求解入 47 |
 | SUITE-NOTRUN | pre_suite | info | N | 17 | 四 Suite 尚未實跑 | v1.5 部署後執行 |
 

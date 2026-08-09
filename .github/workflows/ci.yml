@@ -1,4 +1,4 @@
-name: RP-A5 full-core parity validation
+name: RP-B5-1 full-core parity validation
 
 on:
   push:
@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: rp-a5-${{ github.workflow }}-${{ github.ref }}
+  group: rp-b5-1-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -90,8 +90,14 @@ jobs:
     name: Compose health and browser E2E
     runs-on: ubuntu-24.04
     needs: [research-core, python, web]
-    timeout-minutes: 30
+    timeout-minutes: 45
     env:
+      COMPOSE_PROJECT_NAME: pcr-tw-b5-ci
+      PCR_API_IMAGE: pcr-tw-platform-api:b5-ci
+      PCR_SCHEDULER_IMAGE: pcr-tw-platform-scheduler:b5-ci
+      API_PORT: "8000"
+      WEB_PORT: "3000"
+      SCHEDULER_HEALTH_PORT: "8081"
       POSTGRES_PASSWORD: ci-ephemeral-not-a-real-secret
       POSTGRES_USER: pcr_owner
       POSTGRES_DB: pcr_tw
@@ -104,6 +110,9 @@ jobs:
       PLAYWRIGHT_BASE_URL: http://127.0.0.1:3000
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
       - uses: actions/setup-node@v4
         with:
           node-version: "24.18.0"
@@ -119,11 +128,20 @@ jobs:
           PCR_API_DB_PASSWORD=$env:PCR_API_DB_PASSWORD
           PCR_IMPORTER_DB_PASSWORD=$env:PCR_IMPORTER_DB_PASSWORD
           PCR_SCHEDULER_DB_PASSWORD=$env:PCR_SCHEDULER_DB_PASSWORD
+          COMPOSE_PROJECT_NAME=$env:COMPOSE_PROJECT_NAME
+          PCR_API_IMAGE=$env:PCR_API_IMAGE
+          PCR_SCHEDULER_IMAGE=$env:PCR_SCHEDULER_IMAGE
+          API_PORT=$env:API_PORT
+          WEB_PORT=$env:WEB_PORT
+          SCHEDULER_HEALTH_PORT=$env:SCHEDULER_HEALTH_PORT
+          SCHEDULER_ENABLED=$env:SCHEDULER_ENABLED
+          SHADOW_MODE=$env:SHADOW_MODE
+          AUTO_PUBLISH=$env:AUTO_PUBLISH
           "@ | Set-Content -LiteralPath .env.ci -Encoding utf8NoBOM
       - name: Validate resolved Compose configuration
-        run: docker compose -f infra/compose.yml config --quiet
+        run: docker compose --env-file .env.ci --project-name "$COMPOSE_PROJECT_NAME" -f infra/compose.yml config --quiet
       - name: Build and start private staging stack
-        run: docker compose -f infra/compose.yml up --build --wait
+        run: docker compose --env-file .env.ci --project-name "$COMPOSE_PROJECT_NAME" -f infra/compose.yml up --build --wait
       - name: Verify service health and safety flags
         shell: pwsh
         run: |
@@ -135,29 +153,73 @@ jobs:
           }
       - name: Verify PostgreSQL least-privilege matrix and real denials
         shell: pwsh
-        run: ./scripts/check_db_privileges.ps1 -EnvFile .env.ci
+        run: ./scripts/check_db_privileges.ps1 -EnvFile .env.ci -ProjectName $env:COMPOSE_PROJECT_NAME
       - name: Verify scheduler lease and idempotency contract
-        run: docker compose --profile verification -f infra/compose.yml run --rm scheduler-smoke
+        run: docker compose --env-file .env.ci --project-name "$COMPOSE_PROJECT_NAME" --profile verification -f infra/compose.yml run --rm scheduler-smoke
       - name: Verify read-only PostgreSQL round trip and exported five-command baseline
-        run: docker compose --profile verification -f infra/compose.yml run --rm --no-deps round-trip-smoke
+        run: docker compose --env-file .env.ci --project-name "$COMPOSE_PROJECT_NAME" --profile verification -f infra/compose.yml run --rm --no-deps round-trip-smoke
       - name: Verify one API request cannot observe a mixed importer snapshot
-        run: docker compose --profile verification -f infra/compose.yml run --rm --no-deps consistency-smoke
+        run: docker compose --env-file .env.ci --project-name "$COMPOSE_PROJECT_NAME" --profile verification -f infra/compose.yml run --rm --no-deps consistency-smoke
       - name: Verify warmed cache fails closed and epoch cannot rewind
-        run: docker compose --profile verification -f infra/compose.yml run --rm --no-deps cache-epoch-smoke
+        run: docker compose --env-file .env.ci --project-name "$COMPOSE_PROJECT_NAME" --profile verification -f infra/compose.yml run --rm --no-deps cache-epoch-smoke
       - name: Verify artifact writes serialize against revision finalization
-        run: docker compose --profile verification -f infra/compose.yml run --rm --no-deps artifact-lock-smoke
+        run: docker compose --env-file .env.ci --project-name "$COMPOSE_PROJECT_NAME" --profile verification -f infra/compose.yml run --rm --no-deps artifact-lock-smoke
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
       - name: Run browser E2E
         run: npm run test:e2e
-      - name: Backup into an empty DB and restore
+      - name: Backup, empty-DB restore, and B5 to A5 to B5 rollback
         shell: pwsh
-        run: ./scripts/backup_restore_smoke.ps1 -EnvFile .env.ci -SeedRevisionHistory
+        run: |
+          $backupOutput = @(
+            ./scripts/backup_restore_smoke.ps1 `
+              -EnvFile (Resolve-Path .env.ci) `
+              -ProjectName $env:COMPOSE_PROJECT_NAME `
+              -ExpectedApiImage $env:PCR_API_IMAGE `
+              -ExpectedSchedulerImage $env:PCR_SCHEDULER_IMAGE `
+              -ExpectedApiPort ([int]$env:API_PORT) `
+              -ExpectedWebPort ([int]$env:WEB_PORT) `
+              -ExpectedSchedulerPort ([int]$env:SCHEDULER_HEALTH_PORT) `
+              -KeepBackup
+          )
+          $backupOutput | ForEach-Object { Write-Host $_ }
+          $receiptLines = @(
+            $backupOutput |
+              ForEach-Object { [string]$_ } |
+              Where-Object { $_ -like '{"status":"BACKUP_RESTORE_VERIFIED"*' }
+          )
+          if ($receiptLines.Count -ne 1) {
+            throw "Backup smoke did not emit exactly one verified receipt"
+          }
+          $receipt = $receiptLines[0] | ConvertFrom-Json
+
+          $checkpointRoot = Join-Path $PWD ".runtime/rp-a5-2-checkpoint"
+          $checkpointArchive = Join-Path $PWD ".runtime/rp-a5-2-checkpoint.tar"
+          if ((Test-Path -LiteralPath $checkpointRoot) -or (Test-Path -LiteralPath $checkpointArchive)) {
+            throw "RP-A5 checkpoint target unexpectedly exists"
+          }
+          New-Item -ItemType Directory -Path $checkpointRoot | Out-Null
+          git archive --format=tar --output=$checkpointArchive rp-a5-2
+          if ($LASTEXITCODE -ne 0) { throw "Could not export immutable rp-a5-2" }
+          tar -xf $checkpointArchive -C $checkpointRoot
+          if ($LASTEXITCODE -ne 0) { throw "Could not extract immutable rp-a5-2" }
+
+          ./scripts/b5_a5_rollback_drill.ps1 `
+            -EnvFile (Resolve-Path .env.ci) `
+            -ProjectName $env:COMPOSE_PROJECT_NAME `
+            -ExpectedApiImage $env:PCR_API_IMAGE `
+            -ExpectedSchedulerImage $env:PCR_SCHEDULER_IMAGE `
+            -ExpectedApiPort ([int]$env:API_PORT) `
+            -ExpectedWebPort ([int]$env:WEB_PORT) `
+            -ExpectedSchedulerPort ([int]$env:SCHEDULER_HEALTH_PORT) `
+            -A5CheckpointRoot $checkpointRoot `
+            -VerifiedBackupPath $receipt.path `
+            -VerifiedBackupSha256 $receipt.sha256
       - name: Capture container state
         if: always()
         run: |
-          docker compose -f infra/compose.yml ps --all
-          docker compose -f infra/compose.yml logs --no-color > compose.log
+          docker compose --env-file .env.ci --project-name "$COMPOSE_PROJECT_NAME" -f infra/compose.yml ps --all
+          docker compose --env-file .env.ci --project-name "$COMPOSE_PROJECT_NAME" -f infra/compose.yml logs --no-color > compose.log
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
@@ -166,4 +228,4 @@ jobs:
           retention-days: 7
       - name: Stop stack and remove CI volumes
         if: always()
-        run: docker compose -f infra/compose.yml down --volumes --remove-orphans
+        run: docker compose --env-file .env.ci --project-name "$COMPOSE_PROJECT_NAME" -f infra/compose.yml down --volumes --remove-orphans

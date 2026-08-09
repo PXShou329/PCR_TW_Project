@@ -1,6 +1,6 @@
 {
- "generated_date": "2026-08-09",
- "release_date": "2026-08-02",
+ "generated_date": "2026-08-10",
+ "release_date": "2026-08-09",
  "project_version": "v1.5",
  "mode": "PRE_SUITE",
  "files": 44,
@@ -14,7 +14,7 @@
   "validation_config.json"
  ],
  "tier": {
-  "OFFICIAL": 73,
+  "OFFICIAL": 82,
   "MAJOR_GUIDE": 10,
   "SINGLE_PLAYER_REPORT": 21,
   "MULTI_PLAYER_REPORT": 5,
@@ -22,22 +22,22 @@
   "UNKNOWN": 3
  },
  "evc": {
-  "A": 73,
+  "A": 82,
   "D": 40
  },
  "cc": {
-  "A": 66,
+  "A": 75,
   "D": 35,
   "C": 2,
   "B": 25
  },
  "ct": {
-  "SOURCE_FACT": 83,
+  "SOURCE_FACT": 92,
   "DERIVED_CALCULATION": 6,
   "ANALYTICAL_JUDGMENT": 39
  },
- "claims": 128,
- "evidence": 113,
+ "claims": 137,
+ "evidence": 122,
  "fixtures": 37,
  "public_covered": 41,
  "anchors_n": 8,
@@ -95,9 +95,9 @@
   }
  },
  "timeline_rows": 2,
- "checks": 154,
+ "checks": 156,
  "fail": 0,
- "warn": 24,
+ "warn": 22,
  "exec_rows": 0,
  "gate": {
   "pve_verified": 2,
@@ -109,7 +109,7 @@
   "gate_a": false,
   "gate_b": false,
   "gate_c": false,
-  "blocking_c": 16
+  "blocking_c": 14
  },
- "blocking_gate_c_warnings": 16
+ "blocking_gate_c_warnings": 14
 }

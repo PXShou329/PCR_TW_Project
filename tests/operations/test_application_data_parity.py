@@ -66,6 +66,10 @@ def test_missing_required_response_metadata_fails_structural_verification(
             "missing required PVP path: /api/v1/pvp/characters",
         ),
         (
+            lambda document: document["paths"].pop("/api/v1/gacha/timeline"),
+            "missing required Gacha path: /api/v1/gacha/timeline",
+        ),
+        (
             lambda document: document["paths"]["/api/v1/pvp/counters"].update(
                 {"post": deepcopy(document["paths"]["/api/v1/pvp/counters"]["get"])}
             ),
@@ -121,6 +125,81 @@ def test_pvp_route_with_wrong_envelope_data_schema_fails_closed(
     assert "APPLICATION_GATE_D_STATUS=STRUCTURAL_FAILED" in output.out
 
 
+@pytest.mark.parametrize(
+    ("path", "expected_schema"),
+    [
+        ("/api/v1/gacha/timeline", "GachaTimelineEventData"),
+        ("/api/v1/gacha/community-sources", "GachaCommunitySourceData"),
+    ],
+)
+def test_gacha_route_with_wrong_envelope_data_schema_fails_closed(
+    live_openapi: dict,
+    current_stats: dict,
+    capsys: pytest.CaptureFixture[str],
+    path: str,
+    expected_schema: str,
+) -> None:
+    drifted = deepcopy(live_openapi)
+    response_schema = drifted["paths"][path]["get"]["responses"]["200"]["content"][
+        "application/json"
+    ]["schema"]
+    response_schema["$ref"] = "#/components/schemas/Envelope_BaselineData_"
+
+    result = verifier.main(
+        [],
+        openapi_loader=lambda: drifted,
+        stats_loader=lambda: current_stats,
+    )
+
+    output = capsys.readouterr()
+    assert result == 1
+    assert f"{path}: GET 200 data must be list[{expected_schema}]" in output.err
+    assert "APPLICATION_GATE_D_STATUS=STRUCTURAL_FAILED" in output.out
+
+
+@pytest.mark.parametrize(
+    ("mutate", "expected_error"),
+    [
+        (
+            lambda schema: schema["required"].remove("limited_claim_id"),
+            "GachaTimelineEventData limited provenance is not required: "
+            "limited_claim_id",
+        ),
+        (
+            lambda schema: schema["properties"].pop("limited_claim_id"),
+            "GachaTimelineEventData missing limited provenance property: "
+            "limited_claim_id",
+        ),
+        (
+            lambda schema: schema["properties"].update(
+                {"limited_claim_id": {"type": "string"}}
+            ),
+            "GachaTimelineEventData.limited_claim_id must be nullable",
+        ),
+    ],
+)
+def test_gacha_limited_provenance_contract_fails_closed(
+    live_openapi: dict,
+    current_stats: dict,
+    capsys: pytest.CaptureFixture[str],
+    mutate: Callable[[dict], object],
+    expected_error: str,
+) -> None:
+    drifted = deepcopy(live_openapi)
+    mutate(drifted["components"]["schemas"]["GachaTimelineEventData"])
+
+    result = verifier.main(
+        [],
+        openapi_loader=lambda: drifted,
+        stats_loader=lambda: current_stats,
+    )
+
+    output = capsys.readouterr()
+    assert result == 1
+    assert expected_error in output.err
+    assert "APPLICATION_GATE_D_STATUS=STRUCTURAL_FAILED" in output.out
+
+
 def test_admin_is_out_of_scope_and_allowlisted_compute_post_is_read_only(
     live_openapi: dict,
     current_stats: dict,
@@ -143,6 +222,31 @@ def test_admin_is_out_of_scope_and_allowlisted_compute_post_is_read_only(
     assert "APPLICATION_DATA_PARITY_STRUCTURAL_OK" in output.out
     assert "ADMIN_AUTHORIZATION=NOT_RUN" in output.out
     assert "APPLICATION_GATE_D_STATUS=BLOCKED_BY_DATA_GATES" in output.out
+
+
+def test_personal_gacha_post_is_not_compute_allowlisted(
+    live_openapi: dict,
+    current_stats: dict,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    expanded = deepcopy(live_openapi)
+    expanded["paths"]["/api/v1/gacha/gem-scenario"] = {
+        "post": deepcopy(expanded["paths"]["/api/v1/gacha/timeline"]["get"])
+    }
+
+    result = verifier.main(
+        [],
+        openapi_loader=lambda: expanded,
+        stats_loader=lambda: current_stats,
+    )
+
+    output = capsys.readouterr()
+    assert result == 1
+    assert (
+        "/api/v1/gacha/gem-scenario: public write method is forbidden: POST"
+        in output.err
+    )
+    assert "APPLICATION_GATE_D_STATUS=STRUCTURAL_FAILED" in output.out
 
 
 def test_require_pass_exits_one_while_data_gates_are_blocked(

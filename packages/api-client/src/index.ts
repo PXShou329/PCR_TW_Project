@@ -6,6 +6,8 @@ import type {
   Baseline,
   Claim,
   Evidence,
+  GachaCommunitySource,
+  GachaTimelineEvent,
   PvpCharacter,
   PvpCounter,
   StageDetail,
@@ -70,6 +72,10 @@ export function createApiClient({ baseUrl, fetchImpl = fetch }: ApiClientOptions
       get<Evidence>(`/api/v1/evidence/${encodeURIComponent(evidenceId)}`),
     getClaim: (claimId: string) =>
       get<Claim>(`/api/v1/claims/${encodeURIComponent(claimId)}`),
+    getGachaTimeline: () =>
+      get<GachaTimelineEvent[]>("/api/v1/gacha/timeline"),
+    getGachaCommunitySources: () =>
+      get<GachaCommunitySource[]>("/api/v1/gacha/community-sources"),
     getPvpCharacters: () => get<PvpCharacter[]>("/api/v1/pvp/characters"),
     getPvpCounters: (defenseSignature?: string) => {
       const query = defenseSignature

@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import csv
+import calendar
 import hashlib
 import io
 import json
+import re
 from dataclasses import dataclass, replace
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -25,6 +27,11 @@ from pcr_database.models import (
     Claim,
     ClaimEvidence,
     Evidence,
+    GachaCommunitySource,
+    GachaTimelineClaim,
+    GachaTimelineCommunitySource,
+    GachaTimelineEvent,
+    GachaTimelineEvidence,
     CoreRevision,
     ImportRun,
     MaterializationState,
@@ -40,6 +47,8 @@ from pcr_database.models import (
     arena_formation_signature,
 )
 from pcr_database.materialization import (
+    ARENA_MATERIALIZATION_MANIFEST_VERSION,
+    ARENA_MATERIALIZATION_SERVING_MODELS,
     LEGACY_MATERIALIZATION_MANIFEST_VERSION,
     LEGACY_SERVING_MODELS,
     build_materialization_manifest,
@@ -51,6 +60,7 @@ from pcr_pipeline.research_core_snapshot import (
     RP_A2_MANIFEST_SHA256,
     RP_A3_MANIFEST_SHA256,
     RP_A4_MANIFEST_SHA256,
+    RP_A5_MANIFEST_SHA256,
     ResearchCoreSnapshot,
     assert_materialized_snapshot,
     finalize_materialized_snapshot,
@@ -62,12 +72,13 @@ from pcr_pipeline.research_core_snapshot import (
 # Compatibility identifier for the original B0 vertical-slice API.  The typed
 # projection itself is no longer restricted to this guide.
 TARGET_GUIDE_ID = "TW_DEEP_FIRE_08_10_20260802"
-APPLICATION_VERSION = "3.0.0-a5"
+APPLICATION_VERSION = "3.0.0-b5"
 CANONICAL_SOURCE = "research_core_file_ssot"
 IMPORT_LOCK_KEY = 0x5043524231
 FULL_PVE_PROJECTION = "pve_18_24_25_26_27_closure_v2"
 LEGACY_FIRE_PROJECTION = "fire_8_10_18_24_25_26_27_closure_v1"
 FULL_STRATEGY_PROJECTION = "strategy_18_24_25_26_27_39_closure_v3"
+FULL_PLATFORM_PROJECTION = "strategy_18_24_25_26_27_39_41_45_closure_v4"
 BORROWED_STATE_SEMANTICS_FIELD = "borrowed_state_semantics"
 BORROWED_STATE_TRISTATE_V1 = "source_truth_tristate_v1"
 BORROWED_STATE_LEGACY_FALSE_V1 = "legacy_blank_false_v1"
@@ -81,7 +92,8 @@ CHECKPOINT_LINEAGE_ORDER = {
     RP_A2_MANIFEST_SHA256: 2,
     RP_A3_MANIFEST_SHA256: 3,
     RP_A4_MANIFEST_SHA256: 4,
-    EXPECTED_MANIFEST_SHA256: 5,
+    RP_A5_MANIFEST_SHA256: 5,
+    EXPECTED_MANIFEST_SHA256: 6,
 }
 # rp-b1-1 / rp-a2 raw tree.  Its historical ImportRun materialized only the
 # Fire 8-10 vertical slice.  Keeping this identity code-owned makes a clean
@@ -103,6 +115,8 @@ B0_AUDITED_EVIDENCE_HOSTS = frozenset(
         "www.nicozon.net",
         "www.princessconnect.so-net.tw",
         "www.youtube.com",
+        "youtube.com",
+        "x.com",
     }
 )
 
@@ -112,6 +126,8 @@ PVE_TEAMS_FILE = "25_PVE_TEAM_REGISTRY.csv"
 PVE_TIMELINES_FILE = "26_PVE_OPERATION_TIMELINES.csv"
 PVE_TIMELINE_STEPS_FILE = "27_PVE_TIMELINE_STEPS.csv"
 ARENA_COUNTERS_FILE = "39_ARENA_COUNTER_REGISTRY.csv"
+GACHA_TIMELINE_FILE = "41_GACHA_TIMELINE.csv"
+GACHA_COMMUNITY_FILE = "45_GACHA_COMMUNITY_SOURCE_INDEX.csv"
 EVIDENCE_FILE = "92_EVIDENCE_LEDGER.csv"
 CLAIMS_FILE = "93_CLAIM_REGISTER.csv"
 STATS_FILE = "tools/stats.json"
@@ -123,6 +139,8 @@ SOURCE_FILES = (
     PVE_TIMELINES_FILE,
     PVE_TIMELINE_STEPS_FILE,
     ARENA_COUNTERS_FILE,
+    GACHA_TIMELINE_FILE,
+    GACHA_COMMUNITY_FILE,
     EVIDENCE_FILE,
     CLAIMS_FILE,
     STATS_FILE,
@@ -215,6 +233,23 @@ ARENA_ENVIRONMENT_MATCHES = frozenset(
 )
 ARENA_REQUIRED_UPGRADE_CHECKS = frozenset(
     {"PASS", "FAIL", "UNKNOWN", "NOT_APPLICABLE"}
+)
+
+GACHA_FORECAST_METHODS = frozenset(
+    {"MODEL_ONLY", "MODEL_PLUS_COMMUNITY", "OFFICIAL_OVERRIDE"}
+)
+GACHA_MATURITIES = frozenset({"MATURE", "RESEARCH"})
+GACHA_LIMITED_STATES = {"是": "YES", "否": "NO", "YES": "YES", "NO": "NO", "UNKNOWN": "UNKNOWN"}
+GACHA_COMMUNITY_SOURCE_TYPES = frozenset(
+    {"MAINTAINED_TABLE", "FORUM_TIMELINE", "CREATOR_ANALYSIS", "VIDEO_SERIES"}
+)
+GACHA_COMMUNITY_UPDATE_STATUSES = frozenset(
+    {"PENDING_FETCH", "CHECKED", "STALE"}
+)
+GACHA_CONFIDENCE_CAPS = frozenset({"C", "D", "E"})
+_YEAR_MONTH = re.compile(r"^[0-9]{4}-(0[1-9]|1[0-2])$")
+_YEAR_MONTH_DAY = re.compile(
+    r"^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$"
 )
 
 TIMELINE_OPERATION_MODES = frozenset(
@@ -363,6 +398,11 @@ class FixtureClosure:
     arena_rows: tuple[dict[str, str], ...]
     arena_evidence_ids_by_counter: dict[str, tuple[str, ...]]
     arena_claim_ids_by_counter: dict[str, tuple[str, ...]]
+    gacha_events: tuple[dict[str, str], ...]
+    gacha_community_sources: tuple[dict[str, str], ...]
+    gacha_evidence_ids_by_event: dict[str, tuple[str, ...]]
+    gacha_claim_ids_by_event: dict[str, tuple[str, ...]]
+    gacha_community_source_ids_by_event: dict[str, tuple[str, ...]]
     stage_evidence_ids_by_guide: dict[str, tuple[str, ...]]
     stage_claim_ids_by_guide: dict[str, tuple[str, ...]]
     team_evidence_ids: dict[str, tuple[str, ...]]
@@ -985,6 +1025,378 @@ def _validate_arena_rows(
     )
 
 
+def _gacha_tw_name(value: str) -> str | None:
+    normalized = value.strip()
+    if normalized in {"", "—", "-", "UNKNOWN", "【待查證】"}:
+        return None
+    return normalized
+
+
+def _gacha_limited_status(value: str, *, event_id: str) -> str:
+    normalized = value.strip()
+    try:
+        return GACHA_LIMITED_STATES[normalized]
+    except KeyError as exc:
+        raise FixtureValidationError(
+            f"{event_id}.limited must be YES/NO/UNKNOWN source truth"
+        ) from exc
+
+
+def _gacha_community_count(value: str, *, event_id: str) -> int:
+    normalized = value.strip()
+    if not normalized:
+        return 0
+    parsed = _parse_int(
+        normalized,
+        field=f"{event_id}.community_source_count",
+    )
+    if parsed is None:  # pragma: no cover - _parse_int is total here
+        raise FixtureValidationError(f"{event_id}.community_source_count is invalid")
+    return parsed
+
+
+def _gacha_coverage_bound(
+    value: str,
+    *,
+    field: str,
+    upper: bool,
+) -> date:
+    if _YEAR_MONTH.fullmatch(value):
+        year, month = (int(part) for part in value.split("-"))
+        day = calendar.monthrange(year, month)[1] if upper else 1
+        return date(year, month, day)
+    if _YEAR_MONTH_DAY.fullmatch(value):
+        try:
+            return date.fromisoformat(value)
+        except ValueError as exc:
+            raise FixtureValidationError(f"{field} is not a calendar date") from exc
+    raise FixtureValidationError(f"{field} must use YYYY-MM or YYYY-MM-DD")
+
+
+def _has_direct_official_gacha_claim(
+    designated_claim_id: str,
+    *,
+    server: str,
+    evidence_ids: tuple[str, ...],
+    claim_ids: tuple[str, ...],
+    evidence_by_id: dict[str, dict[str, str]],
+    claims_by_id: dict[str, dict[str, str]],
+) -> bool:
+    """Return whether one row-local Claim/Evidence pair proves an official fact."""
+
+    if designated_claim_id not in claim_ids:
+        return False
+    claim = claims_by_id.get(designated_claim_id)
+    if claim is None or (
+        claim["status"] != "ACTIVE"
+        or claim["module"] != "gacha"
+        or claim["server"] != server
+        or claim["claim_type"] != "SOURCE_FACT"
+        or claim["claim_confidence"] != "A"
+    ):
+        return False
+    claim_evidence_ids = set(_split_ids(claim["evidence_ids"]))
+    return any(
+        evidence_id in claim_evidence_ids
+        and evidence_by_id[evidence_id]["status"] == "ACTIVE"
+        and evidence_by_id[evidence_id]["module"] == "gacha"
+        and evidence_by_id[evidence_id]["server"] == server
+        and evidence_by_id[evidence_id]["source_tier"] == "OFFICIAL"
+        and evidence_by_id[evidence_id]["evidence_confidence"] == "A"
+        and evidence_by_id[evidence_id]["claim_id"].strip() == designated_claim_id
+        for evidence_id in evidence_ids
+    )
+
+
+def _validate_gacha_closure(
+    events: tuple[dict[str, str], ...],
+    community_sources: tuple[dict[str, str], ...],
+    *,
+    evidence_by_id: dict[str, dict[str, str]],
+    claims_by_id: dict[str, dict[str, str]],
+) -> tuple[
+    tuple[dict[str, str], ...],
+    tuple[dict[str, str], ...],
+    dict[str, tuple[str, ...]],
+    dict[str, tuple[str, ...]],
+    dict[str, tuple[str, ...]],
+]:
+    community_by_id = {row["source_id"]: row for row in community_sources}
+    for row in community_sources:
+        source_id = row["source_id"]
+        if not source_id:
+            raise FixtureValidationError("Gacha community source_id must be non-empty")
+        if row["source_type"] not in GACHA_COMMUNITY_SOURCE_TYPES:
+            raise FixtureValidationError(f"{source_id}.source_type is invalid")
+        if row["update_status"] not in GACHA_COMMUNITY_UPDATE_STATUSES:
+            raise FixtureValidationError(f"{source_id}.update_status is invalid")
+        if row["confidence_cap"] not in GACHA_CONFIDENCE_CAPS:
+            raise FixtureValidationError(f"{source_id}.confidence_cap is invalid")
+        parsed_url = urlsplit(row["url"].strip())
+        if (
+            parsed_url.scheme.lower() != "https"
+            or (parsed_url.hostname or "").lower() not in B0_AUDITED_EVIDENCE_HOSTS
+            or parsed_url.username is not None
+            or parsed_url.password is not None
+        ):
+            raise FixtureValidationError(
+                f"{source_id}.url is not an audited HTTPS source"
+            )
+        _parse_date(
+            row["last_seen_update"],
+            field=f"{source_id}.last_seen_update",
+        )
+        _parse_date(
+            row["last_checked"],
+            field=f"{source_id}.last_checked",
+            required=True,
+        )
+        coverage_start = row["coverage_start"].strip()
+        coverage_end = row["coverage_end"].strip()
+        if bool(coverage_start) != bool(coverage_end):
+            raise FixtureValidationError(f"{source_id} coverage range must be paired")
+        if coverage_start:
+            parsed_coverage_start = _gacha_coverage_bound(
+                coverage_start,
+                field=f"{source_id}.coverage_start",
+                upper=False,
+            )
+            parsed_coverage_end = _gacha_coverage_bound(
+                coverage_end,
+                field=f"{source_id}.coverage_end",
+                upper=True,
+            )
+            if parsed_coverage_start > parsed_coverage_end:
+                raise FixtureValidationError(
+                    f"{source_id} coverage range is invalid"
+                )
+
+    evidence_ids_by_event: dict[str, tuple[str, ...]] = {}
+    claim_ids_by_event: dict[str, tuple[str, ...]] = {}
+    community_ids_by_event: dict[str, tuple[str, ...]] = {}
+    for row in events:
+        event_id = row["event_id"]
+        if not event_id or not row["status"].strip():
+            raise FixtureValidationError("Gacha event id/status must be non-empty")
+        if row["forecast_method"] not in GACHA_FORECAST_METHODS:
+            raise FixtureValidationError(f"{event_id}.forecast_method is invalid")
+        if row["maturity"] not in GACHA_MATURITIES:
+            raise FixtureValidationError(f"{event_id}.maturity is invalid")
+        limited_status = _gacha_limited_status(row["limited"], event_id=event_id)
+        jp_date = _parse_date(row["jp_date"], field=f"{event_id}.jp_date", required=True)
+        model_start = _parse_date(
+            row["model_estimate_start"],
+            field=f"{event_id}.model_estimate_start",
+            required=True,
+        )
+        model_end = _parse_date(
+            row["model_estimate_end"],
+            field=f"{event_id}.model_estimate_end",
+            required=True,
+        )
+        tw_start = _parse_date(
+            row["tw_estimate_start"],
+            field=f"{event_id}.tw_estimate_start",
+            required=True,
+        )
+        tw_end = _parse_date(
+            row["tw_estimate_end"],
+            field=f"{event_id}.tw_estimate_end",
+            required=True,
+        )
+        community_start = _parse_date(
+            row["community_estimate_start"],
+            field=f"{event_id}.community_estimate_start",
+        )
+        community_end = _parse_date(
+            row["community_estimate_end"],
+            field=f"{event_id}.community_estimate_end",
+        )
+        if (
+            jp_date is None
+            or model_start is None
+            or model_end is None
+            or tw_start is None
+            or tw_end is None
+            or model_start > model_end
+            or tw_start > tw_end
+            or (community_start is None) != (community_end is None)
+            or (
+                community_start is not None
+                and community_end is not None
+                and community_start > community_end
+            )
+        ):
+            raise FixtureValidationError(f"{event_id} forecast date range is invalid")
+        _parse_date(
+            row["last_verified"],
+            field=f"{event_id}.last_verified",
+            required=True,
+        )
+        _parse_date(
+            row["last_review_due"],
+            field=f"{event_id}.last_review_due",
+            required=True,
+        )
+        _parse_date(
+            row["community_last_checked"],
+            field=f"{event_id}.community_last_checked",
+        )
+        anchor_count = _parse_int(
+            row["anchor_count"], field=f"{event_id}.anchor_count", positive=True
+        )
+        if anchor_count is None:  # pragma: no cover - _parse_int is total here
+            raise FixtureValidationError(f"{event_id}.anchor_count is invalid")
+
+        evidence_ids = _split_ids(row["evidence_ids"])
+        claim_ids = _split_ids(row["claim_ids"])
+        community_ids = _split_ids(row["community_source_ids"])
+        if (
+            not evidence_ids
+            or not claim_ids
+            or len(evidence_ids) != len(set(evidence_ids))
+            or len(claim_ids) != len(set(claim_ids))
+            or len(community_ids) != len(set(community_ids))
+        ):
+            raise FixtureValidationError(
+                f"{event_id} Gacha Evidence/Claim/source ids must be distinct"
+            )
+        _require_ids(evidence_ids, evidence_by_id, relation=f"{event_id} evidence_ids")
+        _require_ids(claim_ids, claims_by_id, relation=f"{event_id} claim_ids")
+        _require_ids(
+            community_ids,
+            community_by_id,
+            relation=f"{event_id} community_source_ids",
+        )
+        if any(
+            evidence_by_id[evidence_id]["status"] != "ACTIVE"
+            or evidence_by_id[evidence_id]["module"] != "gacha"
+            for evidence_id in evidence_ids
+        ) or any(
+            claims_by_id[claim_id]["status"] != "ACTIVE"
+            or claims_by_id[claim_id]["module"] != "gacha"
+            for claim_id in claim_ids
+        ):
+            raise FixtureValidationError(
+                f"{event_id} Gacha Evidence/Claim closure is not ACTIVE gacha data"
+            )
+        if any(
+            evidence_by_id[evidence_id]["claim_id"].strip() not in claim_ids
+            for evidence_id in evidence_ids
+        ):
+            raise FixtureValidationError(
+                f"{event_id} Gacha Evidence/Claim closure is inconsistent"
+            )
+        limited_claim_id = row["limited_claim_id"].strip()
+        if limited_status == "UNKNOWN":
+            if limited_claim_id:
+                raise FixtureValidationError(
+                    f"{event_id}.limited_claim_id must be empty when limited is UNKNOWN"
+                )
+        elif not limited_claim_id or not _has_direct_official_gacha_claim(
+            limited_claim_id,
+            server="JP",
+            evidence_ids=evidence_ids,
+            claim_ids=claim_ids,
+            evidence_by_id=evidence_by_id,
+            claims_by_id=claims_by_id,
+        ):
+            raise FixtureValidationError(
+                f"{event_id}.limited lacks designated ACTIVE JP OFFICIAL/A provenance"
+            )
+        tw_name = _gacha_tw_name(row["tw_temp_name"])
+        if tw_name is not None and not any(
+            evidence_by_id[evidence_id]["server"] == "TW"
+            and evidence_by_id[evidence_id]["source_tier"] == "OFFICIAL"
+            and evidence_by_id[evidence_id]["evidence_confidence"] == "A"
+            and evidence_id in _split_ids(claims_by_id[claim_id]["evidence_ids"])
+            and _has_direct_official_gacha_claim(
+                claim_id,
+                server="TW",
+                evidence_ids=evidence_ids,
+                claim_ids=claim_ids,
+                evidence_by_id=evidence_by_id,
+                claims_by_id=claims_by_id,
+            )
+            and (
+                tw_name in evidence_by_id[evidence_id]["claim_summary"]
+                or tw_name in claims_by_id[claim_id]["claim_text"]
+            )
+            for evidence_id in evidence_ids
+            for claim_id in (evidence_by_id[evidence_id]["claim_id"].strip(),)
+        ):
+            raise FixtureValidationError(
+                f"{event_id}.tw_temp_name lacks direct ACTIVE TW OFFICIAL/A support"
+            )
+
+        community_count = _gacha_community_count(
+            row["community_source_count"], event_id=event_id
+        )
+        if community_count != len(community_ids):
+            raise FixtureValidationError(
+                f"{event_id}.community_source_count differs from linked sources"
+            )
+        method = row["forecast_method"]
+        if method == "OFFICIAL_OVERRIDE" and not any(
+            _has_direct_official_gacha_claim(
+                claim_id,
+                server="TW",
+                evidence_ids=evidence_ids,
+                claim_ids=claim_ids,
+                evidence_by_id=evidence_by_id,
+                claims_by_id=claims_by_id,
+            )
+            for claim_id in claim_ids
+        ):
+            raise FixtureValidationError(
+                f"{event_id} OFFICIAL_OVERRIDE lacks direct ACTIVE TW OFFICIAL/A provenance"
+            )
+        if method == "MODEL_ONLY" and (
+            tw_start != model_start
+            or tw_end != model_end
+            or community_count != 0
+            or community_start is not None
+            or community_end is not None
+        ):
+            raise FixtureValidationError(f"{event_id} MODEL_ONLY closure is invalid")
+        if method == "MODEL_PLUS_COMMUNITY" and (
+            community_start is None
+            or community_end is None
+            or community_count == 0
+            or tw_start > min(model_start, community_start)
+            or tw_end < max(model_end, community_end)
+        ):
+            raise FixtureValidationError(
+                f"{event_id} MODEL_PLUS_COMMUNITY closure is invalid"
+            )
+        if row["maturity"] == "RESEARCH":
+            if any(
+                row[field] != "NOT_EVALUATED"
+                for field in (
+                    "arena_value",
+                    "p_arena_value",
+                    "pve_value",
+                    "clan_value",
+                    "relative_priority",
+                )
+            ) or row["future_upgrade"] not in {"UNKNOWN", "NOT_EVALUATED"}:
+                raise FixtureValidationError(
+                    f"{event_id} RESEARCH row must remain NOT_EVALUATED/UNKNOWN"
+                )
+
+        evidence_ids_by_event[event_id] = evidence_ids
+        claim_ids_by_event[event_id] = claim_ids
+        community_ids_by_event[event_id] = community_ids
+
+    return (
+        tuple(sorted(events, key=lambda item: item["event_id"])),
+        tuple(sorted(community_sources, key=lambda item: item["source_id"])),
+        evidence_ids_by_event,
+        claim_ids_by_event,
+        community_ids_by_event,
+    )
+
+
 def _capture_source_files(root: Path) -> dict[str, bytes]:
     return {relative: (root / relative).read_bytes() for relative in SOURCE_FILES}
 
@@ -1463,7 +1875,11 @@ def _validate_timeline_closure(
     return timelines, steps
 
 
-def load_pve_closure(research_core: Path) -> FixtureClosure:
+def load_pve_closure(
+    research_core: Path,
+    *,
+    include_gacha: bool = True,
+) -> FixtureClosure:
     """Load the typed strategy projection from canonical files 18/24/25/26/27/39.
 
     Every guide and team is retained.  A guide's declared ``team_count`` is
@@ -1502,6 +1918,16 @@ def load_pve_closure(research_core: Path) -> FixtureClosure:
         ARENA_COUNTERS_FILE,
         source_contents[ARENA_COUNTERS_FILE],
         "counter_id",
+    )
+    gacha_events_all = _read_csv(
+        GACHA_TIMELINE_FILE,
+        source_contents[GACHA_TIMELINE_FILE],
+        "event_id",
+    )
+    gacha_community_sources_all = _read_csv(
+        GACHA_COMMUNITY_FILE,
+        source_contents[GACHA_COMMUNITY_FILE],
+        "source_id",
     )
     evidence_all = _read_csv(
         EVIDENCE_FILE, source_contents[EVIDENCE_FILE], "evidence_id"
@@ -1565,6 +1991,28 @@ def load_pve_closure(research_core: Path) -> FixtureClosure:
         evidence_by_id=evidence_by_id,
         claims_by_id=claims_by_id,
     )
+    if include_gacha:
+        (
+            gacha_events,
+            gacha_community_sources,
+            gacha_evidence_ids_by_event,
+            gacha_claim_ids_by_event,
+            gacha_community_source_ids_by_event,
+        ) = _validate_gacha_closure(
+            gacha_events_all,
+            gacha_community_sources_all,
+            evidence_by_id=evidence_by_id,
+            claims_by_id=claims_by_id,
+        )
+    else:
+        # Immutable v2/v3 checkpoints never materialized 41/45.  Their raw
+        # files remain part of the artifact fingerprint, but current Gacha
+        # serving rules must not rewrite or reject the historical projection.
+        gacha_events = ()
+        gacha_community_sources = ()
+        gacha_evidence_ids_by_event = {}
+        gacha_claim_ids_by_event = {}
+        gacha_community_source_ids_by_event = {}
 
     unknown_team_guides = sorted(
         {team["guide_id"] for team in teams} - guides_by_id.keys()
@@ -1702,6 +2150,8 @@ def load_pve_closure(research_core: Path) -> FixtureClosure:
         selected_evidence.update(ids)
     for ids in arena_evidence_ids_by_counter.values():
         selected_evidence.update(ids)
+    for ids in gacha_evidence_ids_by_event.values():
+        selected_evidence.update(ids)
     for character in characters:
         ids = _split_ids(character["source_evidence_ids"])
         _require_ids(ids, evidence_by_id, relation=f"{character['unit_key']} source_evidence_ids")
@@ -1711,6 +2161,8 @@ def load_pve_closure(research_core: Path) -> FixtureClosure:
     for ids in stage_claim_ids_by_guide.values():
         selected_claims.update(ids)
     for ids in arena_claim_ids_by_counter.values():
+        selected_claims.update(ids)
+    for ids in gacha_claim_ids_by_event.values():
         selected_claims.update(ids)
     dangling_claims: set[str] = set()
     changed = True
@@ -1771,6 +2223,11 @@ def load_pve_closure(research_core: Path) -> FixtureClosure:
         arena_rows=arena_rows,
         arena_evidence_ids_by_counter=arena_evidence_ids_by_counter,
         arena_claim_ids_by_counter=arena_claim_ids_by_counter,
+        gacha_events=gacha_events,
+        gacha_community_sources=gacha_community_sources,
+        gacha_evidence_ids_by_event=gacha_evidence_ids_by_event,
+        gacha_claim_ids_by_event=gacha_claim_ids_by_event,
+        gacha_community_source_ids_by_event=gacha_community_source_ids_by_event,
         stage_evidence_ids_by_guide=stage_evidence_ids_by_guide,
         stage_claim_ids_by_guide=stage_claim_ids_by_guide,
         team_evidence_ids=team_evidence_ids,
@@ -1866,6 +2323,11 @@ def _legacy_fire_projection(closure: FixtureClosure) -> FixtureClosure:
         arena_rows=(),
         arena_evidence_ids_by_counter={},
         arena_claim_ids_by_counter={},
+        gacha_events=(),
+        gacha_community_sources=(),
+        gacha_evidence_ids_by_event={},
+        gacha_claim_ids_by_event={},
+        gacha_community_source_ids_by_event={},
         stage_evidence_ids_by_guide={
             TARGET_GUIDE_ID: closure.stage_evidence_ids
         },
@@ -1919,6 +2381,42 @@ def _pve_only_projection(closure: FixtureClosure) -> FixtureClosure:
         arena_rows=(),
         arena_evidence_ids_by_counter={},
         arena_claim_ids_by_counter={},
+        gacha_events=(),
+        gacha_community_sources=(),
+        gacha_evidence_ids_by_event={},
+        gacha_claim_ids_by_event={},
+        gacha_community_source_ids_by_event={},
+    )
+
+
+def _strategy_without_gacha_projection(closure: FixtureClosure) -> FixtureClosure:
+    """Return the immutable Arena-era v3 typed closure."""
+
+    gacha_evidence_ids = {
+        evidence_id
+        for ids in closure.gacha_evidence_ids_by_event.values()
+        for evidence_id in ids
+    }
+    gacha_claim_ids = {
+        claim_id
+        for ids in closure.gacha_claim_ids_by_event.values()
+        for claim_id in ids
+    }
+    evidence = tuple(
+        row for row in closure.evidence if row["evidence_id"] not in gacha_evidence_ids
+    )
+    claims = tuple(
+        row for row in closure.claims if row["claim_id"] not in gacha_claim_ids
+    )
+    return replace(
+        closure,
+        evidence=evidence,
+        claims=claims,
+        gacha_events=(),
+        gacha_community_sources=(),
+        gacha_evidence_ids_by_event={},
+        gacha_claim_ids_by_event={},
+        gacha_community_source_ids_by_event={},
     )
 
 
@@ -2080,6 +2578,79 @@ def _arena_counter_values(
     }
 
 
+def _gacha_event_values(
+    row: dict[str, str],
+    *,
+    import_run_id: str,
+) -> dict[str, Any]:
+    event_id = row["event_id"]
+    return {
+        "event_id": event_id,
+        "source_server": "JP",
+        "target_server": "TW",
+        "jp_date": _parse_date(row["jp_date"], field=f"{event_id}.jp_date", required=True),
+        "model_estimate_start": _parse_date(row["model_estimate_start"], field=f"{event_id}.model_estimate_start", required=True),
+        "model_estimate_end": _parse_date(row["model_estimate_end"], field=f"{event_id}.model_estimate_end", required=True),
+        "tw_estimate_start": _parse_date(row["tw_estimate_start"], field=f"{event_id}.tw_estimate_start", required=True),
+        "tw_estimate_end": _parse_date(row["tw_estimate_end"], field=f"{event_id}.tw_estimate_end", required=True),
+        "forecast_method": row["forecast_method"],
+        "confidence": row["confidence"],
+        "character_name_jp": row["character_name_jp"],
+        "tw_name": _gacha_tw_name(row["tw_temp_name"]),
+        "pool_type": row["pool_type"],
+        "limited_status": _gacha_limited_status(row["limited"], event_id=event_id),
+        "limited_claim_id": row["limited_claim_id"].strip() or None,
+        "arena_value": row["arena_value"],
+        "p_arena_value": row["p_arena_value"],
+        "pve_value": row["pve_value"],
+        "clan_value": row["clan_value"],
+        "future_upgrade": row["future_upgrade"],
+        "relative_priority": row["relative_priority"],
+        "anchor_track": row["anchor_track"],
+        "anchor_count": _parse_int(row["anchor_count"], field=f"{event_id}.anchor_count", positive=True),
+        "forecast_basis": row["forecast_basis"],
+        "last_verified": _parse_date(row["last_verified"], field=f"{event_id}.last_verified", required=True),
+        "status": row["status"],
+        "maturity": row["maturity"],
+        "last_review_due": _parse_date(row["last_review_due"], field=f"{event_id}.last_review_due", required=True),
+        "community_estimate_start": _parse_date(row["community_estimate_start"], field=f"{event_id}.community_estimate_start"),
+        "community_estimate_end": _parse_date(row["community_estimate_end"], field=f"{event_id}.community_estimate_end"),
+        "community_order_consensus": row["community_order_consensus"],
+        "community_source_count": _gacha_community_count(row["community_source_count"], event_id=event_id),
+        "community_last_checked": _parse_date(row["community_last_checked"], field=f"{event_id}.community_last_checked"),
+        "community_disagreement": row["community_disagreement"],
+        "forecast_notes": row["forecast_notes"],
+        "source_payload": row,
+        "import_run_id": import_run_id,
+    }
+
+
+def _gacha_community_source_values(
+    row: dict[str, str],
+    *,
+    import_run_id: str,
+) -> dict[str, Any]:
+    source_id = row["source_id"]
+    return {
+        "source_id": source_id,
+        "title": row["title"],
+        "platform": row["platform"],
+        "author": row["author"],
+        "source_type": row["source_type"],
+        "url": row["url"],
+        "last_seen_update": _parse_date(row["last_seen_update"], field=f"{source_id}.last_seen_update"),
+        "coverage_start": row["coverage_start"].strip() or None,
+        "coverage_end": row["coverage_end"].strip() or None,
+        "update_status": row["update_status"],
+        "confidence_cap": row["confidence_cap"],
+        "usage": row["usage"],
+        "last_checked": _parse_date(row["last_checked"], field=f"{source_id}.last_checked", required=True),
+        "notes": row["notes"],
+        "source_payload": row,
+        "import_run_id": import_run_id,
+    }
+
+
 def _timeline_values(row: dict[str, str], *, import_run_id: str) -> dict[str, Any]:
     axis_id = row["source_axis_id"]
     return {
@@ -2174,7 +2745,7 @@ def _counts(closure: FixtureClosure, *, projection: str) -> dict[str, int]:
         "operation_timelines": len(closure.timelines),
         "timeline_steps": len(closure.timeline_steps),
     }
-    if projection == FULL_STRATEGY_PROJECTION:
+    if projection in {FULL_STRATEGY_PROJECTION, FULL_PLATFORM_PROJECTION}:
         defense_count = len(_arena_defense_specs(closure.arena_rows))
         counts.update(
             {
@@ -2189,6 +2760,23 @@ def _counts(closure: FixtureClosure, *, projection: str) -> dict[str, int]:
                 "arena_counter_claims": sum(
                     len(ids)
                     for ids in closure.arena_claim_ids_by_counter.values()
+                ),
+            }
+        )
+    if projection == FULL_PLATFORM_PROJECTION:
+        counts.update(
+            {
+                "gacha_timeline_events": len(closure.gacha_events),
+                "gacha_timeline_evidence": sum(
+                    len(ids) for ids in closure.gacha_evidence_ids_by_event.values()
+                ),
+                "gacha_timeline_claims": sum(
+                    len(ids) for ids in closure.gacha_claim_ids_by_event.values()
+                ),
+                "gacha_community_sources": len(closure.gacha_community_sources),
+                "gacha_timeline_community_sources": sum(
+                    len(ids)
+                    for ids in closure.gacha_community_source_ids_by_event.values()
                 ),
             }
         )
@@ -2208,6 +2796,14 @@ def _materialization_expectation(
             "tables": {model.__tablename__: {} for model in LEGACY_SERVING_MODELS},
         }
     if projection == FULL_STRATEGY_PROJECTION:
+        return {
+            "schema_version": ARENA_MATERIALIZATION_MANIFEST_VERSION,
+            "tables": {
+                model.__tablename__: {}
+                for model in ARENA_MATERIALIZATION_SERVING_MODELS
+            },
+        }
+    if projection == FULL_PLATFORM_PROJECTION:
         return None
     raise MirrorDriftError(f"unsupported typed projection: {projection}")
 
@@ -2452,6 +3048,92 @@ def _assert_materialized(
     if actual_counter_claims != expected_counter_claims:
         raise MirrorDriftError("idempotent fixture Arena counter Claim links drifted")
 
+    expected_gacha_event_ids = {row["event_id"] for row in closure.gacha_events}
+    actual_gacha_event_ids = set(
+        session.scalars(select(GachaTimelineEvent.event_id)).all()
+    )
+    if actual_gacha_event_ids != expected_gacha_event_ids:
+        raise MirrorDriftError("idempotent fixture Gacha event ids drifted")
+    for source_row in closure.gacha_events:
+        stored = session.get(GachaTimelineEvent, source_row["event_id"])
+        expected = _gacha_event_values(
+            source_row,
+            import_run_id=stored.import_run_id if stored else "",
+        )
+        if stored is None or any(
+            getattr(stored, name) != value for name, value in expected.items()
+        ):
+            raise MirrorDriftError(
+                f"idempotent fixture Gacha event {source_row['event_id']} drifted"
+            )
+
+    expected_community_ids = {
+        row["source_id"] for row in closure.gacha_community_sources
+    }
+    actual_community_ids = set(
+        session.scalars(select(GachaCommunitySource.source_id)).all()
+    )
+    if actual_community_ids != expected_community_ids:
+        raise MirrorDriftError("idempotent fixture Gacha community source ids drifted")
+    for source_row in closure.gacha_community_sources:
+        stored = session.get(GachaCommunitySource, source_row["source_id"])
+        expected = _gacha_community_source_values(
+            source_row,
+            import_run_id=stored.import_run_id if stored else "",
+        )
+        if stored is None or any(
+            getattr(stored, name) != value for name, value in expected.items()
+        ):
+            raise MirrorDriftError(
+                "idempotent fixture Gacha community source "
+                f"{source_row['source_id']} drifted"
+            )
+
+    expected_gacha_evidence = {
+        (event_id, evidence_id)
+        for event_id, evidence_ids in closure.gacha_evidence_ids_by_event.items()
+        for evidence_id in evidence_ids
+    }
+    actual_gacha_evidence = {
+        tuple(stored)
+        for stored in session.execute(
+            select(GachaTimelineEvidence.event_id, GachaTimelineEvidence.evidence_id)
+        ).all()
+    }
+    if actual_gacha_evidence != expected_gacha_evidence:
+        raise MirrorDriftError("idempotent fixture Gacha Evidence links drifted")
+
+    expected_gacha_claims = {
+        (event_id, claim_id)
+        for event_id, claim_ids in closure.gacha_claim_ids_by_event.items()
+        for claim_id in claim_ids
+    }
+    actual_gacha_claims = {
+        tuple(stored)
+        for stored in session.execute(
+            select(GachaTimelineClaim.event_id, GachaTimelineClaim.claim_id)
+        ).all()
+    }
+    if actual_gacha_claims != expected_gacha_claims:
+        raise MirrorDriftError("idempotent fixture Gacha Claim links drifted")
+
+    expected_gacha_community = {
+        (event_id, source_id)
+        for event_id, source_ids in closure.gacha_community_source_ids_by_event.items()
+        for source_id in source_ids
+    }
+    actual_gacha_community = {
+        tuple(stored)
+        for stored in session.execute(
+            select(
+                GachaTimelineCommunitySource.event_id,
+                GachaTimelineCommunitySource.source_id,
+            )
+        ).all()
+    }
+    if actual_gacha_community != expected_gacha_community:
+        raise MirrorDriftError("idempotent fixture Gacha community links drifted")
+
     expected_stage_evidence = {
         (guide_id, evidence_id)
         for guide_id, evidence_ids in closure.stage_evidence_ids_by_guide.items()
@@ -2549,6 +3231,11 @@ def _clear_serving_mirror(session: Session) -> None:
     """Remove only typed serving rows, in FK-safe order, inside the activation transaction."""
 
     for model in (
+        GachaTimelineCommunitySource,
+        GachaTimelineClaim,
+        GachaTimelineEvidence,
+        GachaTimelineEvent,
+        GachaCommunitySource,
         ArenaCounterClaim,
         ArenaCounterEvidence,
         ArenaCounterMember,
@@ -2677,6 +3364,7 @@ def _projection_from_manifest(manifest: dict[str, Any]) -> str:
 
     projection = manifest.get("projection")
     if projection in {
+        FULL_PLATFORM_PROJECTION,
         FULL_STRATEGY_PROJECTION,
         FULL_PVE_PROJECTION,
         LEGACY_FIRE_PROJECTION,
@@ -2715,8 +3403,10 @@ def _closure_for_projection(
     full_closure: FixtureClosure,
     projection: str,
 ) -> FixtureClosure:
-    if projection == FULL_STRATEGY_PROJECTION:
+    if projection == FULL_PLATFORM_PROJECTION:
         return full_closure
+    if projection == FULL_STRATEGY_PROJECTION:
+        return _strategy_without_gacha_projection(full_closure)
     if projection == FULL_PVE_PROJECTION:
         return _pve_only_projection(full_closure)
     if projection == LEGACY_FIRE_PROJECTION:
@@ -2742,7 +3432,16 @@ def import_pve_projection(
 
     # Keep the domain validator first so malformed selected facts retain precise
     # errors; a valid candidate must then also match the independently pinned full tree.
-    full_closure = load_pve_closure(research_core)
+    historical_pre_gacha_manifest = expected_manifest_sha256 in {
+        RP_A2_MANIFEST_SHA256,
+        RP_A3_MANIFEST_SHA256,
+        RP_A4_MANIFEST_SHA256,
+        RP_A5_MANIFEST_SHA256,
+    }
+    full_closure = load_pve_closure(
+        research_core,
+        include_gacha=not historical_pre_gacha_manifest,
+    )
     snapshot = load_research_core_snapshot(
         research_core,
         manifest_path,
@@ -2773,9 +3472,23 @@ def import_pve_projection(
                 LEGACY_FIRE_PROJECTION
                 if snapshot.revision_id in LEGACY_FIRE_REVISION_IDS
                 else (
-                    FULL_STRATEGY_PROJECTION
-                    if full_closure.arena_rows
-                    else FULL_PVE_PROJECTION
+                    FULL_PVE_PROJECTION
+                    if snapshot.manifest_sha256
+                    in {RP_A3_MANIFEST_SHA256, RP_A4_MANIFEST_SHA256}
+                    else (
+                        FULL_STRATEGY_PROJECTION
+                        if snapshot.manifest_sha256 == RP_A5_MANIFEST_SHA256
+                        else (
+                            FULL_PLATFORM_PROJECTION
+                            if full_closure.gacha_events
+                            or full_closure.gacha_community_sources
+                            else (
+                                FULL_STRATEGY_PROJECTION
+                                if full_closure.arena_rows
+                                else FULL_PVE_PROJECTION
+                            )
+                        )
+                    )
                 )
             )
         )
@@ -2941,6 +3654,43 @@ def import_pve_projection(
                     "import_run_id": run_id,
                 },
             )
+        session.flush()
+
+        for row in closure.gacha_community_sources:
+            _upsert(
+                session,
+                GachaCommunitySource,
+                row["source_id"],
+                _gacha_community_source_values(row, import_run_id=run_id),
+            )
+        for row in closure.gacha_events:
+            _upsert(
+                session,
+                GachaTimelineEvent,
+                row["event_id"],
+                _gacha_event_values(row, import_run_id=run_id),
+            )
+        session.flush()
+        for row in closure.gacha_events:
+            event_id = row["event_id"]
+            for evidence_id in closure.gacha_evidence_ids_by_event[event_id]:
+                session.add(
+                    GachaTimelineEvidence(
+                        event_id=event_id,
+                        evidence_id=evidence_id,
+                    )
+                )
+            for claim_id in closure.gacha_claim_ids_by_event[event_id]:
+                session.add(
+                    GachaTimelineClaim(event_id=event_id, claim_id=claim_id)
+                )
+            for source_id in closure.gacha_community_source_ids_by_event[event_id]:
+                session.add(
+                    GachaTimelineCommunitySource(
+                        event_id=event_id,
+                        source_id=source_id,
+                    )
+                )
         session.flush()
 
         for row in closure.characters:

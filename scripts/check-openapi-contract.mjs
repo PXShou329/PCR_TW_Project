@@ -63,6 +63,8 @@ const schemaToInterface = {
   BaselineData: "Baseline",
   ClaimData: "Claim",
   EvidenceData: "Evidence",
+  GachaCommunitySourceData: "GachaCommunitySource",
+  GachaTimelineEventData: "GachaTimelineEvent",
   ArenaCounterData: "PvpCounter",
   ArenaMemberData: "ArenaMember",
   PvpCharacterData: "PvpCharacter",

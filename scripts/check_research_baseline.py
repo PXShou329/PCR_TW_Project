@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the immutable RP-A5 research-core baseline in a disposable copy."""
+"""Run the immutable RP-B5-1 research-core baseline in a disposable copy."""
 
 from __future__ import annotations
 
@@ -25,8 +25,8 @@ from pcr_pipeline.research_core_snapshot import (  # noqa: E402
 )
 
 
-EXPECTED_MANIFEST_SHA256 = "1826c8493d40f71a6d0bb9096f57b92fe4e839d52bddf021b0c51e0186dcbda7"
-MANIFEST_PATH = Path(__file__).with_name("research_core_rp_a5_manifest.sha256")
+EXPECTED_MANIFEST_SHA256 = "e74814d6433ee327611f10322937bdfa9687b9887f139ba6e6158a291dd12989"
+MANIFEST_PATH = Path(__file__).with_name("research_core_rp_b5_1_manifest.sha256")
 MANIFEST_LINE = re.compile(r"^([0-9a-f]{64})  ([^\\]+(?:/[^\\]+)*)$")
 VALIDATOR_RUNTIME_PATHS = {
     "tools/reports/pre_suite.json",
@@ -49,8 +49,8 @@ VALIDATOR_RUNS = (
         ("tools/validate_project.py", "--mode", "PRE_SUITE", "--write"),
         0,
         (
-            "MODE=PRE_SUITE CHECKS=154 FAIL=0 WARN=24",
-            "GateA=False GateB=False GateC=False blk=16",
+            "MODE=PRE_SUITE CHECKS=156 FAIL=0 WARN=22",
+            "GateA=False GateB=False GateC=False blk=14",
             "canonical=Y",
         ),
     ),
@@ -59,8 +59,8 @@ VALIDATOR_RUNS = (
         ("tools/validate_project.py", "--mode", "PRE_SUITE"),
         0,
         (
-            "MODE=PRE_SUITE CHECKS=154 FAIL=0 WARN=24",
-            "GateA=False GateB=False GateC=False blk=16",
+            "MODE=PRE_SUITE CHECKS=156 FAIL=0 WARN=22",
+            "GateA=False GateB=False GateC=False blk=14",
             "canonical=Y",
         ),
     ),
@@ -69,8 +69,8 @@ VALIDATOR_RUNS = (
         ("tools/validate_project.py", "--mode", "OPERATIONAL"),
         0,
         (
-            "MODE=OPERATIONAL CHECKS=153 FAIL=0 WARN=23",
-            "GateA=False GateB=False GateC=False blk=16",
+            "MODE=OPERATIONAL CHECKS=155 FAIL=0 WARN=21",
+            "GateA=False GateB=False GateC=False blk=14",
             "canonical=N",
         ),
     ),
@@ -79,8 +79,8 @@ VALIDATOR_RUNS = (
         ("tools/validate_project.py", "--mode", "ARTIFACT_READY"),
         1,
         (
-            "MODE=ARTIFACT_READY CHECKS=156 FAIL=3 WARN=23",
-            "GateA=False GateB=False GateC=False blk=16",
+            "MODE=ARTIFACT_READY CHECKS=158 FAIL=3 WARN=21",
+            "GateA=False GateB=False GateC=False blk=14",
             "canonical=N",
             "ARTIFACT_READY 需 Gate A",
             "ARTIFACT_READY 需 Gate B",
@@ -98,13 +98,13 @@ def source_files(root: Path) -> list[Path]:
 def load_manifest() -> tuple[dict[str, str], list[str]]:
     errors: list[str] = []
     if not MANIFEST_PATH.is_file():
-        return {}, [f"missing RP-A5 manifest: {MANIFEST_PATH}"]
+        return {}, [f"missing RP-B5-1 manifest: {MANIFEST_PATH}"]
     lines = MANIFEST_PATH.read_text(encoding="utf-8").splitlines()
     canonical = ("\n".join(lines) + "\n").encode("utf-8")
     manifest_sha256 = hashlib.sha256(canonical).hexdigest()
     if manifest_sha256 != EXPECTED_MANIFEST_SHA256:
         errors.append(
-            "RP-A5 manifest digest mismatch "
+            "RP-B5-1 manifest digest mismatch "
             f"(expected {EXPECTED_MANIFEST_SHA256}, got {manifest_sha256})"
         )
     entries: dict[str, str] = {}
@@ -130,14 +130,14 @@ def verify_tree(root: Path) -> list[str]:
     expected_names = set(manifest)
     actual_names = set(actual_paths)
     for missing in sorted(expected_names - actual_names):
-        errors.append(f"RP-A5 file missing: {missing}")
+        errors.append(f"RP-B5-1 file missing: {missing}")
     for unexpected in sorted(actual_names - expected_names):
         errors.append(f"unexpected research-core file: {unexpected}")
     for relative in sorted(expected_names & actual_names):
         actual_digest = hashlib.sha256(actual_paths[relative].read_bytes()).hexdigest()
         if actual_digest != manifest[relative]:
             errors.append(
-                f"RP-A5 SHA mismatch: {relative} "
+                f"RP-B5-1 SHA mismatch: {relative} "
                 f"(expected {manifest[relative]}, got {actual_digest})"
             )
     return errors
@@ -200,7 +200,7 @@ def main() -> int:
             print(f"ERROR: {error}", file=sys.stderr)
         return 1
 
-    with tempfile.TemporaryDirectory(prefix="pcr-a5-baseline-") as temporary:
+    with tempfile.TemporaryDirectory(prefix="pcr-b5-1-baseline-") as temporary:
         project = Path(temporary) / "pcr_tw_project"
         shutil.copytree(original, project)
         for expected in VALIDATOR_RUNS:
@@ -214,7 +214,7 @@ def main() -> int:
             "MUTATION",
             ("tools/mutation_test.py",),
             0,
-            ("MUTATION_TESTS ALL_OK", "active_scenarios=103"),
+            ("MUTATION_TESTS ALL_OK", "active_scenarios=106"),
         )
         errors.extend(run(project, mutation))
         errors.extend(f"post-mutation tree: {error}" for error in verify_tree(project))
@@ -225,7 +225,7 @@ def main() -> int:
             print(f"- {error}", file=sys.stderr)
         return 1
     print(
-        "\nRESEARCH_BASELINE_OK | files=48 | mutation_scenarios=103 "
+        "\nRESEARCH_BASELINE_OK | files=48 | mutation_scenarios=106 "
         f"| manifest_sha256={EXPECTED_MANIFEST_SHA256}"
     )
     return 0

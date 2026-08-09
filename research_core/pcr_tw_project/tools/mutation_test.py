@@ -1229,5 +1229,52 @@ def m105(d):
 results.append(mutate("M105 Arena VERIFIED Offline Evidence Fallback", m105, "FAIL",
                       mode="PRE_SUITE",
                       target_fail="39：VERIFIED Arena 成熟 Evidence 皆須具 nonempty HTTPS hostname"))
+
+# M106: a RESEARCH row cannot smuggle an extraction recommendation through free text.
+def m106(d):
+    def fn(rows):
+        h = rows[0]
+        row = next(item for item in rows[1:] if item[h.index('maturity')] == 'RESEARCH')
+        row[h.index('relative_priority')] = '必抽'
+    rewrite_csv(P(d, '41_GACHA_TIMELINE.csv'), fn)
+results.append(mutate("M106 Gacha RESEARCH Priority Smuggling", m106, "FAIL",
+                      mode="PRE_SUITE",
+                      target_fail="ST85b：41 RESEARCH 不得夾帶抽取優先級"))
+
+# M107: a known limited flag cannot be asserted without a designated direct Claim closure.
+def m107(d):
+    def fn(rows):
+        h = rows[0]
+        row = next(item for item in rows[1:] if item[h.index('limited')] == 'UNKNOWN')
+        row[h.index('limited')] = '是'
+        row[h.index('limited_claim_id')] = ''
+    rewrite_csv(P(d, '41_GACHA_TIMELINE.csv'), fn)
+results.append(mutate("M107 Gacha Limited Without Provenance", m107, "FAIL",
+                      mode="PRE_SUITE",
+                      target_fail="ST85c：41 limited 必須具 JP OFFICIAL／A direct Claim closure"))
+
+# M108: a scalar-valid TW Claim plus a direct but non-OFFICIAL Evidence is not an override.
+def m108(d):
+    def timeline_fn(rows):
+        h = rows[0]
+        row = rows[1]
+        row[h.index('forecast_method')] = 'OFFICIAL_OVERRIDE'
+        row[h.index('claim_ids')] += ';CLM-TW-CURRENT-0809'
+        row[h.index('evidence_ids')] += ';ev120'
+    rewrite_csv(P(d, '41_GACHA_TIMELINE.csv'), timeline_fn)
+    def claim_fn(rows):
+        h = rows[0]
+        row = next(item for item in rows[1:] if item[h.index('claim_id')] == 'CLM-TW-CURRENT-0809')
+        row[h.index('module')] = 'gacha'
+    rewrite_csv(P(d, '93_CLAIM_REGISTER.csv'), claim_fn)
+    def evidence_fn(rows):
+        h = rows[0]
+        row = next(item for item in rows[1:] if item[h.index('evidence_id')] == 'ev120')
+        row[h.index('module')] = 'gacha'
+        row[h.index('source_tier')] = 'MAJOR_GUIDE'
+    rewrite_csv(P(d, '92_EVIDENCE_LEDGER.csv'), evidence_fn)
+results.append(mutate("M108 Gacha Official Override Weak Direct Evidence", m108, "FAIL",
+                      mode="PRE_SUITE",
+                      target_fail="ST85a：41 final interval method"))
 print('MUTATION_TESTS', 'ALL_OK' if all(results) else 'FAILED', f'| active_scenarios={len(results)}')
 sys.exit(0 if all(results) else 1)

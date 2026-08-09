@@ -74,6 +74,24 @@ ROOT = Path(__file__).resolve().parents[2]
             "TimelineStepData.action_type type differs",
             "NO_ACTION",
         ),
+        (
+            """export type GachaLimitedStatus = "YES" | "NO" | "UNKNOWN";""",
+            """export type GachaLimitedStatus = "YES" | "NO";""",
+            "GachaTimelineEventData.limited_status type differs",
+            "UNKNOWN",
+        ),
+        (
+            """export type GachaMaturity = "MATURE" | "RESEARCH";""",
+            """export type GachaMaturity = "MATURE";""",
+            "GachaTimelineEventData.maturity type differs",
+            "RESEARCH",
+        ),
+        (
+            """export type GachaCommunityConfidenceCap = "C" | "D" | "E";""",
+            """export type GachaCommunityConfidenceCap = "B" | "C" | "D" | "E";""",
+            "GachaCommunitySourceData.confidence_cap type differs",
+            "B",
+        ),
     ],
 )
 def test_contract_checker_rejects_enum_drift(

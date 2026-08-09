@@ -10,8 +10,8 @@ test("首頁如實顯示紅焰 8-10 的 VERIFIED 5/5", async ({ page }) => {
   await expect(stageCard).toContainText("已驗證通關");
   await expect(stageCard).toContainText("5/5");
   await expect(page.getByText("research_core_file_ssot")).toBeVisible();
-  await expect(page.locator(".baseline-card dl")).toContainText(/Evidence\s*64/);
-  await expect(page.locator(".baseline-card dl")).toContainText(/Claims\s*62/);
+  await expect(page.locator(".baseline-card dl")).toContainText(/Evidence\s*73/);
+  await expect(page.locator(".baseline-card dl")).toContainText(/Claims\s*69/);
   await expect(page.locator(".baseline-card dl")).toContainText(/來源軸\s*15/);
   await expect(page.locator(".baseline-card dl")).toContainText(/操作步驟\s*37/);
   await expect(page.getByRole("link", { name: "查看紅焰深域 8-10" })).toBeVisible();
@@ -151,6 +151,65 @@ test("隊伍頁拒絕與 guide_id 不符的路徑", async ({ page }) => {
 
   await expect(page.getByRole("heading", { name: "找不到這筆攻略資料" })).toBeVisible();
   await expect(page.getByText("平台不會自動建立不存在的隊伍或 Evidence")).toBeVisible();
+});
+
+test("Gacha 未來視從 typed timeline 到 Evidence Drawer 並揭露社群鮮度", async ({ page }) => {
+  await page.goto("/gacha");
+
+  await expect(page.getByRole("heading", { name: "抽卡未來視" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "模型是日期參考，不是個人抽卡指令" })).toBeVisible();
+  await expect(page.getByText("MATURE 2", { exact: true })).toBeVisible();
+  await expect(page.getByText("RESEARCH 3", { exact: true })).toBeVisible();
+  await expect(page.getByText("現行社群來源 2", { exact: true })).toBeVisible();
+  await expect(page.locator(".gacha-card")).toHaveCount(5);
+  await expect(page.locator('.gacha-card[data-maturity="MATURE"]')).toHaveCount(2);
+  await expect(page.locator('.gacha-card[data-maturity="RESEARCH"]')).toHaveCount(3);
+
+  const vampy = page.locator(".gacha-card").filter({ hasText: "ヴァンピィ（サマー）" });
+  await expect(vampy.getByText("台服官方名稱待公告", { exact: true })).toBeVisible();
+  await expect(vampy.getByText("限定身分 UNKNOWN", { exact: true })).toBeVisible();
+  await expect(vampy.locator(".definition").filter({ hasText: "限定依據" })).toContainText("UNKNOWN");
+  await expect(vampy.getByText("2026-12-15 – 2026-12-17", { exact: true })).toBeVisible();
+  await expect(vampy.getByText("尚未評估", { exact: true })).toHaveCount(4);
+  await expect(vampy.getByText("研究列：價值或身分尚未閉合", { exact: false })).toBeVisible();
+
+  const shefi = page.locator(".gacha-card").filter({ hasText: "シェフィ（ヴァードラッヘ）" });
+  await expect(shefi.locator(".definition").filter({ hasText: "限定依據" })).toContainText(
+    "CLM-SHEFI-POOL",
+  );
+  await expect(shefi.getByText("相對優先級待補獨立價值證據", { exact: false })).toBeVisible();
+
+  const expectedEvidenceIds = [
+    "ev010", "ev011", "ev012", "ev013", "ev014", "ev032", "ev033", "ev048", "ev123",
+  ];
+  for (const evidenceId of expectedEvidenceIds) {
+    await page.getByRole("button").filter({ hasText: evidenceId }).first().click();
+    const evidenceDialog = page.getByRole("dialog", { name: evidenceId });
+    await expect(evidenceDialog).toBeVisible();
+    await expect(evidenceDialog.getByText("Evidence 暫時無法取得", { exact: false })).toHaveCount(0);
+    if (evidenceId !== "ev123") {
+      await evidenceDialog.getByRole("button", { name: "關閉" }).click();
+    }
+  }
+
+  const drawer = page.getByRole("dialog", { name: "ev123" });
+  await expect(drawer.getByText("日服官方 8.5 周年直前生放送卡池投影片", { exact: true })).toBeVisible();
+  await expect(drawer.getByText("投影片未直接明示兩角為期間限定；不推論台服日期、台服中文名或角色價值", { exact: true })).toBeVisible();
+  await expect(drawer.getByText("Evidence 登錄定位：official_youtube_8_5_live@49:17;57:07;59:01;1:42:07;1:42:41;1:43:21", { exact: true })).toBeVisible();
+  await drawer.getByRole("button", { name: "關閉" }).click();
+
+  await expect(page.locator(".community-card")).toHaveCount(4);
+  await expect(page.locator('.community-card[data-status="CHECKED"]')).toHaveCount(2);
+  await expect(page.locator('.community-card[data-status="STALE"]')).toHaveCount(2);
+  await expect(page.getByText(
+    "論壇月更索引／2026-08影片／Google Sheet 均實開；wrapper archive 為 2024-09 至 2026-08。作者明示推薦是個人想法；個人寶石門檻永久排除；JP日期仍須官方正文",
+    { exact: true },
+  )).toBeVisible();
+  await expect(page.getByText("本頁不讀取帳號、持有角色或個人寶石", { exact: false })).toBeVisible();
+  await expect(
+    page.locator(".gacha-summary").locator(".definition").filter({ hasText: "最後核對" }),
+  ).toContainText("UNKNOWN");
+  await expect(vampy.locator(".definition").filter({ hasText: "最後核對" })).toContainText("2026-08-09");
 });
 
 test("PVP 顯示 exact 單筆戰果且完整揭露限制與 Evidence", async ({ page }) => {

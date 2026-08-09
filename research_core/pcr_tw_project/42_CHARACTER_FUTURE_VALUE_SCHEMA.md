@@ -20,8 +20,11 @@
 
 1. 日服來源查證（評價＋1–3 個月後的實戰採用），至少兩個彼此獨立來源交叉才可 B／C；單一來源（含單一大型攻略站）標 D，並在 92 登錄 evidence_id。
 2. **台服時差修正**：台服實裝時的環境≠日服實裝時環境——評估「台服落地當下」該角面對的環境（依 02 差距推算屆時台服環境），必要時標【推測資訊】。
-3. 輸出各維度值＋一句話理由＋來源；關鍵結論登錄 93（附 evidence_ids 與獨立性檢查）；不確定填「待查證」，不得補空想值。
+3. 限定身分是獨立來源事實：41 的 `limited=是／否` 必須指定 `limited_claim_id`，且該 ACTIVE JP `gacha` SOURCE_FACT／A Claim 與本列引用的 ACTIVE JP OFFICIAL／A Evidence 必須形成直接閉合；無直接正文時填 `UNKNOWN` 並將 `limited_claim_id` 留空。
+4. 輸出各維度值＋一句話理由＋來源；關鍵結論登錄 93（附 evidence_ids 與獨立性檢查）；不確定填「待查證」，不得補空想值。
 
 ## 一般玩家優先級（relative_priority 的定性尺度）
+
+`maturity=RESEARCH` 尚未完成本表評估時，`relative_priority` 必須固定為 `NOT_EVALUATED`；不得在自由文字中先寫「必抽／建議抽」再以研究狀態規避。`future_upgrade` 此時只允許 `UNKNOWN` 或 `NOT_EVALUATED`。此規則不解析關鍵字，而由 41 的結構化狀態與 Validator／Importer 共同守門。
 
 必抽級（環境定義角／長保值限定）＞ 高優先（主流強角）＞ 情境優先（特定模式關鍵）＞ 低優先（可替代）＞ 收藏向。

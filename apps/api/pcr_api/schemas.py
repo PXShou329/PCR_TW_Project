@@ -369,6 +369,90 @@ class PvpCharacterData(BaseModel):
     tw_availability_status: Literal["AVAILABLE"]
 
 
+class GachaTimelineEventData(BaseModel):
+    """One JP release fact and its bounded, non-personalized TW forecast."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    event_id: str
+    source_server: Literal["JP"]
+    target_server: Literal["TW"]
+    jp_date: date
+    model_estimate_start: date | None
+    model_estimate_end: date | None
+    tw_estimate_start: date | None
+    tw_estimate_end: date | None
+    forecast_method: Literal[
+        "MODEL_ONLY",
+        "MODEL_PLUS_COMMUNITY",
+        "OFFICIAL_OVERRIDE",
+    ]
+    confidence: str
+    character_name_jp: str
+    tw_name: str | None
+    pool_type: str
+    limited_status: Literal["YES", "NO", "UNKNOWN"]
+    limited_claim_id: str | None
+    arena_value: str
+    p_arena_value: str
+    pve_value: str
+    clan_value: str
+    future_upgrade: str
+    relative_priority: str
+    anchor_track: str
+    anchor_count: int = Field(ge=0)
+    forecast_basis: str
+    last_verified: date
+    status: str
+    maturity: Literal["MATURE", "RESEARCH"]
+    last_review_due: date | None
+    community_estimate_start: date | None
+    community_estimate_end: date | None
+    community_order_consensus: str
+    community_source_count: int = Field(ge=0)
+    community_last_checked: date | None
+    community_disagreement: str
+    forecast_notes: str
+    evidence_ids: list[str]
+    claim_ids: list[str]
+    community_source_ids: list[str]
+
+    @model_validator(mode="after")
+    def require_limited_status_provenance(self) -> GachaTimelineEventData:
+        if self.limited_status == "UNKNOWN":
+            if self.limited_claim_id is not None:
+                raise ValueError("UNKNOWN limited_status requires null limited_claim_id")
+        elif not self.limited_claim_id:
+            raise ValueError("known limited_status requires limited_claim_id")
+        return self
+
+
+class GachaCommunitySourceData(BaseModel):
+    """One reviewed public community timeline source; never an official source."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    source_id: str
+    title: str
+    platform: str
+    author: str
+    source_type: Literal[
+        "MAINTAINED_TABLE",
+        "FORUM_TIMELINE",
+        "CREATOR_ANALYSIS",
+        "VIDEO_SERIES",
+    ]
+    url: str
+    last_seen_update: date | None
+    coverage_start: str | None
+    coverage_end: str | None
+    update_status: Literal["PENDING_FETCH", "CHECKED", "STALE"]
+    confidence_cap: Literal["C", "D", "E"]
+    usage: str
+    last_checked: date
+    notes: str
+
+
 class ArenaCounterData(BaseModel):
     """One exact, source-backed Arena counter and its complete 5v5 formation."""
 
@@ -449,6 +533,11 @@ class BaselineCounts(BaseModel):
     arena_counter_members: int
     arena_counter_evidence: int
     arena_counter_claims: int
+    gacha_timeline_events: int
+    gacha_timeline_evidence: int
+    gacha_timeline_claims: int
+    gacha_community_sources: int
+    gacha_timeline_community_sources: int
 
 
 class GateSummary(BaseModel):

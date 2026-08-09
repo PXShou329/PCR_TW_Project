@@ -30,6 +30,19 @@ REQUIRED_PVP_DATA_SCHEMAS = {
 }
 REQUIRED_PVP_PATHS = frozenset(REQUIRED_PVP_DATA_SCHEMAS)
 REQUIRED_PVP_SCHEMAS = frozenset(REQUIRED_PVP_DATA_SCHEMAS.values())
+REQUIRED_GACHA_DATA_SCHEMAS = {
+    "/api/v1/gacha/timeline": "GachaTimelineEventData",
+    "/api/v1/gacha/community-sources": "GachaCommunitySourceData",
+}
+REQUIRED_GACHA_PATHS = frozenset(REQUIRED_GACHA_DATA_SCHEMAS)
+REQUIRED_GACHA_SCHEMAS = frozenset(REQUIRED_GACHA_DATA_SCHEMAS.values())
+REQUIRED_GACHA_LIMITED_PROVENANCE_FIELDS = frozenset(
+    {"limited_status", "limited_claim_id"}
+)
+REQUIRED_LIST_DATA_SCHEMAS = {
+    **REQUIRED_PVP_DATA_SCHEMAS,
+    **REQUIRED_GACHA_DATA_SCHEMAS,
+}
 V3_RESPONSE_META_FIELDS = frozenset(
     {
         "server",
@@ -47,7 +60,6 @@ READ_ONLY_COMPUTE_POST_PATHS = frozenset(
         "/api/v1/solver/pve",
         "/api/v1/solver/pvp",
         "/api/v1/solver/parena",
-        "/api/v1/gacha/gem-scenario",
     }
 )
 STATE_CHANGING_METHODS = frozenset({"put", "patch", "delete"})
@@ -99,6 +111,20 @@ def _component_name(reference: object) -> str | None:
 
 def _mapping(value: object) -> Mapping[str, Any] | None:
     return value if isinstance(value, Mapping) else None
+
+
+def _allows_null(schema: Mapping[str, Any]) -> bool:
+    schema_type = schema.get("type")
+    if schema_type == "null" or (
+        isinstance(schema_type, list) and "null" in schema_type
+    ):
+        return True
+    alternatives = schema.get("anyOf") or schema.get("oneOf") or []
+    return isinstance(alternatives, list) and any(
+        _allows_null(candidate)
+        for candidate in alternatives
+        if isinstance(candidate, Mapping)
+    )
 
 
 def _is_admin_path(path: str) -> bool:
@@ -185,6 +211,32 @@ def validate_openapi(document: Mapping[str, Any]) -> list[str]:
         errors.append(f"missing required PVP path: {missing}")
     for missing in sorted(REQUIRED_PVP_SCHEMAS - set(schemas)):
         errors.append(f"missing required PVP schema: {missing}")
+    for missing in sorted(REQUIRED_GACHA_PATHS - set(public_paths)):
+        errors.append(f"missing required Gacha path: {missing}")
+    for missing in sorted(REQUIRED_GACHA_SCHEMAS - set(schemas)):
+        errors.append(f"missing required Gacha schema: {missing}")
+
+    gacha_timeline = _mapping(schemas.get("GachaTimelineEventData"))
+    if gacha_timeline is not None:
+        properties = _mapping(gacha_timeline.get("properties"))
+        required = gacha_timeline.get("required")
+        property_names = set(properties) if properties is not None else set()
+        required_names = set(required) if isinstance(required, list) else set()
+        for field in sorted(REQUIRED_GACHA_LIMITED_PROVENANCE_FIELDS - property_names):
+            errors.append(
+                f"GachaTimelineEventData missing limited provenance property: {field}"
+            )
+        for field in sorted(REQUIRED_GACHA_LIMITED_PROVENANCE_FIELDS - required_names):
+            errors.append(
+                f"GachaTimelineEventData limited provenance is not required: {field}"
+            )
+        limited_claim = (
+            _mapping(properties.get("limited_claim_id"))
+            if properties is not None
+            else None
+        )
+        if limited_claim is not None and not _allows_null(limited_claim):
+            errors.append("GachaTimelineEventData.limited_claim_id must be nullable")
 
     for path, raw_path_item in sorted(public_paths.items()):
         path_item = _mapping(raw_path_item)
@@ -209,7 +261,7 @@ def validate_openapi(document: Mapping[str, Any]) -> list[str]:
                 operation=get,
                 schemas=schemas,
                 errors=errors,
-                expected_list_item_schema=REQUIRED_PVP_DATA_SCHEMAS.get(path),
+                expected_list_item_schema=REQUIRED_LIST_DATA_SCHEMAS.get(path),
             )
         if post is not None and path in READ_ONLY_COMPUTE_POST_PATHS:
             _validate_envelope_response(

@@ -974,6 +974,217 @@ class ArenaCounterClaim(Base):
     )
 
 
+class GachaTimelineEvent(Base):
+    """A JP release fact and its explicitly bounded TW forecast projection."""
+
+    __tablename__ = "gacha_timeline_events"
+
+    event_id: Mapped[str] = mapped_column(String(160), primary_key=True)
+    source_server: Mapped[str] = mapped_column(String(16), nullable=False)
+    target_server: Mapped[str] = mapped_column(String(16), nullable=False)
+    jp_date: Mapped[date] = mapped_column(Date, nullable=False)
+    model_estimate_start: Mapped[date | None] = mapped_column(Date, nullable=True)
+    model_estimate_end: Mapped[date | None] = mapped_column(Date, nullable=True)
+    tw_estimate_start: Mapped[date | None] = mapped_column(Date, nullable=True)
+    tw_estimate_end: Mapped[date | None] = mapped_column(Date, nullable=True)
+    forecast_method: Mapped[str] = mapped_column(String(32), nullable=False)
+    confidence: Mapped[str] = mapped_column(Text, nullable=False)
+    character_name_jp: Mapped[str] = mapped_column(String(200), nullable=False)
+    tw_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    pool_type: Mapped[str] = mapped_column(String(160), nullable=False)
+    limited_status: Mapped[str] = mapped_column(String(16), nullable=False)
+    limited_claim_id: Mapped[str | None] = mapped_column(
+        ForeignKey("claims.claim_id", ondelete="RESTRICT"), nullable=True
+    )
+    arena_value: Mapped[str] = mapped_column(Text, nullable=False)
+    p_arena_value: Mapped[str] = mapped_column(Text, nullable=False)
+    pve_value: Mapped[str] = mapped_column(Text, nullable=False)
+    clan_value: Mapped[str] = mapped_column(Text, nullable=False)
+    future_upgrade: Mapped[str] = mapped_column(Text, nullable=False)
+    relative_priority: Mapped[str] = mapped_column(Text, nullable=False)
+    anchor_track: Mapped[str] = mapped_column(String(40), nullable=False)
+    anchor_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    forecast_basis: Mapped[str] = mapped_column(Text, nullable=False)
+    last_verified: Mapped[date] = mapped_column(Date, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    maturity: Mapped[str] = mapped_column(String(16), nullable=False)
+    last_review_due: Mapped[date] = mapped_column(Date, nullable=False)
+    community_estimate_start: Mapped[date | None] = mapped_column(Date, nullable=True)
+    community_estimate_end: Mapped[date | None] = mapped_column(Date, nullable=True)
+    community_order_consensus: Mapped[str] = mapped_column(Text, nullable=False)
+    community_source_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    community_last_checked: Mapped[date | None] = mapped_column(Date, nullable=True)
+    community_disagreement: Mapped[str] = mapped_column(Text, nullable=False)
+    forecast_notes: Mapped[str] = mapped_column(Text, nullable=False)
+    source_payload: Mapped[dict[str, Any]] = mapped_column(json_type, nullable=False)
+    import_run_id: Mapped[str] = mapped_column(
+        ForeignKey("import_runs.id", ondelete="RESTRICT"), nullable=False
+    )
+
+    __table_args__ = (
+        CheckConstraint("source_server = 'JP'", name="gacha_event_source_server"),
+        CheckConstraint("target_server = 'TW'", name="gacha_event_target_server"),
+        CheckConstraint(
+            "forecast_method IN ('MODEL_ONLY','MODEL_PLUS_COMMUNITY','OFFICIAL_OVERRIDE')",
+            name="gacha_event_forecast_method",
+        ),
+        CheckConstraint(
+            "limited_status IN ('YES','NO','UNKNOWN')",
+            name="gacha_event_limited_status",
+        ),
+        CheckConstraint(
+            "(limited_status = 'UNKNOWN' AND limited_claim_id IS NULL) OR "
+            "(limited_status IN ('YES','NO') AND limited_claim_id IS NOT NULL)",
+            name="gacha_event_limited_claim_shape",
+        ),
+        CheckConstraint("anchor_count >= 0", name="gacha_event_anchor_count_nonnegative"),
+        CheckConstraint(
+            "community_source_count >= 0",
+            name="gacha_event_community_count_nonnegative",
+        ),
+        CheckConstraint(
+            "(model_estimate_start IS NULL AND model_estimate_end IS NULL) OR "
+            "(model_estimate_start IS NOT NULL AND model_estimate_end IS NOT NULL "
+            "AND model_estimate_start <= model_estimate_end)",
+            name="gacha_event_model_range",
+        ),
+        CheckConstraint(
+            "(tw_estimate_start IS NULL AND tw_estimate_end IS NULL) OR "
+            "(tw_estimate_start IS NOT NULL AND tw_estimate_end IS NOT NULL "
+            "AND tw_estimate_start <= tw_estimate_end)",
+            name="gacha_event_tw_range",
+        ),
+        CheckConstraint(
+            "(community_estimate_start IS NULL AND community_estimate_end IS NULL) OR "
+            "(community_estimate_start IS NOT NULL AND community_estimate_end IS NOT NULL "
+            "AND community_estimate_start <= community_estimate_end)",
+            name="gacha_event_community_range",
+        ),
+        CheckConstraint(
+            "maturity IN ('MATURE','RESEARCH')",
+            name="gacha_event_maturity",
+        ),
+        CheckConstraint(
+            "maturity != 'RESEARCH' OR "
+            "(arena_value = 'NOT_EVALUATED' AND p_arena_value = 'NOT_EVALUATED' "
+            "AND pve_value = 'NOT_EVALUATED' AND clan_value = 'NOT_EVALUATED' "
+            "AND relative_priority = 'NOT_EVALUATED' "
+            "AND future_upgrade IN ('UNKNOWN','NOT_EVALUATED'))",
+            name="gacha_event_research_not_evaluated",
+        ),
+        CheckConstraint(
+            "forecast_method != 'MODEL_ONLY' OR "
+            "(tw_estimate_start = model_estimate_start "
+            "AND tw_estimate_end = model_estimate_end "
+            "AND community_source_count = 0)",
+            name="gacha_event_model_only_shape",
+        ),
+        CheckConstraint(
+            "forecast_method != 'MODEL_PLUS_COMMUNITY' OR "
+            "(community_estimate_start IS NOT NULL AND community_estimate_end IS NOT NULL "
+            "AND tw_estimate_start IS NOT NULL AND tw_estimate_end IS NOT NULL "
+            "AND model_estimate_start IS NOT NULL AND model_estimate_end IS NOT NULL "
+            "AND tw_estimate_start <= model_estimate_start "
+            "AND tw_estimate_start <= community_estimate_start "
+            "AND tw_estimate_end >= model_estimate_end "
+            "AND tw_estimate_end >= community_estimate_end)",
+            name="gacha_event_model_plus_community_shape",
+        ),
+        Index(
+            "ix_gacha_timeline_events_target_date",
+            "target_server",
+            "tw_estimate_start",
+            "status",
+        ),
+    )
+
+
+class GachaTimelineEvidence(Base):
+    __tablename__ = "gacha_timeline_evidence"
+
+    event_id: Mapped[str] = mapped_column(
+        ForeignKey("gacha_timeline_events.event_id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    evidence_id: Mapped[str] = mapped_column(
+        ForeignKey("evidence.evidence_id", ondelete="RESTRICT"), primary_key=True
+    )
+
+
+class GachaTimelineClaim(Base):
+    __tablename__ = "gacha_timeline_claims"
+
+    event_id: Mapped[str] = mapped_column(
+        ForeignKey("gacha_timeline_events.event_id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    claim_id: Mapped[str] = mapped_column(
+        ForeignKey("claims.claim_id", ondelete="RESTRICT"), primary_key=True
+    )
+
+
+class GachaCommunitySource(Base):
+    __tablename__ = "gacha_community_sources"
+
+    source_id: Mapped[str] = mapped_column(String(120), primary_key=True)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    platform: Mapped[str] = mapped_column(String(100), nullable=False)
+    author: Mapped[str] = mapped_column(String(200), nullable=False)
+    source_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    url: Mapped[str] = mapped_column(Text, nullable=False)
+    last_seen_update: Mapped[date | None] = mapped_column(Date, nullable=True)
+    coverage_start: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    coverage_end: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    update_status: Mapped[str] = mapped_column(String(24), nullable=False)
+    confidence_cap: Mapped[str] = mapped_column(String(16), nullable=False)
+    usage: Mapped[str] = mapped_column(Text, nullable=False)
+    last_checked: Mapped[date] = mapped_column(Date, nullable=False)
+    notes: Mapped[str] = mapped_column(Text, nullable=False)
+    source_payload: Mapped[dict[str, Any]] = mapped_column(json_type, nullable=False)
+    import_run_id: Mapped[str] = mapped_column(
+        ForeignKey("import_runs.id", ondelete="RESTRICT"), nullable=False
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "source_type IN ('MAINTAINED_TABLE','FORUM_TIMELINE',"
+            "'CREATOR_ANALYSIS','VIDEO_SERIES')",
+            name="gacha_community_source_type",
+        ),
+        CheckConstraint(
+            "update_status IN ('PENDING_FETCH','CHECKED','STALE')",
+            name="gacha_community_update_status",
+        ),
+        CheckConstraint(
+            "confidence_cap IN ('C','D','E')",
+            name="gacha_community_confidence_cap",
+        ),
+        CheckConstraint(
+            "(coverage_start IS NULL AND coverage_end IS NULL) OR "
+            "(coverage_start IS NOT NULL AND coverage_end IS NOT NULL)",
+            name="gacha_community_coverage_range",
+        ),
+        Index(
+            "ix_gacha_community_sources_status_checked",
+            "update_status",
+            "last_checked",
+        ),
+    )
+
+
+class GachaTimelineCommunitySource(Base):
+    __tablename__ = "gacha_timeline_community_sources"
+
+    event_id: Mapped[str] = mapped_column(
+        ForeignKey("gacha_timeline_events.event_id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    source_id: Mapped[str] = mapped_column(
+        ForeignKey("gacha_community_sources.source_id", ondelete="RESTRICT"),
+        primary_key=True,
+    )
+
+
 class SchedulerLease(Base):
     __tablename__ = "scheduler_leases"
 

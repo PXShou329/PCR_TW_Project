@@ -1,17 +1,17 @@
 # 15 資料品質報告（DATA QUALITY REPORT）
 
-> 本版：v1.5（Guide Wave 1 — 2026/08/02 公共資料刷新完成）。AUTO_STATS 區塊**由 `tools/validate_project.py` 每次執行時覆寫並核對**
+> 本版：v1.5（Guide Wave 1 — 2026/08/09 Freshness-0 完成）。AUTO_STATS 區塊**由 `tools/validate_project.py` 每次執行時覆寫並核對**
 > （ST38）；區塊外的敘述不得重複統計數字。手改 AUTO 區會被自動修復並記錄。
 
 <!-- AUTO_STATS_START -->
-**程式化統計（validator 生成即核對；生成日 2026-08-09／版本 v1.5／Release 2026-08-02／Mode PRE_SUITE）**
+**程式化統計（validator 生成即核對；生成日 2026-08-10／版本 v1.5／Release 2026-08-09／Mode PRE_SUITE）**
 
 - 檔案 44（編號 43＋README）＋tools×4｜Knowledge 42｜Fixture 37
 - Gate 成熟資料：PVE VERIFIED 2（24）｜Arena 成熟反制列 0／成熟防守 0（39）｜P-Arena 0（47）｜Timeline MATURE 2（41）
-- 92 Evidence 113 列｜Tier {'OFFICIAL': 73, 'MAJOR_GUIDE': 10, 'SINGLE_PLAYER_REPORT': 21, 'MULTI_PLAYER_REPORT': 5, 'STRUCTURED_DB': 1, 'UNKNOWN': 3}｜evidence_confidence {'A': 73, 'D': 40}｜PENDING_REVIEW 1
-- 93 Claim 128 列｜claim_confidence {'A': 66, 'D': 35, 'C': 2, 'B': 25}｜claim_type {'SOURCE_FACT': 83, 'DERIVED_CALCULATION': 6, 'ANALYTICAL_JUDGMENT': 39}
-- Gate A=FAIL｜B=FAIL｜C=FAIL｜阻擋 Gate C 警告 16
-- 靜態檢查 154 項｜FAIL 0｜WARN 24
+- 92 Evidence 122 列｜Tier {'OFFICIAL': 82, 'MAJOR_GUIDE': 10, 'SINGLE_PLAYER_REPORT': 21, 'MULTI_PLAYER_REPORT': 5, 'STRUCTURED_DB': 1, 'UNKNOWN': 3}｜evidence_confidence {'A': 82, 'D': 40}｜PENDING_REVIEW 1
+- 93 Claim 137 列｜claim_confidence {'A': 75, 'D': 35, 'C': 2, 'B': 25}｜claim_type {'SOURCE_FACT': 92, 'DERIVED_CALCULATION': 6, 'ANALYTICAL_JUDGMENT': 39}
+- Gate A=FAIL｜B=FAIL｜C=FAIL｜阻擋 Gate C 警告 14
+- 靜態檢查 156 項｜FAIL 0｜WARN 22
 <!-- AUTO_STATS_END -->
 
 ## 帳號層狀態
@@ -21,11 +21,11 @@
 
 ## 資料現況（質性）
 
-- 台服基準為 **2026-08-02** 官方狀態；官方公告核對至 **2026-08-02**（六直頁完整抓取：ev029／ev033／ev043／ev044／ev048 等均 ACTIVE；ev045–047／ev049 標題級官方確認、細節待例行回驗）。
+- 台服基準與台／日官方公告索引已核對至 **2026-08-09**；ev045–047／ev049／#3943 已實開正文，另新增台服 ev116–ev118、日服 ev119、雙服索引 ev120／ev121 與直播配信 ev122。直播公布內容未逐段核對，故沒有據此新增卡池或價值結論。
 - 錨點採分軌口徑（卡池軌信心中、系統軌信心低）；候選 #4（深域 10 區）待日服官方化。
 - 成熟資料數量一律以 AUTO 區為唯一權威（PVE＝24／Arena＝39／P-Arena＝47／Timeline＝41／社群來源＝45）；依本檔開頭規則，區塊外不重複統計數字。
 - Stale Register 現役 2 項＋SUPERSEDED 1 項。
-- 主要未關閉缺口（與 02 OPEN_GAPS 一致）：ev045/ev046/ev047/ev049 與 #3943 直頁正文例行回驗（標題級已官方確認）、候選 #4 的 JP 側官方化（TW 側已由 ev029 完成）、台服 08/02 後例行檢查、台服譯名（フブキ待台服公告）。**ev029／ev033 已於 2026-08-02 直頁完整抓取解鎖（ACTIVE）；主線已刷新至第 16 章／Lv373。**
+- 主要未關閉缺口（與 02 OPEN_GAPS 一致）：候選 #4 的 JP 側官方化（TW 側 ev029 已完成）、8.5 周年直播內容逐段核對、2026/08/09 後例行檢查、未公布的台服譯名，以及 ev116–ev118 所涉活動攻略需另找實際通關 Evidence；官方活動公告本身不支撐隊伍成熟度。
 
 ## 驗收現況
 

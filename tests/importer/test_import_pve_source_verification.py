@@ -10,6 +10,7 @@ from pcr_pipeline.research_core_snapshot import (
     EXPECTED_MANIFEST_SHA256,
     RP_A3_MANIFEST_SHA256,
     RP_A4_MANIFEST_SHA256,
+    RP_A5_MANIFEST_SHA256,
 )
 
 
@@ -43,6 +44,7 @@ def test_active_import_source_runs_the_live_baseline(monkeypatch, tmp_path: Path
     [
         (RP_A3_MANIFEST_SHA256, 239),
         (RP_A4_MANIFEST_SHA256, 325),
+        (RP_A5_MANIFEST_SHA256, 356),
     ],
 )
 def test_approved_rollback_source_uses_exact_snapshot_contract(
@@ -68,7 +70,7 @@ def test_approved_rollback_source_uses_exact_snapshot_contract(
     monkeypatch.setattr(
         import_cli,
         "_verify_research_baseline",
-        lambda *_args: pytest.fail("A5 baseline must not judge immutable A3"),
+        lambda *_args: pytest.fail("B5-1 baseline must not judge historical pins"),
     )
     core = tmp_path / "core"
     manifest = tmp_path / "manifest.sha256"

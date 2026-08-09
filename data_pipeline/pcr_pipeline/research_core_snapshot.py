@@ -29,29 +29,38 @@ class SnapshotContract:
     claim_to_evidence_count: int
 
 
-# RP-A5 是 Arena read-mirror 的輸入契約；歷史 RP-A2／RP-A3／RP-A4 pins 與
-# manifests 保留供 version-aware rollback 測試，不覆寫 immutable checkpoints。
+# RP-B5-1 是 Freshness／Gacha read-mirror 的輸入契約；歷史 RP-A2／RP-A3／
+# RP-A4／RP-A5 pins 與 manifests 保留供 version-aware rollback 測試，不覆寫
+# immutable checkpoints。
+RP_B5_1_MANIFEST_SHA256 = "e74814d6433ee327611f10322937bdfa9687b9887f139ba6e6158a291dd12989"
 RP_A5_MANIFEST_SHA256 = "1826c8493d40f71a6d0bb9096f57b92fe4e839d52bddf021b0c51e0186dcbda7"
 RP_A4_MANIFEST_SHA256 = "3daf2ab7c212b4f11c58883980d0ada3862400923c81a9bdedcc0500e59b1a9e"
 RP_A3_MANIFEST_SHA256 = "ab62e07483dfea07c992b950b9c05c74fa0e3767fa0b3bce64b20193a1860333"
 RP_A2_MANIFEST_SHA256 = "3a242b521d830af12ce8559d88b733068fb1b6cb503219395d2986b89e5dc352"
 
-EXPECTED_MANIFEST_SHA256 = RP_A5_MANIFEST_SHA256
+EXPECTED_MANIFEST_SHA256 = RP_B5_1_MANIFEST_SHA256
 EXPECTED_FILE_COUNT = 48
 EXPECTED_CSV_FILE_COUNT = 13
-EXPECTED_CSV_ROW_COUNT = 356
-EXPECTED_EVIDENCE_TO_CLAIM_COUNT = 111
-EXPECTED_CLAIM_TO_EVIDENCE_COUNT = 277
+EXPECTED_CSV_ROW_COUNT = 376
+EXPECTED_EVIDENCE_TO_CLAIM_COUNT = 120
+EXPECTED_CLAIM_TO_EVIDENCE_COUNT = 298
 TREE_SERIALIZATION_VERSION = 1
 
-RP_A5_SNAPSHOT_CONTRACT = SnapshotContract(
+RP_B5_1_SNAPSHOT_CONTRACT = SnapshotContract(
     file_count=EXPECTED_FILE_COUNT,
     csv_file_count=EXPECTED_CSV_FILE_COUNT,
     csv_row_count=EXPECTED_CSV_ROW_COUNT,
     evidence_to_claim_count=EXPECTED_EVIDENCE_TO_CLAIM_COUNT,
     claim_to_evidence_count=EXPECTED_CLAIM_TO_EVIDENCE_COUNT,
 )
-CURRENT_SNAPSHOT_CONTRACT = RP_A5_SNAPSHOT_CONTRACT
+CURRENT_SNAPSHOT_CONTRACT = RP_B5_1_SNAPSHOT_CONTRACT
+RP_A5_SNAPSHOT_CONTRACT = SnapshotContract(
+    file_count=48,
+    csv_file_count=13,
+    csv_row_count=356,
+    evidence_to_claim_count=111,
+    claim_to_evidence_count=277,
+)
 RP_A4_SNAPSHOT_CONTRACT = SnapshotContract(
     file_count=48,
     csv_file_count=13,
@@ -74,6 +83,7 @@ RP_A2_SNAPSHOT_CONTRACT = SnapshotContract(
     claim_to_evidence_count=162,
 )
 PINNED_SNAPSHOT_CONTRACTS: Mapping[str, SnapshotContract] = {
+    RP_B5_1_MANIFEST_SHA256: RP_B5_1_SNAPSHOT_CONTRACT,
     RP_A5_MANIFEST_SHA256: RP_A5_SNAPSHOT_CONTRACT,
     RP_A4_MANIFEST_SHA256: RP_A4_SNAPSHOT_CONTRACT,
     RP_A3_MANIFEST_SHA256: RP_A3_SNAPSHOT_CONTRACT,
@@ -82,7 +92,9 @@ PINNED_SNAPSHOT_CONTRACTS: Mapping[str, SnapshotContract] = {
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_RESEARCH_CORE = REPOSITORY_ROOT / "research_core" / "pcr_tw_project"
-DEFAULT_MANIFEST = REPOSITORY_ROOT / "scripts" / "research_core_rp_a5_manifest.sha256"
+DEFAULT_MANIFEST = (
+    REPOSITORY_ROOT / "scripts" / "research_core_rp_b5_1_manifest.sha256"
+)
 
 CSV_NATURAL_KEYS: Mapping[str, str] = {
     "17_TEST_EXECUTION_LOG.csv": "run_id",

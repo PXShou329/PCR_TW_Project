@@ -28,9 +28,9 @@
 ## 同步狀態（v1.4 生命週期制）
 
 ```text
-最後同步截止日（last_checked）：2026-08-02
-本輪檢查範圍：2026/05–08 日服新角＋台服官網公告至 **2026-08-02**（六直頁完整抓取＋官方列表確認；詳見 02）
-使用來源：ev010 / ev013 / ev024 / ev025 / ev027–ev034 / **ev043–ev049**（第 16 章／Lv373、深域第 10 區、格蕾斯（兔女郎）、フブキ（サマー）、8/1 系統批次；見 92）
+最後同步截止日（last_checked）：2026-08-09
+本輪檢查範圍：台／日官方公告索引至 **2026-08-09**，並實開 8/2 後新增的台服 #3972／#3973／#3974、日服 #37148 與 8.5 直播時程／配信頁（詳見 02）
+使用來源：既有 ev010／ev013／ev027–ev034／ev043–ev049；Freshness-0 新增 **ev116–ev122**。日服 8/10 專1只記錄官方日文名，不自行建立台服中文譯名；直播內容未逐段核對前不新增角色或卡池列
 狀態欄允許值：
   verification_status：CANDIDATE／OFFICIAL_VERIFIED／CONFLICTED／REJECTED
   future_value_status：NOT_EVALUATED／IN_RESEARCH／EVALUATED
@@ -44,12 +44,14 @@
 | sync_id | 角色（日文名／台服名） | jp_release_date | pool_type | verification | future_value | timeline | tw_announce | last_checked | notes（含 Tier/Conf 與 evidence） |
 |---|---|---|---|---|---|---|---|---|---|
 | SYNC-001 | ワカナ（ウィンター）／若菜（冬日） | 2026/03/03 | 限定 | OFFICIAL_VERIFIED | NOT_EVALUATED | ARCHIVED | **RELEASED**（台 2026/07/04 開池；公告 07/03） | 2026-07-16 | 已轉為 canonical anchor POOL-WAKANA-WINTER（LIMITED，delta 123；ev001;ev002），自追蹤關閉 |
-| SYNC-002 | シェフィ（ヴァードラッヘ）／【待查證】 | 2026/06/30 | プリフェス限定 | OFFICIAL_VERIFIED（日期 ev010；**池型 OFFICIAL／A＝ev032**，F04 修正） | EVALUATED | MIGRATED_TO_41 | NOT_ANNOUNCED | 2026-07-17 | PVE 評價依 F03 修正為 D（41/44）；41 event_id＝JP_20260630_shefi_vardrache |
-| SYNC-003 | ルイズマリー（サマー）／【待查證】 | 2026/07/03 | 限定（泳裝，官網明載「期間限定」） | OFFICIAL_VERIFIED（ev013） | EVALUATED（D 級單源） | MIGRATED_TO_41 | NOT_ANNOUNCED | 2026-07-17 | 評估 ev014（單一 MAJOR_GUIDE → D）；41 event_id＝JP_20260703_luisemarie_summer |
+| SYNC-002 | シェフィ（ヴァードラッヘ）／【待查證】 | 2026/06/30 | プリフェス限定 | OFFICIAL_VERIFIED（日期 ev010；**池型 OFFICIAL／A＝ev032**，F04 修正） | EVALUATED | MIGRATED_TO_41 | NOT_ANNOUNCED | 2026-08-09 | 台服官方索引重驗未見公告；PVE 評價仍為 D（41/44）；event_id＝JP_20260630_shefi_vardrache |
+| SYNC-003 | ルイズマリー（サマー）／【待查證】 | 2026/07/03 | 限定（泳裝，官網明載「期間限定」） | OFFICIAL_VERIFIED（ev013） | EVALUATED（D 級單源） | MIGRATED_TO_41 | NOT_ANNOUNCED | 2026-08-09 | 台服官方索引重驗未見公告；評估 ev014 仍為單一 MAJOR_GUIDE／D；event_id＝JP_20260703_luisemarie_summer |
 | SYNC-004 | ルルィ／【待查證】 | 2026/05/22【D】 | 【待查證】 | CANDIDATE | NOT_EVALUATED | NOT_MIGRATED | NOT_ANNOUNCED | 2026-07-16 | 單一攻略站側欄來源；注意與マナリア聯動角「ルゥ」為不同名稱，需消歧義後升級 |
 | SYNC-005 | リリ（ヴァルキュリア）／【待查證】 | 2026/05 前後【D】 | 【待查證】 | CANDIDATE | NOT_EVALUATED | NOT_MIGRATED | NOT_ANNOUNCED | 2026-07-16 | 官方日期待日服官網回查（注意與既存「リリ（サマー）」為不同版本） |
-| SYNC-006 | クレジッタ（サマー）／【待查證】 | 2026/07/15 | 限定（泳裝，官網明載） | OFFICIAL_VERIFIED（ev031，官網直驗；池期 07/15–07/31 已結束） | NOT_EVALUATED | NOT_MIGRATED | NOT_ANNOUNCED | 2026-08-02 | 評估後遷移 41；台服預估依卡池軌 2026/11 中旬前後（信心低～中） |
-| SYNC-008 | フブキ（サマー）／【待查證】 | 2026/07/31 | 限定（泳裝，官網明載「期間限定」） | OFFICIAL_VERIFIED（ev048，2026-08-02 官網直頁 #37049 完整抓取） | NOT_EVALUATED | MIGRATED_TO_41 | NOT_ANNOUNCED | 2026-08-02 | 41 event_id＝JP_20260731_fubuki_summer（maturity=RESEARCH；價值研究完成前不設 MATURE）；池期 07/31 12:00–08/15 11:59 |
+| SYNC-006 | クレジッタ（サマー）／【待查證】 | 2026/07/15 | 限定（泳裝，官網明載） | OFFICIAL_VERIFIED（ev031，官網直驗；池期 07/15–07/31 已結束） | NOT_EVALUATED | NOT_MIGRATED | NOT_ANNOUNCED | 2026-08-09 | 台服官方索引重驗未見公告；評估完成後才遷移 41 |
+| SYNC-008 | フブキ（サマー）／【待查證】 | 2026/07/31 | 限定（泳裝，官網明載「期間限定」） | OFFICIAL_VERIFIED（ev048；池期 07/31 12:00–08/15 11:59） | NOT_EVALUATED | MIGRATED_TO_41 | NOT_ANNOUNCED | 2026-08-09 | 台服官方索引重驗未見公告；41 maturity=RESEARCH，價值研究完成前不設 MATURE；event_id＝JP_20260731_fubuki_summer |
+| SYNC-009 | ヴァンピィ（サマー）／【待查證】 | 2026/08/15 | UNKNOWN（官方直播未直接明示限定身分） | OFFICIAL_VERIFIED（ev123；官方直播投影片） | NOT_EVALUATED | MIGRATED_TO_41 | NOT_ANNOUNCED | 2026-08-09 | 台服官方索引重驗未見公告；41 maturity=RESEARCH，角色定位與開池日以直播正文為準，不由週年池名推論限定身分；event_id＝JP_20260815_vampy_summer |
+| SYNC-010 | ティア／【待查證】 | 2026/08/23 | UNKNOWN（官方直播未直接明示 Fes 限定身分） | OFFICIAL_VERIFIED（ev123；官方直播投影片） | NOT_EVALUATED | MIGRATED_TO_41 | NOT_ANNOUNCED | 2026-08-09 | 台服官方索引重驗未見公告；41 maturity=RESEARCH，只記 Princess Fes Prize Gacha 事實，不由池名推論限定身分；event_id＝JP_20260823_tia |
 | SYNC-007 | シオリ（ウィンター）／栞（冬日） | 2026/03/16 | 限定 | OFFICIAL_VERIFIED（ev027;ev028） | NOT_EVALUATED | ARCHIVED | **RELEASED**（台 2026/07/17） | 2026-07-17 | 已轉為 02 錨點 #3，自追蹤關閉 |
 
 ## 台服實裝落點（Guide-Only）

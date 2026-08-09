@@ -5,7 +5,12 @@ from copy import deepcopy
 import pytest
 from pydantic import ValidationError
 
-from pcr_api.schemas import ResponseMeta, SourceMeta
+from pcr_api.schemas import (
+    GachaCommunitySourceData,
+    GachaTimelineEventData,
+    ResponseMeta,
+    SourceMeta,
+)
 
 
 VALID_SOURCE = {
@@ -77,3 +82,92 @@ def test_response_meta_requires_conservative_gate_d_fields() -> None:
         match="data_revision must equal source.revision_id",
     ):
         ResponseMeta.model_validate(mismatched_revision)
+
+
+def test_gacha_community_confidence_cap_rejects_official_or_unknown_levels() -> None:
+    payload = {
+        "source_id": "GACHA-COMM-TEST",
+        "title": "reviewed community timeline",
+        "platform": "forum",
+        "author": "author",
+        "source_type": "FORUM_TIMELINE",
+        "url": "https://forum.gamer.com.tw/example",
+        "last_seen_update": "2026-08-09",
+        "coverage_start": "2026-01",
+        "coverage_end": "2026-12",
+        "update_status": "CHECKED",
+        "confidence_cap": "D",
+        "usage": "timeline cross-check only",
+        "last_checked": "2026-08-09",
+        "notes": "never official evidence",
+    }
+
+    assert GachaCommunitySourceData.model_validate(payload).confidence_cap == "D"
+    for invalid in ("A", "B", "UNKNOWN"):
+        candidate = deepcopy(payload)
+        candidate["confidence_cap"] = invalid
+        with pytest.raises(ValidationError):
+            GachaCommunitySourceData.model_validate(candidate)
+
+
+def test_gacha_limited_status_requires_explicit_nullable_claim_provenance() -> None:
+    payload = {
+        "event_id": "JP_20260731_fubuki_summer",
+        "source_server": "JP",
+        "target_server": "TW",
+        "jp_date": "2026-07-31",
+        "model_estimate_start": "2026-11-30",
+        "model_estimate_end": "2026-12-02",
+        "tw_estimate_start": "2026-11-30",
+        "tw_estimate_end": "2026-12-02",
+        "forecast_method": "MODEL_ONLY",
+        "confidence": "LOW",
+        "character_name_jp": "フブキ（サマー）",
+        "tw_name": None,
+        "pool_type": "LIMITED",
+        "limited_status": "YES",
+        "limited_claim_id": "CLM-JP-FUBUKI-DATE",
+        "arena_value": "NOT_EVALUATED",
+        "p_arena_value": "NOT_EVALUATED",
+        "pve_value": "NOT_EVALUATED",
+        "clan_value": "NOT_EVALUATED",
+        "future_upgrade": "UNKNOWN",
+        "relative_priority": "NOT_EVALUATED",
+        "anchor_track": "LIMITED",
+        "anchor_count": 5,
+        "forecast_basis": "canonical anchors",
+        "last_verified": "2026-08-09",
+        "status": "ACTIVE",
+        "maturity": "RESEARCH",
+        "last_review_due": "2026-08-31",
+        "community_estimate_start": None,
+        "community_estimate_end": None,
+        "community_order_consensus": "",
+        "community_source_count": 0,
+        "community_last_checked": None,
+        "community_disagreement": "",
+        "forecast_notes": "",
+        "evidence_ids": ["ev048"],
+        "claim_ids": ["CLM-JP-FUBUKI-DATE"],
+        "community_source_ids": [],
+    }
+
+    known = GachaTimelineEventData.model_validate(payload)
+    assert known.limited_claim_id == "CLM-JP-FUBUKI-DATE"
+
+    unknown_payload = deepcopy(payload)
+    unknown_payload["limited_status"] = "UNKNOWN"
+    unknown_payload["limited_claim_id"] = None
+    assert GachaTimelineEventData.model_validate(unknown_payload).limited_claim_id is None
+
+    missing = deepcopy(payload)
+    missing.pop("limited_claim_id")
+    with pytest.raises(ValidationError, match="limited_claim_id"):
+        GachaTimelineEventData.model_validate(missing)
+
+    for status, claim_id in (("YES", None), ("NO", None), ("UNKNOWN", "CLM-X")):
+        invalid = deepcopy(payload)
+        invalid["limited_status"] = status
+        invalid["limited_claim_id"] = claim_id
+        with pytest.raises(ValidationError, match="limited_claim_id"):
+            GachaTimelineEventData.model_validate(invalid)

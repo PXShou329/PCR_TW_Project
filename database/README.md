@@ -75,3 +75,37 @@ table is empty. Any Arena row outside that legacy hash forces current-closure
 drift instead of being ignored. For the same reason, the V0006 downgrade
 transaction refuses to drop non-empty Arena tables; reactivate and verify the
 legacy closure first, then downgrade.
+
+`V0007` additively creates the Gacha future-sight read closure:
+`gacha_timeline_events`, event-to-Evidence and event-to-Claim relations,
+`gacha_community_sources`, and event-to-community-source relations. JP release
+facts and TW forecast windows remain separate columns. Unpublished TW names are
+stored as `NULL` while the exact source cell stays in `source_payload`;
+`limited_status` is explicitly `YES`, `NO`, or `UNKNOWN`. A `RESEARCH` event
+cannot carry evaluated mode values or an extraction recommendation, and a
+community confidence cap is limited to the research-core `C/D/E` vocabulary.
+Known `YES`/`NO` limited labels carry a nullable-FK `limited_claim_id` that must
+resolve through the same event's ACTIVE JP `SOURCE_FACT/A` Claim and ACTIVE JP
+`OFFICIAL/A` Evidence closure; `UNKNOWN` requires a null provenance ID.
+`OFFICIAL_OVERRIDE` likewise requires a row-local ACTIVE TW official direct
+closure and cannot be inferred from forecast prose.
+
+Materialization manifest version 4 hashes all five Gacha tables in addition to
+the version-3 Arena closure. Immutable version-2 and version-3 runs retain their
+exact historical table sets and digests only while every table introduced after
+their version is empty. Any newer serving row forces a version-4 digest and
+therefore exposes drift instead of being ignored.
+
+Downgrading V0007 is fail-closed. It is allowed only on a genuinely fresh
+database, or after atomically reactivating a successful version-3 Arena run
+whose run/revision SHA-256 pointers and per-table serving counts own the active
+mirror. All five Gacha tables must also be empty. Manually clearing Gacha rows
+while an active version-4 pointer remains is not a rollback and is rejected;
+reactivate and verify the immutable version-3 checkpoint first.
+
+Service-role provisioning includes all five Gacha tables in the typed serving
+closure: `pcr_api` is read-only, `pcr_importer` owns mirror DML, and
+`pcr_scheduler` has no Gacha-table privileges. The runtime privilege verifier
+executes both allowed and denied Gacha statements in rolled-back transactions.
+Its matrix covers all seven PostgreSQL table privileges; `TRUNCATE`,
+`REFERENCES`, and `TRIGGER` remain denied for every service role and table.

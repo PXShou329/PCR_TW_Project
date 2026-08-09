@@ -42,6 +42,8 @@ Mapping confidence 上限 B（跨服 identity 屬 record linkage 判斷）→ �
 ### 研究中未來視（maturity=RESEARCH；不作成熟預估輸出）
 
 - JP_20260731_fubuki_summer｜フブキ（サマー）｜日期 OFFICIAL／A（ev048）｜台服預估 2026/11/30–12/02（MODEL_ONLY；LIMITED 軌 n=5，model interval＝jp_date＋[122,124]；信心低～中）｜**價值 NOT_EVALUATED——回答未來視時只給日期區間與「價值研究未完成」聲明，不給抽取優先級**
+- JP_20260815_vampy_summer｜ヴァンピィ（サマー）｜日期／池期 OFFICIAL／A（ev123）｜台服模型區間 2026/12/15–12/17（MODEL_ONLY；ALL_NEW 軌 n=7）｜**直播未直接明示限定身分；台服名與價值均 UNKNOWN／NOT_EVALUATED，不給抽取優先級**
+- JP_20260823_tia｜ティア｜登場／池期 OFFICIAL／A（ev123）｜台服模型區間 2026/12/23–12/25（MODEL_ONLY；ALL_NEW 軌 n=7）｜**只保存 Princess Fes Prize Gacha 事實，不由池名推論 Fes 限定；台服名與價值均 UNKNOWN／NOT_EVALUATED**
 
 ## 5. 41_GACHA_TIMELINE.csv 欄位定義
 
@@ -57,9 +59,12 @@ Mapping confidence 上限 B（跨服 identity 屬 record linkage 判斷）→ �
 | confidence | 高／中／低 |
 | character_name_jp／tw_temp_name | 日文名／台服名（未公布時空白或【待查證】） |
 | pool_type | 限定／常駐／公主祭／復刻 |
-| limited | 是／否 |
+| limited | 是／否／UNKNOWN；只有官方正文直接支持時才可寫是／否，不得由卡池名稱或角色版本臆測 |
+| limited_claim_id | `limited=是／否` 時必填的單一指定 Claim；必須同時出現在本列 `claim_ids`，並以本列 `evidence_ids` 內的 ACTIVE JP OFFICIAL／A Evidence 直接閉合。`limited=UNKNOWN` 時必須留空 |
 | arena_value／p_arena_value／pve_value／clan_value | 高／中／低／待查證（依 42 評估） |
-| future_upgrade | 未來專武／六星等強化摘要 |
-| relative_priority | 相對優先級（與前後池比較的定性結論） |
+| future_upgrade | 未來專武／六星等強化摘要；RESEARCH 只允許 UNKNOWN／NOT_EVALUATED |
+| relative_priority | 相對優先級（與前後池比較的定性結論）；RESEARCH 固定 NOT_EVALUATED，不得以自由文字先給抽取建議 |
 | sources | 來源摘要 |
 | last_verified | 最後查證日 |
+
+`OFFICIAL_OVERRIDE` 也採同一個 direct-closure 原則：不能只看 Claim 的標量欄位；本列必須同時引用 ACTIVE TW `gacha` SOURCE_FACT／A Claim，以及該 Claim 直接宣告的 ACTIVE TW OFFICIAL／A Evidence，才可覆寫模型區間。

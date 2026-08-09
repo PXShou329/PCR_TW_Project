@@ -34,7 +34,7 @@ from .conftest import make_factory
 
 GUIDE_ID = "TW_DEEP_FIRE_08_10_20260802"
 WATER_GUIDE_ID = "TW_DEEP_WATER_08_10_20260808"
-APPLICATION_VERSION = "3.0.0-a5"
+APPLICATION_VERSION = "3.0.0-b5"
 
 
 def test_postgresql_engine_uses_repeatable_read_for_route_snapshot(
@@ -538,6 +538,8 @@ def test_all_strategy_reads_fail_closed_on_timeline_materialization_drift() -> N
         "/api/v1/teams/TM-F810-02/timelines",
         "/api/v1/evidence/ev073",
         "/api/v1/claims/CLM-PVE-F810-SHIZURU",
+        "/api/v1/gacha/timeline",
+        "/api/v1/gacha/community-sources",
         "/api/v1/pvp/characters",
         "/api/v1/pvp/counters",
     ]
@@ -617,14 +619,14 @@ def test_baseline_reports_real_counts_and_research_gates(client: TestClient) -> 
     assert_meta(payload)
     data = payload["data"]
     assert data["research_core_version"] == "v1.5"
-    assert data["application_version"] == "3.0.0-a5"
+    assert data["application_version"] == "3.0.0-b5"
     assert data["counts"] == {
         "stages": 3,
         "teams": 10,
         "team_members": 50,
         "characters": 35,
-        "evidence": 64,
-        "claims": 62,
+        "evidence": 73,
+        "claims": 69,
         "operation_timelines": 15,
         "timeline_steps": 37,
         "arena_defenses": 1,
@@ -633,6 +635,11 @@ def test_baseline_reports_real_counts_and_research_gates(client: TestClient) -> 
         "arena_counter_members": 10,
         "arena_counter_evidence": 4,
         "arena_counter_claims": 4,
+        "gacha_timeline_events": 5,
+        "gacha_timeline_evidence": 10,
+        "gacha_timeline_claims": 8,
+        "gacha_community_sources": 4,
+        "gacha_timeline_community_sources": 0,
     }
     assert data["gates"]["gate_a"] is False
     assert data["gates"]["gate_b"] is False

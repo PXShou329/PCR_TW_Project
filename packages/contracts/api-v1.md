@@ -1,4 +1,4 @@
-# API v1 contract (RP-A5 Arena exact slice + B3/D0 picker API)
+# API v1 contract (Arena exact slice + Gacha timeline vertical slice)
 
 All public strategy endpoints are read-only `GET` endpoints and return:
 
@@ -43,6 +43,8 @@ Endpoints:
 - `GET /api/v1/teams/{team_id}/timelines`
 - `GET /api/v1/evidence/{evidence_id}`
 - `GET /api/v1/claims/{claim_id}`
+- `GET /api/v1/gacha/timeline`
+- `GET /api/v1/gacha/community-sources`
 - `GET /api/v1/pvp/characters`
 - `GET /api/v1/pvp/counters?defense_signature=...`
 
@@ -55,6 +57,25 @@ official name. Every returned AVAILABLE row must reference at least one Evidence
 record that actually exists and is exactly `ACTIVE` / `TW` / `OFFICIAL` / `A`;
 otherwise the endpoint fails closed with `503 FIXTURE_DRIFT`. The lookup loads the
 referenced Evidence union in one batch rather than issuing one query per character.
+
+`GET /api/v1/gacha/timeline` returns the typed projection of
+`41_GACHA_TIMELINE.csv` in deterministic `(jp_date, event_id)` order. Every row
+states `source_server=JP` and `target_server=TW`; `tw_name` is nullable and the
+API never substitutes `character_name_jp`, a community translation, or a
+placeholder. `limited_status` is exactly `YES|NO|UNKNOWN`; the required nullable
+`limited_claim_id` carries the exact Claim provenance for `YES|NO` and is null
+for `UNKNOWN`. The API never derives it from `pool_type`, names, or chronology. The API preserves
+`MATURE|RESEARCH` and literal `NOT_EVALUATED` values rather than upgrading a
+research row into a recommendation. `evidence_ids`, `claim_ids`, and
+`community_source_ids` are independently de-duplicated by the relational model
+and returned in lexical order. There is no personal gem, roster, Similar, or
+write endpoint in this slice.
+
+`GET /api/v1/gacha/community-sources` returns the reviewed registry from
+`45_GACHA_COMMUNITY_SOURCE_INDEX.csv` in stable `source_id` order. A
+`CHECKED` community source remains community evidence with its stored
+`confidence_cap` (`C|D|E` only); it is never promoted to `A|B`, `UNKNOWN`, or
+official evidence by the API.
 
 The counter endpoint remains exact-only. `defense_signature` is five unique
 semicolon-separated canonical unit keys; its identity is order-independent.
@@ -87,6 +108,14 @@ complete character/defense + Claim + Evidence freshness and confidence closure i
 typed and aggregated. Existing endpoints without an unambiguous closure expose the same
 required metadata fields conservatively as `UNKNOWN`, `null`, and empty lists.
 This sub-slice is contract preparation and does not declare Gate D passed.
+
+Gacha timeline records expose only the mechanically proven cross-server scope
+(`server=MIXED`) plus linked Evidence/Claim ID unions. Until the complete
+Evidence/Claim freshness, environment, and A–E confidence closure is typed,
+`environment_version=UNKNOWN`, `verified_at=null`, `stale_status=UNKNOWN`, and
+`confidence=UNKNOWN`. Community-source metadata remains fully `UNKNOWN` because
+the registry has no typed server/environment freshness closure. Both envelopes
+still use the concrete active immutable `data_revision`.
 
 `TeamDetail.timeline` and the dedicated timeline endpoint expose a
 source-separated aggregate:

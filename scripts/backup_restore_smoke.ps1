@@ -1,21 +1,36 @@
 [CmdletBinding()]
 param(
+    [Parameter(Mandatory = $true)]
     [string]$EnvFile,
+    [Parameter(Mandatory = $true)]
+    [ValidatePattern('^[a-z0-9][a-z0-9_-]{0,62}$')]
     [string]$ProjectName,
+    [Parameter(Mandatory = $true)]
+    [ValidateNotNullOrEmpty()]
+    [string]$ExpectedApiImage,
+    [Parameter(Mandatory = $true)]
+    [ValidateNotNullOrEmpty()]
+    [string]$ExpectedSchedulerImage,
+    [Parameter(Mandatory = $true)]
+    [ValidateRange(1, 65535)]
+    [int]$ExpectedApiPort,
+    [Parameter(Mandatory = $true)]
+    [ValidateRange(1, 65535)]
+    [int]$ExpectedWebPort,
+    [Parameter(Mandatory = $true)]
+    [ValidateRange(1, 65535)]
+    [int]$ExpectedSchedulerPort,
     [string]$PostgresUser,
-    [string]$SourceDatabase = "pcr_tw",
+    [string]$SourceDatabase,
     [switch]$SeedRevisionHistory,
     [switch]$KeepBackup,
-    [Parameter(HelpMessage = "Keep the restored database at V0006 after the intentionally rejected non-empty Arena downgrade probe.")]
+    [Parameter(HelpMessage = "Keep the full restored B5 database. The destructive empty-Gacha downgrade probe always uses a separate disposable database.")]
     [switch]$KeepRestoredDatabase
 )
 
 $ErrorActionPreference = "Stop"
 $repoRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot ".."))
 $composeFile = Join-Path $repoRoot "infra\compose.yml"
-if (-not $EnvFile) {
-    $EnvFile = Join-Path $repoRoot ".env"
-}
 $EnvFile = [System.IO.Path]::GetFullPath($EnvFile)
 if (-not (Test-Path -LiteralPath $EnvFile -PathType Leaf)) {
     throw "Missing private environment file: $EnvFile"
@@ -48,8 +63,14 @@ function Get-Setting {
     return $Default
 }
 
+if ($ProjectName -in @("pcr-tw-a5-arena", "pcr-tw-a4-water", "pcr-tw-b1")) {
+    throw "ProjectName is reserved for an existing or legacy stack"
+}
 if (-not $PostgresUser) {
     $PostgresUser = Get-Setting -Name "POSTGRES_USER" -Default "pcr_owner"
+}
+if (-not $SourceDatabase) {
+    $SourceDatabase = Get-Setting -Name "POSTGRES_DB" -Default "pcr_tw"
 }
 if ($SourceDatabase -notmatch '^[a-zA-Z][a-zA-Z0-9_]{0,40}$') {
     throw "SourceDatabase contains unsupported characters"
@@ -73,6 +94,28 @@ foreach ($required in @(
 }
 $encodedApiPassword = [Uri]::EscapeDataString($apiPassword)
 $encodedImporterPassword = [Uri]::EscapeDataString($importerPassword)
+$b5ManifestSha256 = "e74814d6433ee327611f10322937bdfa9687b9887f139ba6e6158a291dd12989"
+$b5Revision = "d117be193802d459102708424c4b7f2a7e852b793ff38356e1977f44d507466d"
+$b5Semantic = "a7467a838c2a9cfdfe48bda4a3b158fb374dd023caa3478a84c07678532ea9f4"
+$b5EvidenceToClaimSha256 = "a2fa8f263d612cd393bbd25d29d01f9ffde4015ed924e7b28a8ed909b99c67af"
+$b5ClaimToEvidenceSha256 = "24c1cbce3588926d4efe657c8da94b968aa25dd288e764ebbed0f18c1203d43c"
+$b5RowCounts = [ordered]@{
+    stages = 3; teams = 10; team_members = 50; characters = 35
+    evidence = 73; claims = 69; operation_timelines = 15; timeline_steps = 37
+    arena_defenses = 1; arena_defense_members = 5; arena_counters = 2
+    arena_counter_members = 10; arena_counter_evidence = 4; arena_counter_claims = 4
+    gacha_timeline_events = 5; gacha_timeline_evidence = 10; gacha_timeline_claims = 8
+    gacha_community_sources = 4; gacha_timeline_community_sources = 0
+}
+$b5ServingCounts = [ordered]@{
+    stages = 3; teams = 10; team_members = 50; characters = 35
+    evidence = 73; claims = 69; stage_evidence = 47; stage_claims = 46
+    team_evidence = 95; claim_evidence = 159; operation_timelines = 15; timeline_steps = 37
+    arena_defenses = 1; arena_defense_members = 5; arena_counters = 2
+    arena_counter_members = 10; arena_counter_evidence = 4; arena_counter_claims = 4
+    gacha_timeline_events = 5; gacha_timeline_evidence = 10; gacha_timeline_claims = 8
+    gacha_community_sources = 4; gacha_timeline_community_sources = 0
+}
 
 $configuredBackupRoot = Get-Setting -Name "BACKUP_DIR" -Default "..\.runtime\backups"
 if ([System.IO.Path]::IsPathRooted($configuredBackupRoot)) {
@@ -89,24 +132,26 @@ $suffix = [Guid]::NewGuid().ToString("N").Substring(0, 6)
 $backupName = "${SourceDatabase}_${stamp}_${suffix}.dump"
 $backupPath = [System.IO.Path]::GetFullPath((Join-Path $backupRoot $backupName))
 $restoreDatabase = "${SourceDatabase}_restore_smoke_${suffix}"
-$apiContainer = "pcr-tw-b1-restore-api-${suffix}"
-$webContainer = "pcr-tw-b1-restore-web-${suffix}"
+$probeDatabase = "${SourceDatabase}_v7_probe_${suffix}"
+$apiContainer = "${ProjectName}-restore-api-${suffix}"
+$webContainer = "${ProjectName}-restore-web-${suffix}"
 if ($restoreDatabase -notmatch '^[a-zA-Z][a-zA-Z0-9_]*_restore_smoke_[a-f0-9]{6}$') {
     throw "Internal safety check rejected restore database name"
+}
+if ($probeDatabase -notmatch '^[a-zA-Z][a-zA-Z0-9_]*_v7_probe_[a-f0-9]{6}$') {
+    throw "Internal safety check rejected V0007 probe database name"
 }
 if (-not $backupPath.StartsWith($backupRoot + [System.IO.Path]::DirectorySeparatorChar)) {
     throw "Internal safety check rejected backup path"
 }
 
-$compose = @("compose")
-if ($ProjectName) {
-    if ($ProjectName -notmatch '^[a-z0-9][a-z0-9_-]{0,62}$') {
-        throw "ProjectName contains unsupported characters"
-    }
-    $compose += @("--project-name", $ProjectName)
-}
-$compose += @("--env-file", $EnvFile, "-f", $composeFile)
+$compose = @(
+    "compose", "--project-name", $ProjectName,
+    "--profile", "verification",
+    "--env-file", $EnvFile, "-f", $composeFile
+)
 $restoreCreated = $false
+$probeCreated = $false
 $apiContainerCreated = $false
 $webContainerCreated = $false
 
@@ -131,6 +176,123 @@ function Invoke-DockerJson {
     catch {
         throw "docker command did not return a JSON result"
     }
+}
+
+function Get-ResolvedService {
+    param(
+        [Parameter(Mandatory = $true)]$Config,
+        [Parameter(Mandatory = $true)][string]$ServiceName
+    )
+    $property = $Config.services.PSObject.Properties[$ServiceName]
+    if ($null -eq $property) {
+        throw "Compose preflight is missing service: $ServiceName"
+    }
+    return $property.Value
+}
+
+function Assert-LoopbackPort {
+    param(
+        [Parameter(Mandatory = $true)]$Service,
+        [Parameter(Mandatory = $true)][int]$ContainerPort,
+        [Parameter(Mandatory = $true)][int]$ExpectedPort,
+        [Parameter(Mandatory = $true)][string]$Label
+    )
+    $ports = @($Service.ports)
+    if ($ports.Count -ne 1) {
+        throw "$Label must expose exactly one published port"
+    }
+    $binding = $ports[0]
+    if (
+        [int]$binding.target -ne $ContainerPort -or
+        [int]$binding.published -ne $ExpectedPort -or
+        [string]$binding.host_ip -cne "127.0.0.1" -or
+        [string]$binding.protocol -cne "tcp"
+    ) {
+        throw "$Label port binding does not match the expected loopback endpoint"
+    }
+}
+
+function Assert-ComposePreflight {
+    $configOutput = & docker @compose config --format json 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        throw "Docker Compose config preflight failed: $($configOutput -join [Environment]::NewLine)"
+    }
+    try {
+        $config = ($configOutput -join [Environment]::NewLine) | ConvertFrom-Json
+    }
+    catch {
+        throw "Docker Compose config preflight did not return valid JSON"
+    }
+    if ([string]$config.name -cne $ProjectName) {
+        throw "Resolved Compose project does not match ProjectName"
+    }
+    foreach ($serviceName in @(
+        "api", "importer", "migration", "role-provision", "round-trip-smoke",
+        "consistency-smoke", "cache-epoch-smoke", "artifact-lock-smoke",
+        "revision-history-smoke", "revision-history-verify"
+    )) {
+        $service = Get-ResolvedService -Config $config -ServiceName $serviceName
+        if ([string]$service.image -cne $ExpectedApiImage) {
+            throw "Resolved $serviceName image does not match ExpectedApiImage"
+        }
+    }
+    foreach ($serviceName in @("scheduler", "scheduler-smoke")) {
+        $service = Get-ResolvedService -Config $config -ServiceName $serviceName
+        if ([string]$service.image -cne $ExpectedSchedulerImage) {
+            throw "Resolved $serviceName image does not match ExpectedSchedulerImage"
+        }
+    }
+    $api = Get-ResolvedService -Config $config -ServiceName "api"
+    $web = Get-ResolvedService -Config $config -ServiceName "web"
+    $scheduler = Get-ResolvedService -Config $config -ServiceName "scheduler"
+    $db = Get-ResolvedService -Config $config -ServiceName "db"
+    Assert-LoopbackPort -Service $api -ContainerPort 8000 -ExpectedPort $ExpectedApiPort -Label "API"
+    Assert-LoopbackPort -Service $web -ContainerPort 3000 -ExpectedPort $ExpectedWebPort -Label "Web"
+    Assert-LoopbackPort -Service $scheduler -ContainerPort 8081 -ExpectedPort $ExpectedSchedulerPort -Label "Scheduler"
+    if ($null -ne $db.ports -and @($db.ports).Count -ne 0) {
+        throw "Database must not expose a published port"
+    }
+    if (
+        [string]$scheduler.environment.SCHEDULER_ENABLED -cne "false" -or
+        [string]$scheduler.environment.SHADOW_MODE -cne "true" -or
+        [string]$scheduler.environment.AUTO_PUBLISH -cne "false"
+    ) {
+        throw "Scheduler safety flags do not match disabled Shadow Mode"
+    }
+    if (-not [bool]$config.networks.backend.internal) {
+        throw "Resolved backend network must remain internal"
+    }
+    Write-Host "B5_COMPOSE_PREFLIGHT_OK project=$ProjectName api_image=$ExpectedApiImage scheduler_image=$ExpectedSchedulerImage api_port=$ExpectedApiPort web_port=$ExpectedWebPort scheduler_port=$ExpectedSchedulerPort"
+}
+
+function Assert-RunningDbIdentity {
+    $containerId = (& docker @compose ps -q db 2>$null | Out-String).Trim()
+    if ($LASTEXITCODE -ne 0 -or $containerId -notmatch '^[0-9a-f]{12,64}$') {
+        throw "Compose preflight could not identify exactly one running database container"
+    }
+    $inspectOutput = & docker inspect $containerId 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        throw "Could not inspect the resolved database container"
+    }
+    try {
+        $inspection = @(($inspectOutput -join [Environment]::NewLine) | ConvertFrom-Json)[0]
+    }
+    catch {
+        throw "Database container inspection was not valid JSON"
+    }
+    if ([string]$inspection.Config.Labels.'com.docker.compose.project' -cne $ProjectName) {
+        throw "Running database container belongs to a different Compose project"
+    }
+    $dataMounts = @($inspection.Mounts | Where-Object { $_.Destination -eq "/var/lib/postgresql" })
+    if (
+        $dataMounts.Count -ne 1 -or
+        [string]$dataMounts[0].Type -cne "volume" -or
+        [string]$dataMounts[0].Name -cne "${ProjectName}_pg_data"
+    ) {
+        throw "Running database does not use the expected isolated project volume"
+    }
+    Write-Host "B5_DB_TARGET_OK project=$ProjectName container=$containerId volume=$($dataMounts[0].Name)"
+    return $containerId
 }
 
 function Get-PublishedPort {
@@ -160,7 +322,8 @@ function Wait-JsonEndpoint {
 
 function Stop-DisposableContainer {
     param([string]$Container)
-    if ($Container -notmatch '^pcr-tw-b1-restore-(api|web)-[a-f0-9]{6}$') {
+    $expectedPattern = '^' + [regex]::Escape($ProjectName) + '-restore-(api|web)-[a-f0-9]{6}$'
+    if ($Container -notmatch $expectedPattern) {
         throw "Internal safety check rejected disposable container name"
     }
     $running = & docker inspect --format '{{.State.Running}}' $Container 2>$null
@@ -182,7 +345,7 @@ function Stop-DisposableContainer {
 
 function Get-Scalar {
     param([string]$Database, [string]$Sql)
-    $value = & docker @compose exec -T db psql `
+    $value = & docker @compose exec -T db psql -X -q -v ON_ERROR_STOP=1 `
         --username=$PostgresUser --dbname=$Database --tuples-only --no-align --command=$Sql
     if ($LASTEXITCODE -ne 0) {
         throw "psql scalar query failed for database $Database"
@@ -190,8 +353,94 @@ function Get-Scalar {
     return ($value | Out-String).Trim()
 }
 
+function Assert-CountObject {
+    param(
+        [Parameter(Mandatory = $true)]$Actual,
+        [Parameter(Mandatory = $true)][System.Collections.IDictionary]$Expected,
+        [Parameter(Mandatory = $true)][string]$Label
+    )
+    $actualNames = @($Actual.PSObject.Properties.Name)
+    if (
+        $actualNames.Count -ne $Expected.Count -or
+        @($actualNames | Where-Object { -not $Expected.Contains($_) }).Count -ne 0
+    ) {
+        throw "$Label row-count keys do not match the pinned closure"
+    }
+    foreach ($name in $Expected.Keys) {
+        if ([int]$Actual.$name -ne [int]$Expected[$name]) {
+            throw "$Label row-count mismatch for $name"
+        }
+    }
+}
+
+function Assert-B5DatabaseIdentity {
+    param(
+        [Parameter(Mandatory = $true)][string]$Database,
+        [Parameter(Mandatory = $true)][string]$Label
+    )
+    $alembic = Get-Scalar -Database $Database -Sql "SELECT version_num FROM alembic_version"
+    $activeRevision = Get-Scalar -Database $Database -Sql "SELECT active_revision_id FROM materialization_state WHERE id=1"
+    $activeRun = Get-Scalar -Database $Database -Sql "SELECT active_import_run_id FROM materialization_state WHERE id=1"
+    $activeMaterialization = Get-Scalar -Database $Database -Sql "SELECT COALESCE(materialization_sha256, '') FROM materialization_state WHERE id=1"
+    $epoch = [long](Get-Scalar -Database $Database -Sql "SELECT epoch FROM materialization_state WHERE id=1")
+    if (
+        $alembic -ne "v0007_gacha_timeline_slice" -or
+        $activeRevision -ne $b5Revision -or
+        $activeRun -notmatch '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' -or
+        $activeMaterialization -notmatch '^[0-9a-f]{64}$' -or
+        $epoch -le 0
+    ) {
+        throw "$Label active B5 state is invalid"
+    }
+    $revisionValues = Get-Scalar -Database $Database -Sql "SELECT manifest_sha256 || '|' || raw_tree_sha256 || '|' || semantic_tree_sha256 || '|' || status || '|' || file_count || '|' || csv_file_count || '|' || csv_row_count || '|' || evidence_to_claim_count || '|' || evidence_to_claim_sha256 || '|' || claim_to_evidence_count || '|' || claim_to_evidence_sha256 || '|' || COALESCE(materialization_sha256, '') || '|' || COALESCE(import_run_id::text, '') FROM core_revisions WHERE revision_id='$b5Revision'"
+    $expectedRevisionValues = "$b5ManifestSha256|$b5Revision|$b5Semantic|SUCCEEDED|48|13|376|120|$b5EvidenceToClaimSha256|298|$b5ClaimToEvidenceSha256|$activeMaterialization|$activeRun"
+    if ($revisionValues -ne $expectedRevisionValues) {
+        throw "$Label portable or instance CoreRevision identity drifted"
+    }
+    $runValues = Get-Scalar -Database $Database -Sql "SELECT status || '|' || fixture_sha256 || '|' || canonical_source || '|' || COALESCE(manifest#>>'{materialization,schema_version}', '') || '|' || COALESCE(manifest#>>'{materialization,sha256}', '') || '|' || (SELECT count(*) FROM jsonb_object_keys(CASE WHEN jsonb_typeof(manifest#>'{materialization,tables}')='object' THEN manifest#>'{materialization,tables}' ELSE '{}'::jsonb END)) FROM import_runs WHERE id='$activeRun'"
+    if ($runValues -ne "SUCCEEDED|$b5Revision|research_core_file_ssot|4|$activeMaterialization|23") {
+        throw "$Label active ImportRun identity drifted"
+    }
+    $runCounts = (Get-Scalar -Database $Database -Sql "SELECT row_counts::text FROM import_runs WHERE id='$activeRun'") | ConvertFrom-Json
+    $servingCounts = (Get-Scalar -Database $Database -Sql "SELECT serving_counts::text FROM materialization_state WHERE id=1") | ConvertFrom-Json
+    Assert-CountObject -Actual $runCounts -Expected $b5RowCounts -Label "$Label ImportRun"
+    Assert-CountObject -Actual $servingCounts -Expected $b5ServingCounts -Label "$Label MaterializationState"
+    foreach ($table in $b5ServingCounts.Keys) {
+        $actual = [int](Get-Scalar -Database $Database -Sql "SELECT COUNT(*) FROM $table")
+        if ($actual -ne [int]$b5ServingCounts[$table]) {
+            throw "$Label database count mismatch for $table"
+        }
+    }
+    return [pscustomobject]@{
+        Alembic = $alembic
+        Revision = $activeRevision
+        ImportRun = $activeRun
+        Materialization = $activeMaterialization
+        Epoch = $epoch
+    }
+}
+
+function Assert-DbPrivilegeContract {
+    param([Parameter(Mandatory = $true)][string]$Database)
+    $privilegeOutput = & (Join-Path $repoRoot "scripts\check_db_privileges.ps1") `
+        -EnvFile $EnvFile `
+        -ProjectName $ProjectName `
+        -Database $Database `
+        -PostgresUser $PostgresUser *>&1
+    $privilegeExit = $LASTEXITCODE
+    $privilegeLines = @(
+        $privilegeOutput | ForEach-Object { ([string]$_).Trim() } | Where-Object { $_ }
+    )
+    $expectedMarker = "DB_PRIVILEGES_OK matrix_checks=651 actual_denials=23 allowed_smokes=10"
+    if ($privilegeExit -ne 0 -or @($privilegeLines | Where-Object { $_ -ceq $expectedMarker }).Count -ne 1) {
+        throw "Database privilege verifier did not emit the exact 7-privilege B5 contract"
+    }
+    $privilegeLines | ForEach-Object { Write-Host $_ }
+}
+
 $primaryError = $null
 $cleanupErrors = [System.Collections.Generic.List[string]]::new()
+$receipt = $null
 
 function Invoke-CleanupStep {
     param(
@@ -207,7 +456,9 @@ function Invoke-CleanupStep {
 }
 
 try {
+    Assert-ComposePreflight
     Invoke-DockerChecked ps --status running db
+    $dbContainerId = Assert-RunningDbIdentity
     # CI may explicitly seed a real A -> B -> A importer cycle. It is opt-in so
     # an operator running a restore drill against a durable database never gets
     # synthetic history as an unexpected side effect.
@@ -218,6 +469,7 @@ try {
             --env "PCR_DATABASE_URL=$sourceImporterUrl" `
             revision-history-smoke
     }
+    $sourceIdentity = Assert-B5DatabaseIdentity -Database $SourceDatabase -Label "Source"
     $sourceRevisionCount = [int](Get-Scalar -Database $SourceDatabase -Sql "SELECT COUNT(*) FROM core_revisions")
     $sourceActivationCount = [int](Get-Scalar -Database $SourceDatabase -Sql "SELECT COUNT(*) FROM revision_activations")
     $verifyRevisionHistory = $sourceRevisionCount -ge 2 -and $sourceActivationCount -ge 3
@@ -236,6 +488,12 @@ try {
     if ($sourceHistory.status -ne "REVISION_HISTORY_VERIFIED") {
         throw "Source revision history verifier did not complete"
     }
+    if (
+        $sourceHistory.active_revision_id -and
+        $sourceHistory.active_revision_id -ne $b5Revision
+    ) {
+        throw "Source history verifier reported a non-B5 active revision"
+    }
 
     Invoke-DockerChecked exec -T db pg_dump `
         --username=$PostgresUser `
@@ -243,11 +501,19 @@ try {
         --format=custom `
         --compress=9 `
         --file="/backups/$backupName"
+    $sourceIdentityAfterDump = Assert-B5DatabaseIdentity -Database $SourceDatabase -Label "Source after dump"
+    if (
+        $sourceIdentityAfterDump.ImportRun -ne $sourceIdentity.ImportRun -or
+        $sourceIdentityAfterDump.Materialization -ne $sourceIdentity.Materialization -or
+        $sourceIdentityAfterDump.Epoch -ne $sourceIdentity.Epoch
+    ) {
+        throw "Source materialization identity or epoch changed while the backup was captured"
+    }
     # The running DB may have been created with a different BACKUP_DIR than the
     # current process. Ensure the verified local retention path contains the
     # dump without assuming that the bind mount still matches current config.
     if (-not (Test-Path -LiteralPath $backupPath -PathType Leaf)) {
-        Invoke-DockerChecked cp "db:/backups/$backupName" $backupPath
+        Invoke-DockerChecked cp "${dbContainerId}:/backups/$backupName" $backupPath
     }
     if (-not (Test-Path -LiteralPath $backupPath -PathType Leaf)) {
         throw "Database dump was not copied to the verified local backup path"
@@ -284,6 +550,18 @@ try {
     if ($tables.Count -eq 0) {
         throw "Source database has no public tables; refusing a meaningless restore PASS"
     }
+    $restoreTables = & docker @compose exec -T db psql -X -q -v ON_ERROR_STOP=1 `
+        --username=$PostgresUser --dbname=$restoreDatabase --tuples-only --no-align --command=$tableSql
+    if ($LASTEXITCODE -ne 0) {
+        throw "Could not enumerate restored tables"
+    }
+    $restoreTables = @($restoreTables | Where-Object { $_ -and $_.Trim() })
+    if (
+        $restoreTables.Count -ne $tables.Count -or
+        (Compare-Object -ReferenceObject $tables -DifferenceObject $restoreTables).Count -ne 0
+    ) {
+        throw "Source and restored public table sets differ"
+    }
 
     foreach ($quotedTable in $tables) {
         $countSql = "SELECT COUNT(*) FROM public.$quotedTable"
@@ -316,10 +594,17 @@ try {
     if ($sourceRevision -ne $restoreRevision) {
         throw "Alembic revision mismatch (source=$sourceRevision restore=$restoreRevision)"
     }
+    $restoreIdentity = Assert-B5DatabaseIdentity -Database $restoreDatabase -Label "Restored"
+    if (
+        $restoreIdentity.ImportRun -ne $sourceIdentity.ImportRun -or
+        $restoreIdentity.Materialization -ne $sourceIdentity.Materialization -or
+        $restoreIdentity.Epoch -ne $sourceIdentity.Epoch
+    ) {
+        throw "Restored active B5 instance identity differs from source"
+    }
 
     $encodedOwnerPassword = [Uri]::EscapeDataString($ownerPassword)
     $ownerRestoreUrl = "postgresql://${PostgresUser}:${encodedOwnerPassword}@db:5432/${restoreDatabase}"
-    $ownerRestoreMigrationUrl = "postgresql+psycopg://${PostgresUser}:${encodedOwnerPassword}@db:5432/${restoreDatabase}"
     $apiRestoreUrl = "postgresql+psycopg://pcr_api:${encodedApiPassword}@db:5432/${restoreDatabase}"
 
     # pg_restore deliberately omits ACLs. Reapply the idempotent service-role
@@ -348,18 +633,7 @@ try {
     # A row-count match alone cannot prove that security triggers, composite
     # foreign keys, and service-role ACLs survived restore. Re-run the same
     # real-statement denial probes against the disposable restored database.
-    $privilegeArgs = @{
-        EnvFile = $EnvFile
-        Database = $restoreDatabase
-        PostgresUser = $PostgresUser
-    }
-    if ($ProjectName) {
-        $privilegeArgs.ProjectName = $ProjectName
-    }
-    & (Join-Path $repoRoot "scripts\check_db_privileges.ps1") @privilegeArgs
-    if ($LASTEXITCODE -ne 0) {
-        throw "Restored database privilege/immutability probes failed"
-    }
+    Assert-DbPrivilegeContract -Database $restoreDatabase
     Write-Host "RESTORED_DB_GUARDS_OK database=$restoreDatabase"
 
     # Read the restored artifact mirror through the real read-only API role,
@@ -367,7 +641,7 @@ try {
     Invoke-DockerChecked run --rm --no-deps `
         --env "PCR_DATABASE_URL=$apiRestoreUrl" `
         round-trip-smoke
-    Write-Host "RESTORED_ROUND_TRIP_OK role=pcr_api files=48 csv=13 rows=356"
+    Write-Host "RESTORED_ROUND_TRIP_OK role=pcr_api files=48 csv=13 rows=376"
 
     Invoke-DockerChecked run --detach --no-deps `
         --name $apiContainer `
@@ -383,25 +657,18 @@ try {
 
     $baseline = Invoke-RestMethod -Uri "http://127.0.0.1:${apiPort}/api/v1/baseline" -TimeoutSec 5
     if (
-        $baseline.meta.source.revision_id.Length -ne 64 -or
-        $baseline.meta.source.raw_tree_sha256.Length -ne 64 -or
-        $baseline.meta.source.semantic_tree_sha256.Length -ne 64 -or
-        $baseline.meta.source.materialization_sha256.Length -ne 64
+        $baseline.meta.source.canonical_source -ne "research_core_file_ssot" -or
+        $baseline.meta.source.fixture_sha256 -ne $b5Revision -or
+        $baseline.meta.source.import_run_id -ne $sourceIdentity.ImportRun -or
+        $baseline.meta.source.revision_id -ne $b5Revision -or
+        $baseline.meta.source.raw_tree_sha256 -ne $b5Revision -or
+        $baseline.meta.source.semantic_tree_sha256 -ne $b5Semantic -or
+        $baseline.meta.source.materialization_sha256 -ne $sourceIdentity.Materialization
     ) {
         throw "Restored API revision metadata contract failed"
     }
-    $expectedCounts = @{
-        stages = 3; teams = 10; team_members = 50; characters = 35; evidence = 64; claims = 62;
-        operation_timelines = 15; timeline_steps = 37;
-        arena_defenses = 1; arena_defense_members = 5; arena_counters = 2;
-        arena_counter_members = 10; arena_counter_evidence = 4; arena_counter_claims = 4
-    }
-    foreach ($name in $expectedCounts.Keys) {
-        if ([int]$baseline.data.counts.$name -ne $expectedCounts[$name]) {
-            throw "Restored API count mismatch for $name"
-        }
-    }
-    if ($baseline.data.application_version -ne "3.0.0-a5") {
+    Assert-CountObject -Actual $baseline.data.counts -Expected $b5RowCounts -Label "Restored API"
+    if ($baseline.data.application_version -ne "3.0.0-b5") {
         throw "Restored API application version mismatch"
     }
     $stage = Invoke-RestMethod -Uri "http://127.0.0.1:${apiPort}/api/v1/stages/TW_DEEP_FIRE_08_10_20260802" -TimeoutSec 5
@@ -414,6 +681,8 @@ try {
     $waterAutoTeam = Invoke-RestMethod -Uri "http://127.0.0.1:${apiPort}/api/v1/teams/TM-W810-05" -TimeoutSec 5
     $waterEvidence = Invoke-RestMethod -Uri "http://127.0.0.1:${apiPort}/api/v1/evidence/ev084" -TimeoutSec 5
     $arena = Invoke-RestMethod -Uri "http://127.0.0.1:${apiPort}/api/v1/pvp/counters" -TimeoutSec 5
+    $gacha = Invoke-RestMethod -Uri "http://127.0.0.1:${apiPort}/api/v1/gacha/timeline" -TimeoutSec 5
+    $gachaCommunity = Invoke-RestMethod -Uri "http://127.0.0.1:${apiPort}/api/v1/gacha/community-sources" -TimeoutSec 5
     $sourceTextSteps = @($sourceTextTimeline.data.sources[0].steps)
     $arenaRows = @($arena.data)
     $arenaWarnings = @($arena.meta.warnings)
@@ -422,6 +691,34 @@ try {
             $_.defense_members
             $_.counter_members
         }
+    )
+    $gachaRows = @($gacha.data)
+    $gachaCommunityRows = @($gachaCommunity.data)
+    $gachaEventIds = @($gachaRows | ForEach-Object { $_.event_id })
+    $expectedGachaEventIds = @(
+        "JP_20260630_shefi_vardrache",
+        "JP_20260703_luisemarie_summer",
+        "JP_20260731_fubuki_summer",
+        "JP_20260815_vampy_summer",
+        "JP_20260823_tia"
+    )
+    $gachaLimitedStatuses = @($gachaRows | ForEach-Object { [string]$_.limited_status })
+    $expectedGachaLimitedStatuses = @("YES", "YES", "YES", "UNKNOWN", "UNKNOWN")
+    $gachaLimitedClaimIds = @(
+        $gachaRows | ForEach-Object {
+            if ($null -eq $_.limited_claim_id) { "<NULL>" } else { [string]$_.limited_claim_id }
+        }
+    )
+    $expectedGachaLimitedClaimIds = @(
+        "CLM-SHEFI-POOL",
+        "CLM-LUISE-DATE",
+        "CLM-JP-FUBUKI-DATE",
+        "<NULL>",
+        "<NULL>"
+    )
+    $gachaSourceIds = @($gachaCommunityRows | ForEach-Object { $_.source_id })
+    $expectedGachaSourceIds = @(
+        "GACHA-COMM-001", "GACHA-COMM-002", "GACHA-COMM-003", "GACHA-COMM-004"
     )
     if (
         $stage.data.status -ne "VERIFIED" -or
@@ -468,11 +765,35 @@ try {
         @($arenaRows | Where-Object { $_.defense_members.Count -ne 5 -or $_.counter_members.Count -ne 5 }).Count -ne 0 -or
         @($arenaMembers | Where-Object { $_.display_name_source -ne "TW_OFFICIAL" }).Count -ne 0 -or
         $arenaWarnings -notcontains "NO_VERIFIED_COUNTER" -or
-        $arenaWarnings -notcontains "SINGLE_REPORT_REFERENCE_ONLY"
+        $arenaWarnings -notcontains "SINGLE_REPORT_REFERENCE_ONLY" -or
+        ($gachaEventIds -join "|") -ne ($expectedGachaEventIds -join "|") -or
+        ($gachaLimitedStatuses -join "|") -ne ($expectedGachaLimitedStatuses -join "|") -or
+        ($gachaLimitedClaimIds -join "|") -ne ($expectedGachaLimitedClaimIds -join "|") -or
+        @($gachaRows | Where-Object { $_.source_server -ne "JP" -or $_.target_server -ne "TW" -or $null -ne $_.tw_name }).Count -ne 0 -or
+        @($gachaRows | Where-Object { $_.maturity -eq "MATURE" }).Count -ne 2 -or
+        @($gachaRows | Where-Object { $_.maturity -eq "RESEARCH" }).Count -ne 3 -or
+        @($gachaRows | Where-Object {
+            $_.maturity -eq "RESEARCH" -and (
+                $_.arena_value -ne "NOT_EVALUATED" -or
+                $_.p_arena_value -ne "NOT_EVALUATED" -or
+                $_.pve_value -ne "NOT_EVALUATED" -or
+                $_.clan_value -ne "NOT_EVALUATED" -or
+                $_.relative_priority -ne "NOT_EVALUATED"
+            )
+        }).Count -ne 0 -or
+        @($gachaRows | Where-Object { $_.event_id -in @("JP_20260815_vampy_summer", "JP_20260823_tia") -and $_.limited_status -ne "UNKNOWN" }).Count -ne 0 -or
+        $gacha.meta.server -ne "MIXED" -or
+        $null -ne $gacha.meta.verified_at -or
+        $gacha.meta.stale_status -ne "UNKNOWN" -or
+        $gacha.meta.confidence -ne "UNKNOWN" -or
+        ($gachaSourceIds -join "|") -ne ($expectedGachaSourceIds -join "|") -or
+        @($gachaCommunityRows | Where-Object { $_.confidence_cap -ne "D" }).Count -ne 0 -or
+        @($gachaCommunityRows | Where-Object { $_.update_status -eq "CHECKED" }).Count -ne 2 -or
+        @($gachaCommunityRows | Where-Object { $_.update_status -eq "STALE" }).Count -ne 2
     ) {
         throw "Restored API critical read path failed"
     }
-    Write-Host "RESTORED_API_READINESS_OK role=pcr_api stages=3 teams=10 timelines=15 steps=37 arena_defenses=1 arena_counters=2 fire=VERIFIED water=VERIFIED arena=SINGLE_REPORT"
+    Write-Host "RESTORED_API_READINESS_OK role=pcr_api stages=3 teams=10 timelines=15 steps=37 arena_defenses=1 arena_counters=2 gacha_events=5 gacha_sources=4 fire=VERIFIED water=VERIFIED arena=SINGLE_REPORT"
 
     Invoke-DockerChecked run --detach --no-deps `
         --name $webContainer `
@@ -484,6 +805,7 @@ try {
     $webHealth = Wait-JsonEndpoint -Uri "http://127.0.0.1:${webPort}/api/health"
     $proxyEvidence = Invoke-RestMethod -Uri "http://127.0.0.1:${webPort}/api/v1/evidence/ev052" -TimeoutSec 5
     $homeResponse = Invoke-WebRequest -Uri "http://127.0.0.1:${webPort}/" -TimeoutSec 5
+    $gachaResponse = Invoke-WebRequest -Uri "http://127.0.0.1:${webPort}/gacha" -TimeoutSec 5
     if ($webHealth.status -ne "ok") {
         throw "Restored Web health failed"
     }
@@ -497,47 +819,91 @@ try {
     ) {
         throw "Restored Web SSR content failed"
     }
-    Write-Host "RESTORED_WEB_EVIDENCE_OK stage=VERIFIED evidence=ev052"
+    if (
+        $gachaResponse.StatusCode -ne 200 -or
+        $gachaResponse.Content -notmatch "抽卡未來視" -or
+        $gachaResponse.Content -notmatch "ヴァンピィ（サマー）" -or
+        $gachaResponse.Content -notmatch "限定身分 UNKNOWN"
+    ) {
+        throw "Restored Web Gacha SSR content failed"
+    }
+    Write-Host "RESTORED_WEB_EVIDENCE_OK stage=VERIFIED evidence=ev052 gacha_events=5 gacha_ssr=ok"
 
-    # V0006 owns the normalized Arena serving closure.  Downgrading while any
-    # Arena row exists must fail transactionally instead of silently erasing it.
-    # A5 -> A4 activation/downgrade and the older borrowed-state boundary are
-    # exercised separately by the rollback drills and migration regressions.
-    $borrowedNullBefore = [int](Get-Scalar -Database $restoreDatabase -Sql "SELECT COUNT(*) FROM team_members WHERE is_borrowed IS NULL")
-    if ($borrowedNullBefore -lt 1) {
-        throw "Restored database has no canonical unknown borrowed-state rows"
+    # A second restored database isolates the destructive negative probe from
+    # both the source and the fully verified restore. V0007 must reject an
+    # active v4 owner even after all Gacha rows were manually removed.
+    Invoke-DockerChecked exec -T db createdb `
+        --username=$PostgresUser `
+        --template=template0 `
+        --encoding=UTF8 `
+        $probeDatabase
+    $probeCreated = $true
+    Invoke-DockerChecked exec -T db pg_restore `
+        --username=$PostgresUser `
+        --dbname=$probeDatabase `
+        --exit-on-error `
+        --no-owner `
+        --no-privileges `
+        "/backups/$backupName"
+    $probeIdentity = Assert-B5DatabaseIdentity -Database $probeDatabase -Label "V0007 probe"
+    Get-Scalar -Database $probeDatabase -Sql "TRUNCATE TABLE gacha_timeline_community_sources, gacha_timeline_claims, gacha_timeline_evidence, gacha_community_sources, gacha_timeline_events"
+    $probeGachaRows = [int](Get-Scalar -Database $probeDatabase -Sql "SELECT (SELECT COUNT(*) FROM gacha_timeline_events) + (SELECT COUNT(*) FROM gacha_timeline_evidence) + (SELECT COUNT(*) FROM gacha_timeline_claims) + (SELECT COUNT(*) FROM gacha_community_sources) + (SELECT COUNT(*) FROM gacha_timeline_community_sources)")
+    $probeNonGachaRows = [int](Get-Scalar -Database $probeDatabase -Sql "SELECT (SELECT COUNT(*) FROM stages) + (SELECT COUNT(*) FROM teams) + (SELECT COUNT(*) FROM team_members) + (SELECT COUNT(*) FROM characters) + (SELECT COUNT(*) FROM evidence) + (SELECT COUNT(*) FROM claims) + (SELECT COUNT(*) FROM stage_evidence) + (SELECT COUNT(*) FROM stage_claims) + (SELECT COUNT(*) FROM team_evidence) + (SELECT COUNT(*) FROM claim_evidence) + (SELECT COUNT(*) FROM operation_timelines) + (SELECT COUNT(*) FROM timeline_steps) + (SELECT COUNT(*) FROM arena_defenses) + (SELECT COUNT(*) FROM arena_defense_members) + (SELECT COUNT(*) FROM arena_counters) + (SELECT COUNT(*) FROM arena_counter_members) + (SELECT COUNT(*) FROM arena_counter_evidence) + (SELECT COUNT(*) FROM arena_counter_claims)")
+    if ($probeGachaRows -ne 0) {
+        throw "V0007 negative probe did not establish an empty Gacha closure"
     }
-    $arenaRowsBefore = [int](Get-Scalar -Database $restoreDatabase -Sql "SELECT (SELECT COUNT(*) FROM arena_defenses) + (SELECT COUNT(*) FROM arena_defense_members) + (SELECT COUNT(*) FROM arena_counters) + (SELECT COUNT(*) FROM arena_counter_members) + (SELECT COUNT(*) FROM arena_counter_evidence) + (SELECT COUNT(*) FROM arena_counter_claims)")
-    $activeRevisionBefore = Get-Scalar -Database $restoreDatabase -Sql "SELECT active_revision_id FROM materialization_state WHERE id=1"
-    if ($arenaRowsBefore -lt 1) {
-        throw "Restored database has no Arena serving rows for downgrade protection"
-    }
-    Stop-DisposableContainer -Container $webContainer
-    $webContainerCreated = $false
-    Stop-DisposableContainer -Container $apiContainer
-    $apiContainerCreated = $false
+    $encodedOwnerPassword = [Uri]::EscapeDataString($ownerPassword)
+    $ownerProbeMigrationUrl = "postgresql+psycopg://${PostgresUser}:${encodedOwnerPassword}@db:5432/${probeDatabase}"
     $downgradeOutput = & docker @compose run --rm --no-deps `
-        --env "PCR_DATABASE_URL=$ownerRestoreMigrationUrl" `
+        --env "PCR_DATABASE_URL=$ownerProbeMigrationUrl" `
         migration `
-        alembic -c database/alembic.ini downgrade v0005_borrowed_tristate 2>&1
+        alembic -c database/alembic.ini downgrade v0006_arena_counter_slice 2>&1
     $downgradeExit = $LASTEXITCODE
-    $postDowngradeRevision = Get-Scalar -Database $restoreDatabase -Sql "SELECT version_num FROM alembic_version"
-    $borrowedNullAfter = [int](Get-Scalar -Database $restoreDatabase -Sql "SELECT COUNT(*) FROM team_members WHERE is_borrowed IS NULL")
-    $arenaRowsAfter = [int](Get-Scalar -Database $restoreDatabase -Sql "SELECT (SELECT COUNT(*) FROM arena_defenses) + (SELECT COUNT(*) FROM arena_defense_members) + (SELECT COUNT(*) FROM arena_counters) + (SELECT COUNT(*) FROM arena_counter_members) + (SELECT COUNT(*) FROM arena_counter_evidence) + (SELECT COUNT(*) FROM arena_counter_claims)")
-    $activeRevisionAfter = Get-Scalar -Database $restoreDatabase -Sql "SELECT active_revision_id FROM materialization_state WHERE id=1"
+    $postDowngradeRevision = Get-Scalar -Database $probeDatabase -Sql "SELECT version_num FROM alembic_version"
+    $postDowngradeActiveRevision = Get-Scalar -Database $probeDatabase -Sql "SELECT active_revision_id FROM materialization_state WHERE id=1"
+    $postDowngradeActiveRun = Get-Scalar -Database $probeDatabase -Sql "SELECT active_import_run_id FROM materialization_state WHERE id=1"
+    $postDowngradeMaterialization = Get-Scalar -Database $probeDatabase -Sql "SELECT materialization_sha256 FROM materialization_state WHERE id=1"
+    $postDowngradeEpoch = [long](Get-Scalar -Database $probeDatabase -Sql "SELECT epoch FROM materialization_state WHERE id=1")
+    $postDowngradeGachaTables = [int](Get-Scalar -Database $probeDatabase -Sql "SELECT COUNT(*) FROM (VALUES ('gacha_timeline_events'), ('gacha_timeline_evidence'), ('gacha_timeline_claims'), ('gacha_community_sources'), ('gacha_timeline_community_sources')) AS gacha_table(name) WHERE to_regclass('public.' || name) IS NOT NULL")
+    $postDowngradeNonGachaRows = [int](Get-Scalar -Database $probeDatabase -Sql "SELECT (SELECT COUNT(*) FROM stages) + (SELECT COUNT(*) FROM teams) + (SELECT COUNT(*) FROM team_members) + (SELECT COUNT(*) FROM characters) + (SELECT COUNT(*) FROM evidence) + (SELECT COUNT(*) FROM claims) + (SELECT COUNT(*) FROM stage_evidence) + (SELECT COUNT(*) FROM stage_claims) + (SELECT COUNT(*) FROM team_evidence) + (SELECT COUNT(*) FROM claim_evidence) + (SELECT COUNT(*) FROM operation_timelines) + (SELECT COUNT(*) FROM timeline_steps) + (SELECT COUNT(*) FROM arena_defenses) + (SELECT COUNT(*) FROM arena_defense_members) + (SELECT COUNT(*) FROM arena_counters) + (SELECT COUNT(*) FROM arena_counter_members) + (SELECT COUNT(*) FROM arena_counter_evidence) + (SELECT COUNT(*) FROM arena_counter_claims)")
     if (
         $downgradeExit -eq 0 -or
-        $postDowngradeRevision -ne "v0006_arena_counter_slice" -or
-        $borrowedNullAfter -ne $borrowedNullBefore -or
-        $arenaRowsAfter -ne $arenaRowsBefore -or
-        $activeRevisionAfter -ne $activeRevisionBefore
+        ($downgradeOutput -join [Environment]::NewLine) -notmatch "verified Arena v3 materialization owns the mirror" -or
+        $postDowngradeRevision -ne "v0007_gacha_timeline_slice" -or
+        $postDowngradeActiveRevision -ne $probeIdentity.Revision -or
+        $postDowngradeActiveRun -ne $probeIdentity.ImportRun -or
+        $postDowngradeMaterialization -ne $probeIdentity.Materialization -or
+        $postDowngradeEpoch -ne $probeIdentity.Epoch -or
+        $postDowngradeGachaTables -ne 5 -or
+        $postDowngradeNonGachaRows -ne $probeNonGachaRows
     ) {
-        throw "Lossy non-empty Arena downgrade was not rejected transactionally"
+        throw "V0007 active-v4 empty-Gacha downgrade was not rejected transactionally"
     }
-    Write-Host "ARENA_DOWNGRADE_BLOCKED_OK alembic=$postDowngradeRevision arena_rows=$arenaRowsAfter borrowed_nulls=$borrowedNullAfter active_revision=$activeRevisionAfter"
+    Write-Host "GACHA_DOWNGRADE_BLOCKED_OK alembic=$postDowngradeRevision gacha_rows=0 gacha_tables=$postDowngradeGachaTables active_revision=$postDowngradeActiveRevision"
 
-    Write-Host "BACKUP_RESTORE_OK source=$SourceDatabase restore=$restoreDatabase tables=$($tables.Count) source_alembic=$sourceRevision restored_alembic=$postDowngradeRevision"
-    Write-Host "Backup: $backupPath"
+    $finalSourceIdentity = Assert-B5DatabaseIdentity -Database $SourceDatabase -Label "Source after restore drill"
+    if (
+        $finalSourceIdentity.ImportRun -ne $sourceIdentity.ImportRun -or
+        $finalSourceIdentity.Materialization -ne $sourceIdentity.Materialization -or
+        $finalSourceIdentity.Epoch -ne $sourceIdentity.Epoch
+    ) {
+        throw "Source materialization changed during the restore drill"
+    }
+    $receipt = [ordered]@{
+        status = "BACKUP_RESTORE_VERIFIED"
+        project = $ProjectName
+        source_database = $SourceDatabase
+        path = $backupPath
+        sha256 = $backupSha256
+        bytes = $backupBytes
+        alembic_revision = $sourceIdentity.Alembic
+        revision_id = $sourceIdentity.Revision
+        import_run_id = $sourceIdentity.ImportRun
+        materialization_sha256 = $sourceIdentity.Materialization
+        source_epoch = $sourceIdentity.Epoch
+        backup_retained = [bool]$KeepBackup
+        restore_database_retained = [bool]$KeepRestoredDatabase
+    }
 }
 catch {
     $primaryError = $_
@@ -551,6 +917,15 @@ finally {
     if ($apiContainerCreated) {
         Invoke-CleanupStep -Name "API container" -Action {
             Stop-DisposableContainer -Container $apiContainer
+        }
+    }
+    if ($probeCreated) {
+        Invoke-CleanupStep -Name "V0007 probe database" -Action {
+            Invoke-DockerChecked exec -T db dropdb `
+                --username=$PostgresUser `
+                --if-exists `
+                $probeDatabase
+            Write-Host "Removed disposable V0007 probe database: $probeDatabase"
         }
     }
     if ($restoreCreated -and -not $KeepRestoredDatabase) {
@@ -589,4 +964,12 @@ if ($primaryError) {
 }
 if ($cleanupErrors.Count -gt 0) {
     throw "Backup/restore succeeded but cleanup failed: $($cleanupErrors -join '; ')"
+}
+if ($null -eq $receipt) {
+    throw "Backup/restore completed without a verification receipt"
+}
+Write-Host "BACKUP_RESTORE_OK source=$SourceDatabase restore=$restoreDatabase tables=$($tables.Count) source_alembic=$sourceRevision restored_alembic=$restoreRevision"
+Write-Output ($receipt | ConvertTo-Json -Compress)
+if ($KeepBackup) {
+    Write-Host "Retained verified backup: $backupPath"
 }

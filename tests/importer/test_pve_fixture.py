@@ -26,6 +26,11 @@ from pcr_database.models import (
     Claim,
     CoreRevision,
     Evidence,
+    GachaCommunitySource,
+    GachaTimelineClaim,
+    GachaTimelineCommunitySource,
+    GachaTimelineEvent,
+    GachaTimelineEvidence,
     ImportRun,
     MaterializationState,
     OperationTimeline,
@@ -257,8 +262,8 @@ def test_loader_builds_all_pve_closure_without_strengthening_unknowns() -> None:
         "TM-W810-05",
     ]
     assert len(closure.characters) == 35
-    assert len(closure.evidence) == 64
-    assert len(closure.claims) == 62
+    assert len(closure.evidence) == 73
+    assert len(closure.claims) == 69
     assert len(closure.timelines) == 15
     assert len(closure.timeline_steps) == 37
     assert closure.dangling_claim_ids == ()
@@ -835,14 +840,14 @@ def test_import_is_atomic_idempotent_and_preserves_fk_closure(tmp_path: Path) ->
         assert first.revision_id == first.raw_tree_sha256
         assert first.file_count == 48
         assert first.csv_file_count == 13
-        assert first.csv_row_count == 356
+        assert first.csv_row_count == 376
         assert first.row_counts == {
             "stages": 3,
             "teams": 10,
             "team_members": 50,
             "characters": 35,
-            "evidence": 64,
-            "claims": 62,
+            "evidence": 73,
+            "claims": 69,
             "operation_timelines": 15,
             "timeline_steps": 37,
             "arena_defenses": 1,
@@ -851,6 +856,11 @@ def test_import_is_atomic_idempotent_and_preserves_fk_closure(tmp_path: Path) ->
             "arena_counter_members": 10,
             "arena_counter_evidence": 4,
             "arena_counter_claims": 4,
+            "gacha_timeline_events": 5,
+            "gacha_timeline_evidence": 10,
+            "gacha_timeline_claims": 8,
+            "gacha_community_sources": 4,
+            "gacha_timeline_community_sources": 0,
         }
         assert session.scalar(select(func.count()).select_from(ImportRun)) == 1
         assert session.scalar(select(func.count()).select_from(Stage)) == 3
@@ -865,6 +875,11 @@ def test_import_is_atomic_idempotent_and_preserves_fk_closure(tmp_path: Path) ->
         assert session.scalar(select(func.count()).select_from(ArenaCounterMember)) == 10
         assert session.scalar(select(func.count()).select_from(ArenaCounterEvidence)) == 4
         assert session.scalar(select(func.count()).select_from(ArenaCounterClaim)) == 4
+        assert session.scalar(select(func.count()).select_from(GachaTimelineEvent)) == 5
+        assert session.scalar(select(func.count()).select_from(GachaTimelineEvidence)) == 10
+        assert session.scalar(select(func.count()).select_from(GachaTimelineClaim)) == 8
+        assert session.scalar(select(func.count()).select_from(GachaCommunitySource)) == 4
+        assert session.scalar(select(func.count()).select_from(GachaTimelineCommunitySource)) == 0
         stage = session.get(Stage, TARGET_GUIDE_ID)
         assert stage is not None
         assert stage.team_count == 5
@@ -892,7 +907,7 @@ def test_import_is_atomic_idempotent_and_preserves_fk_closure(tmp_path: Path) ->
             assert state.serving_counts[table_name] == first.row_counts[table_name]
         run = session.get(ImportRun, first.import_run_id)
         assert run is not None
-        assert run.manifest["materialization"]["schema_version"] == 3
+        assert run.manifest["materialization"]["schema_version"] == 4
 
         arena_counter = session.get(ArenaCounter, "TW_ARENA_20260525_01")
         assert arena_counter is not None
@@ -971,8 +986,8 @@ def test_synthetic_multi_stage_projection_retains_provisional_team_without_count
             "teams": 11,
             "team_members": 55,
             "characters": 35,
-            "evidence": 64,
-            "claims": 62,
+            "evidence": 73,
+            "claims": 69,
             "operation_timelines": 16,
             "timeline_steps": 37,
             "arena_defenses": 1,
@@ -981,6 +996,11 @@ def test_synthetic_multi_stage_projection_retains_provisional_team_without_count
             "arena_counter_members": 10,
             "arena_counter_evidence": 4,
             "arena_counter_claims": 4,
+            "gacha_timeline_events": 5,
+            "gacha_timeline_evidence": 10,
+            "gacha_timeline_claims": 8,
+            "gacha_community_sources": 4,
+            "gacha_timeline_community_sources": 0,
         }
         stored_stage = session.get(Stage, SYNTHETIC_GUIDE_ID)
         stored_team = session.get(Team, SYNTHETIC_TEAM_ID)
@@ -1803,6 +1823,7 @@ def test_a4_pve_v2_rolls_back_from_a5_strategy_v3_and_reactivates_exactly(
     tmp_path: Path,
 ) -> None:
     a4_core = export_checkpoint_core(tmp_path, "rp-a4-1")
+    a5_core = export_checkpoint_core(tmp_path, "rp-a5-2")
     engine = sqlite_engine()
 
     with Session(engine) as session:
@@ -1833,7 +1854,7 @@ def test_a4_pve_v2_rolls_back_from_a5_strategy_v3_and_reactivates_exactly(
 
         a5 = import_pve_projection(
             session,
-            RESEARCH_CORE,
+            a5_core,
             manifest_path=A5_MANIFEST,
             expected_manifest_sha256=RP_A5_MANIFEST_SHA256,
         )
@@ -1869,7 +1890,7 @@ def test_a4_pve_v2_rolls_back_from_a5_strategy_v3_and_reactivates_exactly(
 
         reactivate = import_pve_projection(
             session,
-            RESEARCH_CORE,
+            a5_core,
             manifest_path=A5_MANIFEST,
             expected_manifest_sha256=RP_A5_MANIFEST_SHA256,
         )
@@ -1893,12 +1914,13 @@ def test_fresh_a5_first_load_of_a4_keeps_rollback_audit_semantics(
     tmp_path: Path,
 ) -> None:
     a4_core = export_checkpoint_core(tmp_path, "rp-a4-1")
+    a5_core = export_checkpoint_core(tmp_path, "rp-a5-2")
     engine = sqlite_engine()
 
     with Session(engine) as session:
         a5 = import_pve_projection(
             session,
-            RESEARCH_CORE,
+            a5_core,
             manifest_path=A5_MANIFEST,
             expected_manifest_sha256=RP_A5_MANIFEST_SHA256,
         )
@@ -1910,7 +1932,7 @@ def test_fresh_a5_first_load_of_a4_keeps_rollback_audit_semantics(
         )
         reactivate = import_pve_projection(
             session,
-            RESEARCH_CORE,
+            a5_core,
             manifest_path=A5_MANIFEST,
             expected_manifest_sha256=RP_A5_MANIFEST_SHA256,
         )

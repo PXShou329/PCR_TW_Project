@@ -16,6 +16,8 @@ from pcr_pipeline.research_core_snapshot import (
     materialized_report,
 )
 from pcr_database.materialization import (
+    ARENA_MATERIALIZATION_MANIFEST_VERSION,
+    ARENA_MATERIALIZATION_SERVING_MODELS,
     LEGACY_MATERIALIZATION_MANIFEST_VERSION,
     LEGACY_SERVING_MODELS,
     MATERIALIZATION_MANIFEST_VERSION,
@@ -35,6 +37,11 @@ from pcr_database.models import (
     ClaimEvidence,
     CoreRevision,
     Evidence,
+    GachaCommunitySource,
+    GachaTimelineClaim,
+    GachaTimelineCommunitySource,
+    GachaTimelineEvent,
+    GachaTimelineEvidence,
     ImportRun,
     MaterializationState,
     OperationTimeline,
@@ -65,13 +72,22 @@ _BASELINE_COUNT_TABLES = {
     "arena_counter_members": ArenaCounterMember,
     "arena_counter_evidence": ArenaCounterEvidence,
     "arena_counter_claims": ArenaCounterClaim,
+    "gacha_timeline_events": GachaTimelineEvent,
+    "gacha_timeline_evidence": GachaTimelineEvidence,
+    "gacha_timeline_claims": GachaTimelineClaim,
+    "gacha_community_sources": GachaCommunitySource,
+    "gacha_timeline_community_sources": GachaTimelineCommunitySource,
 }
 _SERVING_TABLE_NAMES = frozenset(model.__tablename__ for model in SERVING_MODELS)
 _LEGACY_SERVING_TABLE_NAMES = frozenset(
     model.__tablename__ for model in LEGACY_SERVING_MODELS
 )
+_ARENA_SERVING_TABLE_NAMES = frozenset(
+    model.__tablename__ for model in ARENA_MATERIALIZATION_SERVING_MODELS
+)
 _SERVING_TABLE_NAMES_BY_MANIFEST_VERSION = {
     LEGACY_MATERIALIZATION_MANIFEST_VERSION: _LEGACY_SERVING_TABLE_NAMES,
+    ARENA_MATERIALIZATION_MANIFEST_VERSION: _ARENA_SERVING_TABLE_NAMES,
     MATERIALIZATION_MANIFEST_VERSION: _SERVING_TABLE_NAMES,
 }
 _READINESS_CACHE_MAX_ENTRIES = 32
@@ -360,7 +376,11 @@ def has_arena_materialization(run: ImportRun) -> bool:
         return False
     tables = materialization.get("tables")
     return (
-        materialization.get("schema_version") == MATERIALIZATION_MANIFEST_VERSION
+        materialization.get("schema_version")
+        in {
+            ARENA_MATERIALIZATION_MANIFEST_VERSION,
+            MATERIALIZATION_MANIFEST_VERSION,
+        }
         and isinstance(tables, dict)
         and {
             "arena_defenses",
@@ -369,6 +389,27 @@ def has_arena_materialization(run: ImportRun) -> bool:
             "arena_counter_members",
             "arena_counter_evidence",
             "arena_counter_claims",
+        }
+        <= set(tables)
+    )
+
+
+def has_gacha_materialization(run: ImportRun) -> bool:
+    """Return whether the immutable serving manifest owns the Gacha closure."""
+
+    materialization = run.manifest.get("materialization")
+    if not isinstance(materialization, dict):
+        return False
+    tables = materialization.get("tables")
+    return (
+        materialization.get("schema_version") == MATERIALIZATION_MANIFEST_VERSION
+        and isinstance(tables, dict)
+        and {
+            "gacha_timeline_events",
+            "gacha_timeline_evidence",
+            "gacha_timeline_claims",
+            "gacha_community_sources",
+            "gacha_timeline_community_sources",
         }
         <= set(tables)
     )
@@ -1184,6 +1225,151 @@ def arena_counter_results(
             }
         )
     return result
+
+
+def _gacha_relation_ids_by_event(
+    session: Session,
+    *,
+    value_column: Any,
+    event_ids: list[str],
+) -> dict[str, list[str]]:
+    """Load one Gacha link table in a stable order without N+1 queries."""
+
+    grouped: dict[str, list[str]] = defaultdict(list)
+    if not event_ids:
+        return grouped
+    event_column = value_column.class_.event_id
+    rows = session.execute(
+        select(event_column, value_column)
+        .where(event_column.in_(event_ids))
+        .order_by(event_column, value_column)
+    ).all()
+    for event_id, value in rows:
+        grouped[event_id].append(value)
+    return grouped
+
+
+def gacha_timeline_results(session: Session) -> list[dict[str, Any]]:
+    """Serialize the public JP-to-TW forecast without inventing TW names."""
+
+    events = session.scalars(
+        select(GachaTimelineEvent).order_by(
+            GachaTimelineEvent.jp_date,
+            GachaTimelineEvent.event_id,
+        )
+    ).all()
+    event_ids = [event.event_id for event in events]
+    evidence_ids_by_event = _gacha_relation_ids_by_event(
+        session,
+        value_column=GachaTimelineEvidence.evidence_id,
+        event_ids=event_ids,
+    )
+    claim_ids_by_event = _gacha_relation_ids_by_event(
+        session,
+        value_column=GachaTimelineClaim.claim_id,
+        event_ids=event_ids,
+    )
+    community_ids_by_event = _gacha_relation_ids_by_event(
+        session,
+        value_column=GachaTimelineCommunitySource.source_id,
+        event_ids=event_ids,
+    )
+
+    result: list[dict[str, Any]] = []
+    for event in events:
+        if event.source_server != "JP" or event.target_server != "TW":
+            raise RuntimeError(f"invalid Gacha server mapping: {event.event_id}")
+        tw_name = _stored_official_name(event.tw_name)
+        if event.tw_name is not None and tw_name is None:
+            raise RuntimeError(f"invalid stored Gacha TW name: {event.event_id}")
+        claim_ids = claim_ids_by_event.get(event.event_id, [])
+        if event.limited_status == "UNKNOWN":
+            if event.limited_claim_id is not None:
+                raise RuntimeError(
+                    f"UNKNOWN Gacha limited status has provenance: {event.event_id}"
+                )
+        elif (
+            not event.limited_claim_id
+            or event.limited_claim_id not in claim_ids
+        ):
+            raise RuntimeError(
+                f"Gacha limited provenance is outside Claim closure: {event.event_id}"
+            )
+        community_source_ids = community_ids_by_event.get(event.event_id, [])
+        if event.community_source_count != len(community_source_ids):
+            raise RuntimeError(
+                f"Gacha community source count drift: {event.event_id}"
+            )
+        result.append(
+            {
+                "event_id": event.event_id,
+                "source_server": event.source_server,
+                "target_server": event.target_server,
+                "jp_date": event.jp_date,
+                "model_estimate_start": event.model_estimate_start,
+                "model_estimate_end": event.model_estimate_end,
+                "tw_estimate_start": event.tw_estimate_start,
+                "tw_estimate_end": event.tw_estimate_end,
+                "forecast_method": event.forecast_method,
+                "confidence": event.confidence,
+                "character_name_jp": event.character_name_jp,
+                "tw_name": tw_name,
+                "pool_type": event.pool_type,
+                "limited_status": event.limited_status,
+                "limited_claim_id": event.limited_claim_id,
+                "arena_value": event.arena_value,
+                "p_arena_value": event.p_arena_value,
+                "pve_value": event.pve_value,
+                "clan_value": event.clan_value,
+                "future_upgrade": event.future_upgrade,
+                "relative_priority": event.relative_priority,
+                "anchor_track": event.anchor_track,
+                "anchor_count": event.anchor_count,
+                "forecast_basis": event.forecast_basis,
+                "last_verified": event.last_verified,
+                "status": event.status,
+                "maturity": event.maturity,
+                "last_review_due": event.last_review_due,
+                "community_estimate_start": event.community_estimate_start,
+                "community_estimate_end": event.community_estimate_end,
+                "community_order_consensus": event.community_order_consensus,
+                "community_source_count": event.community_source_count,
+                "community_last_checked": event.community_last_checked,
+                "community_disagreement": event.community_disagreement,
+                "forecast_notes": event.forecast_notes,
+                "evidence_ids": evidence_ids_by_event.get(event.event_id, []),
+                "claim_ids": claim_ids,
+                "community_source_ids": community_source_ids,
+            }
+        )
+    return result
+
+
+def gacha_community_source_results(session: Session) -> list[dict[str, Any]]:
+    """Return the reviewed public-source registry in stable identifier order."""
+
+    sources = session.scalars(
+        select(GachaCommunitySource).order_by(GachaCommunitySource.source_id)
+    ).all()
+    return [
+        {
+            "source_id": source.source_id,
+            "title": source.title,
+            "platform": source.platform,
+            "author": source.author,
+            "source_type": source.source_type,
+            "url": source.url,
+            "last_seen_update": source.last_seen_update,
+            "coverage_start": source.coverage_start,
+            "coverage_end": source.coverage_end,
+            "update_status": source.update_status,
+            "confidence_cap": source.confidence_cap,
+            "usage": source.usage,
+            "last_checked": source.last_checked,
+            "notes": source.notes,
+        }
+        for source in sources
+    ]
 
 
 def evidence_detail(evidence: Evidence) -> dict[str, Any]:

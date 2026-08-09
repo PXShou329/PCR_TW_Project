@@ -1097,6 +1097,34 @@ _b85 = [f"{r[0]}:{st85_bad(r)}" for r in _a41 if st85_bad(r)]
 ck(f"ST85：41 anchor semantics（{len(_a41)} ACTIVE 列）", not _b85, ';'.join(_b85))
 
 _METHODS = ('MODEL_ONLY', 'MODEL_PLUS_COMMUNITY', 'OFFICIAL_OVERRIDE')
+def _source_fact_direct_closure_ok(row, claim_id, server):
+    """Require the row, Claim, and one directly-declared Evidence to agree."""
+    claim = CLM93.get(claim_id)
+    if not claim:
+        return False
+    if not (
+        claim[h93.index('module')] == 'gacha'
+        and claim[h93.index('server')] == server
+        and claim[ti] == 'SOURCE_FACT'
+        and claim[ci] == 'A'
+        and claim[si93] == 'ACTIVE'
+    ):
+        return False
+    row_evidence_ids = {item for item in _g(row, 'evidence_ids').split(';') if item}
+    claim_evidence_ids = {item for item in claim[ei].split(';') if item}
+    for evidence_id in row_evidence_ids & claim_evidence_ids:
+        evidence = ev.get(evidence_id)
+        if evidence and (
+            evidence[h92.index('module')] == 'gacha'
+            and evidence[svi92] == server
+            and evidence[tri] == 'OFFICIAL'
+            and evidence[eci] == 'A'
+            and evidence[si92] == 'ACTIVE'
+            and evidence[claim_i92] == claim_id
+        ):
+            return True
+    return False
+
 def st85a_bad(row):
     m = _g(row, 'forecast_method')
     if not m: return 'forecast_method_missing'
@@ -1113,12 +1141,45 @@ def st85a_bad(row):
         if ts > min(ms, cs) or te < max(me, ce): return 'final_not_union'
     if m == 'OFFICIAL_OVERRIDE':
         cids = [x for x in _g(row, 'claim_ids').split(';') if x]
-        if not any(CLM93.get(c) and CLM93[c][2] == 'TW' and CLM93[c][ti] == 'SOURCE_FACT'
-                   and CLM93[c][ci] == 'A' for c in cids):
-            return 'no_TW_official_A_claim'
+        if not any(_source_fact_direct_closure_ok(row, c, 'TW') for c in cids):
+            return 'no_ACTIVE_TW_official_A_direct_closure'
     return ''
 _b85a = [f"{r[0]}:{st85a_bad(r)}" for r in _a41 if st85a_bad(r)]
 ck(f"ST85a：41 final interval method（{len(_a41)} 列）", not _b85a, ';'.join(_b85a))
+_b85b = [
+    r[0] for r in _a41
+    if _g(r, 'maturity') == 'RESEARCH'
+    and (
+        _g(r, 'relative_priority') != 'NOT_EVALUATED'
+        or _g(r, 'future_upgrade') not in ('UNKNOWN', 'NOT_EVALUATED')
+    )
+]
+ck(
+    "ST85b：41 RESEARCH 不得夾帶抽取優先級",
+    not _b85b,
+    ';'.join(_b85b),
+)
+def st85c_bad(row):
+    limited = _g(row, 'limited')
+    designated_claim_id = _g(row, 'limited_claim_id')
+    if limited == 'UNKNOWN':
+        return 'UNKNOWN_with_limited_claim_id' if designated_claim_id else ''
+    if limited not in CFG['enums']['gacha_limited']:
+        return 'bad_limited:' + limited
+    if not designated_claim_id:
+        return 'known_limited_without_claim_id'
+    row_claim_ids = {item for item in _g(row, 'claim_ids').split(';') if item}
+    if designated_claim_id not in row_claim_ids:
+        return 'limited_claim_not_in_row_claim_ids'
+    if not _source_fact_direct_closure_ok(row, designated_claim_id, 'JP'):
+        return 'no_ACTIVE_JP_official_A_direct_closure'
+    return ''
+_b85c = [f"{r[0]}:{st85c_bad(r)}" for r in _a41 if st85c_bad(r)]
+ck(
+    "ST85c：41 limited 必須具 JP OFFICIAL／A direct Claim closure",
+    not _b85c,
+    ';'.join(_b85c),
+)
 t = CFG['t41']; ck("T41 單位分離", t['gems'] // t['cost'] + t['free'] == t['expect'])
 ck("三情境", all(g // 150 + fr + tk == e for g, fr, tk, e in CFG['scenarios']))
 g = CFG['gap_example']; ck("缺口公式", max(0, g['need'] - g['have']) * g['cost'] == g['expect'])

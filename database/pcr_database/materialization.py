@@ -19,6 +19,11 @@ from .models import (
     Claim,
     ClaimEvidence,
     Evidence,
+    GachaCommunitySource,
+    GachaTimelineClaim,
+    GachaTimelineCommunitySource,
+    GachaTimelineEvent,
+    GachaTimelineEvidence,
     ImportRun,
     MaterializationState,
     OperationTimeline,
@@ -33,7 +38,8 @@ from .models import (
 
 
 LEGACY_MATERIALIZATION_MANIFEST_VERSION = 2
-MATERIALIZATION_MANIFEST_VERSION = 3
+ARENA_MATERIALIZATION_MANIFEST_VERSION = 3
+MATERIALIZATION_MANIFEST_VERSION = 4
 
 # Every table that can affect a public strategy response belongs to the serving
 # closure.  Scheduler state and ImportRun are intentionally excluded: the
@@ -62,10 +68,23 @@ ARENA_SERVING_MODELS = (
     ArenaCounterClaim,
 )
 
-SERVING_MODELS = (*LEGACY_SERVING_MODELS, *ARENA_SERVING_MODELS)
+GACHA_SERVING_MODELS = (
+    GachaTimelineEvent,
+    GachaTimelineEvidence,
+    GachaTimelineClaim,
+    GachaCommunitySource,
+    GachaTimelineCommunitySource,
+)
+
+ARENA_MATERIALIZATION_SERVING_MODELS = (
+    *LEGACY_SERVING_MODELS,
+    *ARENA_SERVING_MODELS,
+)
+SERVING_MODELS = (*ARENA_MATERIALIZATION_SERVING_MODELS, *GACHA_SERVING_MODELS)
 
 _SUPPORTED_MODELS_BY_VERSION = {
     LEGACY_MATERIALIZATION_MANIFEST_VERSION: LEGACY_SERVING_MODELS,
+    ARENA_MATERIALIZATION_MANIFEST_VERSION: ARENA_MATERIALIZATION_SERVING_MODELS,
     MATERIALIZATION_MANIFEST_VERSION: SERVING_MODELS,
 }
 
@@ -144,10 +163,15 @@ def _detected_persisted_manifest(session: Session) -> dict[str, Any] | None:
     return manifest if _models_declared_by_manifest(manifest) is not None else None
 
 
-def _arena_tables_are_empty(session: Session) -> bool:
+def _newer_tables_are_empty(
+    session: Session,
+    selected_models: tuple[type[Any], ...],
+) -> bool:
+    selected = set(selected_models)
     return all(
         session.scalar(select(model).limit(1)) is None
-        for model in ARENA_SERVING_MODELS
+        for model in SERVING_MODELS
+        if model not in selected
     )
 
 
@@ -179,12 +203,13 @@ def build_materialization_manifest(
         else MATERIALIZATION_MANIFEST_VERSION
     )
 
-    # An rp-a4 manifest predates Arena.  It is safe to replay its old digest
-    # only while every newly introduced table is empty.  If any row exists,
-    # hash the full current closure so the old expected digest cannot match.
+    # Immutable v2/v3 manifests may replay only while every table introduced
+    # after their schema version is empty.  Any unprotected newer row forces
+    # the full current closure so an old digest can never silently ignore it.
     if (
-        selected_models == LEGACY_SERVING_MODELS
-        and not _arena_tables_are_empty(session)
+        selected_models is not None
+        and selected_models != SERVING_MODELS
+        and not _newer_tables_are_empty(session, selected_models)
     ):
         selected_models = SERVING_MODELS
         selected_version = MATERIALIZATION_MANIFEST_VERSION

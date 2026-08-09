@@ -15,7 +15,10 @@ from ..repository import (
     baseline_data,
     claim_detail,
     evidence_detail,
+    gacha_community_source_results,
+    gacha_timeline_results,
     has_arena_materialization,
+    has_gacha_materialization,
     latest_import,
     mirror_readiness,
     pvp_character_options,
@@ -32,6 +35,8 @@ from ..schemas import (
     ClaimData,
     Envelope,
     EvidenceData,
+    GachaCommunitySourceData,
+    GachaTimelineEventData,
     PvpCharacterData,
     StageDetail,
     StageSummary,
@@ -190,6 +195,81 @@ def get_claim(claim_id: str, session: Session = Depends(get_session)) -> Envelop
         raise _not_found("claim", claim_id)
     return Envelope(
         data=claim_detail(session, claim),
+        meta=response_meta(run, revision),
+    )
+
+
+def _gacha_meta_records(events: list[dict]) -> list[ResponseMetaRecord]:
+    """Expose only cross-server identity and typed relation IDs at envelope scope."""
+
+    return [
+        ResponseMetaRecord(
+            server="MIXED",
+            evidence_ids=tuple(event["evidence_ids"]),
+            claim_ids=tuple(event["claim_ids"]),
+        )
+        for event in events
+    ]
+
+
+@router.get(
+    "/gacha/timeline",
+    response_model=Envelope[list[GachaTimelineEventData]],
+)
+def gacha_timeline(
+    session: Session = Depends(get_session),
+) -> Envelope[list[GachaTimelineEventData]]:
+    run, revision = _run_or_503(session)
+    if not has_gacha_materialization(run):
+        return Envelope(
+            data=[],
+            meta=response_meta(
+                run,
+                revision,
+                extra_warnings=["NO_GACHA_MATERIALIZATION"],
+            ),
+        )
+    try:
+        events = gacha_timeline_results(session)
+    except RuntimeError as error:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "FIXTURE_DRIFT",
+                "resource": "gacha_materialization",
+                "id": None,
+                "reason": "gacha_serving_closure_invalid",
+            },
+        ) from error
+    return Envelope(
+        data=events,
+        meta=response_meta(
+            run,
+            revision,
+            records=_gacha_meta_records(events),
+        ),
+    )
+
+
+@router.get(
+    "/gacha/community-sources",
+    response_model=Envelope[list[GachaCommunitySourceData]],
+)
+def gacha_community_sources(
+    session: Session = Depends(get_session),
+) -> Envelope[list[GachaCommunitySourceData]]:
+    run, revision = _run_or_503(session)
+    if not has_gacha_materialization(run):
+        return Envelope(
+            data=[],
+            meta=response_meta(
+                run,
+                revision,
+                extra_warnings=["NO_GACHA_MATERIALIZATION"],
+            ),
+        )
+    return Envelope(
+        data=gacha_community_source_results(session),
         meta=response_meta(run, revision),
     )
 

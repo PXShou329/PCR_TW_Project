@@ -34,10 +34,15 @@ $servingTables = @(
     "operation_timelines", "timeline_steps", "core_revisions", "core_files",
     "core_csv_rows", "materialization_state", "revision_activations",
     "arena_defenses", "arena_defense_members", "arena_counters", "arena_counter_members",
-    "arena_counter_evidence", "arena_counter_claims"
+    "arena_counter_evidence", "arena_counter_claims", "gacha_timeline_events",
+    "gacha_timeline_evidence", "gacha_timeline_claims", "gacha_community_sources",
+    "gacha_timeline_community_sources"
 )
 $appendOnlyTables = @("revision_activations")
 $controlTables = @("scheduler_leases", "scheduler_runs")
+$tablePrivileges = @(
+    "SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE", "REFERENCES", "TRIGGER"
+)
 $matrixChecks = 0
 $actualDenials = 0
 $allowedSmokes = 0
@@ -111,19 +116,19 @@ foreach ($role in @("pcr_api", "pcr_importer", "pcr_scheduler")) {
 }
 
 foreach ($table in $servingTables) {
-    foreach ($privilege in @("SELECT", "INSERT", "UPDATE", "DELETE")) {
+    foreach ($privilege in $tablePrivileges) {
         Assert-Privilege -Role "pcr_api" -Table $table -Privilege $privilege -Expected ($privilege -eq "SELECT")
         $importerExpected = if ($table -in $appendOnlyTables) {
             $privilege -in @("SELECT", "INSERT")
         } else {
-            $true
+            $privilege -in @("SELECT", "INSERT", "UPDATE", "DELETE")
         }
         Assert-Privilege -Role "pcr_importer" -Table $table -Privilege $privilege -Expected $importerExpected
         Assert-Privilege -Role "pcr_scheduler" -Table $table -Privilege $privilege -Expected $false
     }
 }
 foreach ($table in $controlTables) {
-    foreach ($privilege in @("SELECT", "INSERT", "UPDATE", "DELETE")) {
+    foreach ($privilege in $tablePrivileges) {
         Assert-Privilege -Role "pcr_api" -Table $table -Privilege $privilege -Expected $false
         Assert-Privilege -Role "pcr_importer" -Table $table -Privilege $privilege -Expected $false
         Assert-Privilege -Role "pcr_scheduler" -Table $table -Privilege $privilege -Expected ($privilege -in @("SELECT", "INSERT", "UPDATE"))
@@ -135,6 +140,8 @@ foreach ($table in $controlTables) {
 # DDL statement still leaves no data/schema change.
 Assert-SqlDenied "api-serving-update" "BEGIN; SET LOCAL ROLE pcr_api; UPDATE stages SET notes=notes WHERE FALSE; ROLLBACK"
 Assert-SqlDenied "api-arena-update" "BEGIN; SET LOCAL ROLE pcr_api; UPDATE arena_counters SET notes=notes WHERE FALSE; ROLLBACK"
+Assert-SqlDenied "api-gacha-update" "BEGIN; SET LOCAL ROLE pcr_api; UPDATE gacha_timeline_events SET status=status WHERE FALSE; ROLLBACK"
+Assert-SqlDenied "api-gacha-truncate" "BEGIN; SET LOCAL ROLE pcr_api; TRUNCATE TABLE gacha_timeline_claims; ROLLBACK" -ExpectedPattern "permission denied for table gacha_timeline_claims"
 Assert-SqlDenied "api-core-update" "BEGIN; SET LOCAL ROLE pcr_api; UPDATE core_revisions SET status=status WHERE FALSE; ROLLBACK"
 Assert-SqlDenied "api-scheduler-update" "BEGIN; SET LOCAL ROLE pcr_api; UPDATE scheduler_runs SET status=status WHERE FALSE; ROLLBACK"
 Assert-SqlDenied "importer-scheduler-update" "BEGIN; SET LOCAL ROLE pcr_importer; UPDATE scheduler_runs SET status=status WHERE FALSE; ROLLBACK"
@@ -142,6 +149,7 @@ Assert-SqlDenied "importer-activation-update" "BEGIN; SET LOCAL ROLE pcr_importe
 Assert-SqlDenied "importer-activation-delete" "BEGIN; SET LOCAL ROLE pcr_importer; DELETE FROM revision_activations WHERE FALSE; ROLLBACK"
 Assert-SqlDenied "scheduler-serving-update" "BEGIN; SET LOCAL ROLE pcr_scheduler; UPDATE stages SET notes=notes WHERE FALSE; ROLLBACK"
 Assert-SqlDenied "scheduler-arena-update" "BEGIN; SET LOCAL ROLE pcr_scheduler; UPDATE arena_counters SET notes=notes WHERE FALSE; ROLLBACK"
+Assert-SqlDenied "scheduler-gacha-update" "BEGIN; SET LOCAL ROLE pcr_scheduler; UPDATE gacha_timeline_events SET status=status WHERE FALSE; ROLLBACK"
 Assert-SqlDenied "scheduler-core-update" "BEGIN; SET LOCAL ROLE pcr_scheduler; UPDATE core_files SET size_bytes=size_bytes WHERE FALSE; ROLLBACK"
 Assert-SqlDenied "scheduler-control-delete" "BEGIN; SET LOCAL ROLE pcr_scheduler; DELETE FROM scheduler_runs WHERE FALSE; ROLLBACK"
 Assert-SqlDenied "api-schema-create" "BEGIN; SET LOCAL ROLE pcr_api; CREATE TABLE pcr_b0_forbidden_probe(id integer); ROLLBACK"
@@ -157,9 +165,11 @@ Assert-SqlDenied "active-revision-run-pair-fk" "BEGIN; INSERT INTO import_runs (
 foreach ($allowedSql in @(
     "BEGIN; SET LOCAL ROLE pcr_api; SELECT 1 FROM stages LIMIT 0; ROLLBACK",
     "BEGIN; SET LOCAL ROLE pcr_api; SELECT 1 FROM arena_counters LIMIT 0; ROLLBACK",
+    "BEGIN; SET LOCAL ROLE pcr_api; SELECT 1 FROM gacha_timeline_events LIMIT 0; ROLLBACK",
     "BEGIN; SET LOCAL ROLE pcr_api; SELECT 1 FROM core_revisions LIMIT 0; ROLLBACK",
     "BEGIN; SET LOCAL ROLE pcr_importer; UPDATE stages SET notes=notes WHERE FALSE; ROLLBACK",
     "BEGIN; SET LOCAL ROLE pcr_importer; UPDATE arena_counters SET notes=notes WHERE FALSE; ROLLBACK",
+    "BEGIN; SET LOCAL ROLE pcr_importer; UPDATE gacha_timeline_events SET status=status WHERE FALSE; ROLLBACK",
     "BEGIN; SET LOCAL ROLE pcr_importer; UPDATE core_files SET size_bytes=size_bytes WHERE FALSE; ROLLBACK",
     "BEGIN; SET LOCAL ROLE pcr_importer; INSERT INTO revision_activations (activation_id,sequence_no,to_revision_id,kind,reason,actor,epoch) SELECT '00000000-0000-0000-0000-000000000000',1,repeat('0',64),'IMPORT','probe','probe',0 WHERE FALSE; ROLLBACK",
     "BEGIN; SET LOCAL ROLE pcr_scheduler; UPDATE scheduler_runs SET status=status WHERE FALSE; ROLLBACK"
@@ -168,7 +178,7 @@ foreach ($allowedSql in @(
     $allowedSmokes += 1
 }
 
-if ($actualDenials -ne 20 -or $allowedSmokes -ne 8) {
-    throw "Privilege probe coverage drifted (denials=$actualDenials allowed=$allowedSmokes)"
+if ($matrixChecks -ne 651 -or $actualDenials -ne 23 -or $allowedSmokes -ne 10) {
+    throw "Privilege probe coverage drifted (matrix=$matrixChecks denials=$actualDenials allowed=$allowedSmokes)"
 }
 Write-Host "DB_PRIVILEGES_OK matrix_checks=$matrixChecks actual_denials=$actualDenials allowed_smokes=$allowedSmokes"

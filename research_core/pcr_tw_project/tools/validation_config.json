@@ -34,7 +34,7 @@
  "expected_knowledge": 42,
  "csv_specs": {
   "41_GACHA_TIMELINE.csv": {
-   "cols": 35,
+   "cols": 36,
    "min_rows": 2
   },
   "92_EVIDENCE_LEDGER.csv": {
@@ -97,6 +97,11 @@
    "DAY",
    "MONTH",
    "YEAR",
+   "UNKNOWN"
+  ],
+  "gacha_limited": [
+   "是",
+   "否",
    "UNKNOWN"
   ],
   "claim_type": [
@@ -409,10 +414,10 @@
   "must": "02 的最新",
   "forbid": "必須揭露 n=2"
  },
- "baseline_change_date": "2026-08-02",
+ "baseline_change_date": "2026-08-09",
  "project_version": "v1.5",
- "release_date": "2026-08-02",
- "baseline_date": "2026-08-02",
+ "release_date": "2026-08-09",
+ "baseline_date": "2026-08-09",
  "public_test_set": [
   "A1",
   "A2",

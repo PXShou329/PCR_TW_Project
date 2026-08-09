@@ -7,10 +7,10 @@
 流程清理（全專案不再手動回填 13）、**Baseline Integrity Patch**
 （主線第 15 章／Lv370／涅婭★6 以官方直頁重新驗證：ev040 第15章、ev041 涅婭★6、ev042 Lv370；
 ev037 保留為 01/15 第14章歷史快照）。
-**2026/08/02 刷新（六直頁完整抓取）**：主線第 16 章／Lv373（ev043＝#3937）、深域第 10 區解鎖
-（**ev029 ACTIVE**＝#3938）、台服當期池格蕾斯（兔女郎）08/01–08/11（ev044＝#3963）、日服ルイズマリー直頁
-（**ev033 ACTIVE**＝#36850）、日服當期池フブキ（サマー）07/31–08/15（ev048＝#37049）；CURRENT-0717→
-SUPERSEDED＋新建 CURRENT-0802；next_review_due=2026-08-09（含 08/08 日服 8.5 直播事件觸發）。
+**2026/08/09 Freshness-0**：台／日官方索引核對至 08/09；ev045–047／ev049／#3943 已補齊官方正文，
+新增台服深淵討伐戰／阿斯特朗復刻／艾爾皮斯活動（ev116–118）、日服三名夏日角色專1（ev119），並以
+ev122 確認 8.5 周年直播已配信。直播內容未逐段核對，未據此新增卡池或價值結論；CURRENT-0802 歷史保留並由
+CURRENT-0809 取代，next_review_due=2026-08-16。
 攻略內容（PVE／Arena／P-Arena／Timeline）與四個公共 Suite 實跑為部署後 Guide Wave 1–3 工作，
 本輪未虛構任何攻略或 Suite PASS。Gate A/B/C 未通過（正確）；Phase 6＝BLOCKED_BY_RELEASE_GATE。
 
@@ -20,7 +20,7 @@ SUPERSEDED＋新建 CURRENT-0802；next_review_due=2026-08-09（含 08/08 日服
 - 測試集＝Guide-Only 41（A1–A3、T1、T2、T13、T14、T16–T18、T22–T52）；17 為 21 欄公共 Schema。
 
 **Phase 狀態**：Baseline Current through 2026/08/08｜PVE Registry 10 VERIFIED（紅焰／蒼波 8-10 均為 VERIFIED／CONFIRMED，各 5 隊成熟結構門檻已達；紅焰 10-10 仍 IN_RESEARCH）｜Arena 39 現有 2 筆 SINGLE_REPORT、成熟防守案例 0（Checkpoint D）
-｜P-Arena 理論模型 3（Checkpoint E 組合求解）｜Gacha MATURE 2＋RESEARCH 1（Checkpoint C 社群整合）｜Suite 全 NOT_RUN（部署後）。
+｜P-Arena 理論模型 3（Checkpoint E 組合求解）｜Gacha MATURE 2＋RESEARCH 3（Checkpoint C 社群整合）｜Suite 全 NOT_RUN（部署後）。
 
 **R3i（2026/08/08）**：PVE Gate 已封住 PROVISIONAL／缺失 unit_key 灌水路徑；TM-F810-01 已以
 `SOURCE_CONFLICT`＋canonical requirements JSON 正規化；紅焰 8-10 第一階段實開候選來源後取得 3 支不同五人的
@@ -85,7 +85,7 @@ VERIFIED effective teams（詳見 22／23／25）。相同五人多來源只計�
 | 38_PRINCESS_ARENA_RESEARCH_LOG.md | 公競日誌（PA1–PA3 理論案例） | 是 |
 | 39_ARENA_COUNTER_REGISTRY.csv | 競技場反制 Registry（Gate SSOT，35 欄；exact 戰果、樣本、來源真值、台服可用性與成熟防守派生） | 是 |
 | 40_GACHA_FUTURE_SIGHT.md | 未來視公共流程 | 是 |
-| 41_GACHA_TIMELINE.csv | 時間線（35 欄含模型區間／方法／社群共識欄；MATURE 2＋RESEARCH 1） | 是 |
+| 41_GACHA_TIMELINE.csv | 時間線（36 欄含模型區間／方法／社群共識與 limited direct-Claim provenance；MATURE 2＋RESEARCH 3） | 是 |
 | 42_CHARACTER_FUTURE_VALUE_SCHEMA.md | 價值評估 Schema | 是 |
 | 43_GEM_FORECAST_TEMPLATE.md | 寶石模型（v1.4 單位修正＋三情境示例） | 是 |
 | 44_GACHA_RESEARCH_LOG.md | 未來視日誌 | 是 |
@@ -101,7 +101,7 @@ VERIFIED effective teams（詳見 22／23／25）。相同五人多來源只計�
 
 ## 建置／升級步驟
 
-1. 新建：照表上傳＋貼 00 → 跑 91 §1（ev045-047／ev049／#3943 直頁例行回驗、08/02 後新公告、候選 #4 JP 側）→ Checkpoint B–E（PVE 5–10 隊→社群未來視→Arena 來源→P-Arena 組合）→ 依 91 §10 逐 Suite 實跑。
+1. 新建：照表上傳＋貼 00 → 跑 91 §1（08/09 後新公告、8.5 直播內容精確段落、候選 #4 JP 側）→ Checkpoint B–E（PVE 5–10 隊→社群未來視→Arena 來源→P-Arena 組合）→ 依 91 §10 逐 Suite 實跑。
 2. **測試結果一律寫入 `17_TEST_EXECUTION_LOG.csv`（21 欄），再執行 `python tools/validate_project.py --mode OPERATIONAL --write`，由 validator 自動更新 13 的 AUTO_RESULTS——不手動修改 13 的測試狀態。**
 2. 自 refresh_20260802 升級：重貼 00；移除 04／05／06／07／10；新增 18／25／45／46；替換 01、03、11–17、20–23、30、33、35、37、38、40、41、43、91、99、README；tools 全量更換。
 3. 台服可用性補查：91 §9（18 Registry 逐筆查證）。
@@ -137,7 +137,7 @@ VERIFIED effective teams（詳見 22／23／25）。相同五人多來源只計�
 
 ## 已知債務（v1.4）
 
-ev045-047／ev049／#3943 直頁例行回驗＋候選 #4 JP 側官方化＋08/02 後例行檢查（91 §1）
+候選 #4 JP 側官方化＋8.5 直播內容精確段落＋08/09 後例行檢查（91 §1）；ev045–047／ev049／#3943 已完成正文回驗
 ｜Checkpoint B：紅焰／蒼波 8-10 均為 5/5，紅焰 10-10 現 0/5；Gate C 尚需至少 3 個成熟 PVE 關卡及解除 D 級單一來源 blocking warnings｜Checkpoint C：45 來源抓取＋41 社群共識欄
 ｜Checkpoint D：46 來源實測＋逐防守解陣（39）｜Checkpoint E：P-Arena 組合求解（成熟案例入 47）
 ｜18 On-Demand Registry 依需求擴充（採需求驅動，不建全角色 roster；筆數以 AUTO 統計為準）｜SYNC-004/005 官方確認｜Timeline 補至 6+｜台服官方譯名回填。

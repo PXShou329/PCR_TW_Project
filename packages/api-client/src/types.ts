@@ -76,6 +76,11 @@ export interface BaselineCounts {
   arena_counter_members: number;
   arena_counter_evidence: number;
   arena_counter_claims: number;
+  gacha_timeline_events: number;
+  gacha_timeline_evidence: number;
+  gacha_timeline_claims: number;
+  gacha_community_sources: number;
+  gacha_timeline_community_sources: number;
 }
 
 export interface Coverage {
@@ -332,6 +337,81 @@ export interface PvpCharacter {
   tw_name: string;
   jp_name: string;
   tw_availability_status: "AVAILABLE";
+}
+
+export type GachaForecastMethod =
+  | "MODEL_ONLY"
+  | "MODEL_PLUS_COMMUNITY"
+  | "OFFICIAL_OVERRIDE";
+export type GachaLimitedStatus = "YES" | "NO" | "UNKNOWN";
+export type GachaMaturity = "MATURE" | "RESEARCH";
+
+export interface GachaTimelineEvent {
+  event_id: string;
+  source_server: "JP";
+  target_server: "TW";
+  jp_date: string;
+  model_estimate_start: string | null;
+  model_estimate_end: string | null;
+  tw_estimate_start: string | null;
+  tw_estimate_end: string | null;
+  forecast_method: GachaForecastMethod;
+  confidence: string;
+  character_name_jp: string;
+  /** Null until a TW official name exists; never a translated or JP fallback. */
+  tw_name: string | null;
+  pool_type: string;
+  limited_status: GachaLimitedStatus;
+  /** Provenance for YES/NO; null exactly when limited_status is UNKNOWN. */
+  limited_claim_id: string | null;
+  arena_value: string;
+  p_arena_value: string;
+  pve_value: string;
+  clan_value: string;
+  future_upgrade: string;
+  relative_priority: string;
+  anchor_track: string;
+  anchor_count: number;
+  forecast_basis: string;
+  last_verified: string;
+  status: string;
+  maturity: GachaMaturity;
+  last_review_due: string | null;
+  community_estimate_start: string | null;
+  community_estimate_end: string | null;
+  community_order_consensus: string;
+  community_source_count: number;
+  community_last_checked: string | null;
+  community_disagreement: string;
+  forecast_notes: string;
+  evidence_ids: string[];
+  claim_ids: string[];
+  community_source_ids: string[];
+}
+
+export type GachaCommunitySourceType =
+  | "MAINTAINED_TABLE"
+  | "FORUM_TIMELINE"
+  | "CREATOR_ANALYSIS"
+  | "VIDEO_SERIES";
+export type GachaCommunityUpdateStatus = "PENDING_FETCH" | "CHECKED" | "STALE";
+export type GachaCommunityConfidenceCap = "C" | "D" | "E";
+
+export interface GachaCommunitySource {
+  source_id: string;
+  title: string;
+  platform: string;
+  author: string;
+  source_type: GachaCommunitySourceType;
+  url: string;
+  last_seen_update: string | null;
+  coverage_start: string | null;
+  coverage_end: string | null;
+  update_status: GachaCommunityUpdateStatus;
+  confidence_cap: GachaCommunityConfidenceCap;
+  usage: string;
+  last_checked: string;
+  notes: string;
 }
 
 export interface PvpCounter {

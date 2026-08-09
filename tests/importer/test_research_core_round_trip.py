@@ -27,6 +27,8 @@ from pcr_pipeline.research_core_snapshot import (
     RP_A4_SNAPSHOT_CONTRACT,
     RP_A5_MANIFEST_SHA256,
     RP_A5_SNAPSHOT_CONTRACT,
+    RP_B5_1_MANIFEST_SHA256,
+    RP_B5_1_SNAPSHOT_CONTRACT,
     SnapshotDriftError,
     SnapshotValidationError,
     VALIDATOR_RUNTIME_PATHS,
@@ -50,10 +52,11 @@ from pcr_pipeline.verify_round_trip import run_round_trip_smoke
 
 ROOT = Path(__file__).resolve().parents[2]
 RESEARCH_CORE = ROOT / "research_core" / "pcr_tw_project"
-MANIFEST = ROOT / "scripts" / "research_core_rp_a5_manifest.sha256"
+MANIFEST = ROOT / "scripts" / "research_core_rp_b5_1_manifest.sha256"
+A5_MANIFEST = ROOT / "scripts" / "research_core_rp_a5_manifest.sha256"
 A4_MANIFEST = ROOT / "scripts" / "research_core_rp_a4_manifest.sha256"
-RAW_TREE_SHA256 = "1962881faf1d84057efdcccb6e22c28de32ea4c47f5acbf57a5d48adc631555c"
-SEMANTIC_TREE_SHA256 = "c77bc9893fa0b442832c1dff0c7c4a1c5e6d63ba9bce27c1c2f8078c5c2511b8"
+RAW_TREE_SHA256 = "d117be193802d459102708424c4b7f2a7e852b793ff38356e1977f44d507466d"
+SEMANTIC_TREE_SHA256 = "a7467a838c2a9cfdfe48bda4a3b158fb374dd023caa3478a84c07678532ea9f4"
 
 
 def sqlite_engine():
@@ -117,7 +120,7 @@ def test_manifest_pinned_loader_preserves_exact_rows_and_directed_edges() -> Non
     assert snapshot.semantic_tree_sha256 == SEMANTIC_TREE_SHA256
     assert report.file_count == 48
     assert report.csv_file_count == 13
-    assert report.csv_row_count == 356
+    assert report.csv_row_count == 376
     assert report.csv_row_counts == {
         "17_TEST_EXECUTION_LOG.csv": 0,
         "18_TW_CHARACTER_AVAILABILITY.csv": 35,
@@ -126,12 +129,12 @@ def test_manifest_pinned_loader_preserves_exact_rows_and_directed_edges() -> Non
         "26_PVE_OPERATION_TIMELINES.csv": 15,
         "27_PVE_TIMELINE_STEPS.csv": 37,
         "39_ARENA_COUNTER_REGISTRY.csv": 2,
-        "41_GACHA_TIMELINE.csv": 3,
+        "41_GACHA_TIMELINE.csv": 5,
         "45_GACHA_COMMUNITY_SOURCE_INDEX.csv": 4,
         "46_ARENA_SOURCE_REGISTRY.csv": 6,
         "47_PRINCESS_ARENA_CASE_REGISTRY.csv": 0,
-        "92_EVIDENCE_LEDGER.csv": 113,
-        "93_CLAIM_REGISTER.csv": 128,
+        "92_EVIDENCE_LEDGER.csv": 122,
+        "93_CLAIM_REGISTER.csv": 137,
     }
     guide = snapshot.csv_file("24_PVE_GUIDE_REGISTRY.csv").row_by_key(
         "TW_DEEP_FIRE_08_10_20260802"
@@ -142,8 +145,8 @@ def test_manifest_pinned_loader_preserves_exact_rows_and_directed_edges() -> Non
     ] == "5"
     assert all(isinstance(value, str) for value in guide.values)
 
-    assert report.evidence_to_claim_count == 111
-    assert report.claim_to_evidence_count == 277
+    assert report.evidence_to_claim_count == 120
+    assert report.claim_to_evidence_count == 298
     assert ("ev053", "CLM-PVE-F810-STD") in snapshot.evidence_to_claim_edges
     assert ("CLM-PVE-F810-STD", "ev053") not in snapshot.claim_to_evidence_edges
     assert report.ev053_asymmetry_preserved is True
@@ -183,26 +186,38 @@ def test_manifest_pinned_loader_preserves_exact_rows_and_directed_edges() -> Non
         assert manifest_file["newline_profile"] == file.newline_profile
 
 
-def test_historical_rp_a4_manifest_and_contract_remain_immutable() -> None:
-    manifest_sha256, entries = load_pinned_manifest(
-        A4_MANIFEST,
-        expected_manifest_sha256=RP_A4_MANIFEST_SHA256,
-        expected_file_count=RP_A4_SNAPSHOT_CONTRACT.file_count,
+@pytest.mark.parametrize(
+    ("manifest", "expected_manifest_sha256", "contract"),
+    [
+        (A5_MANIFEST, RP_A5_MANIFEST_SHA256, RP_A5_SNAPSHOT_CONTRACT),
+        (A4_MANIFEST, RP_A4_MANIFEST_SHA256, RP_A4_SNAPSHOT_CONTRACT),
+    ],
+)
+def test_historical_manifests_and_contracts_remain_immutable(
+    manifest: Path,
+    expected_manifest_sha256: str,
+    contract,
+) -> None:
+    actual_manifest_sha256, entries = load_pinned_manifest(
+        manifest,
+        expected_manifest_sha256=expected_manifest_sha256,
+        expected_file_count=contract.file_count,
     )
 
-    assert manifest_sha256 == RP_A4_MANIFEST_SHA256
+    assert actual_manifest_sha256 == expected_manifest_sha256
+    assert actual_manifest_sha256 == canonical_manifest_sha256(
+        manifest.read_text(encoding="utf-8").splitlines()
+    )
     assert len(entries) == 48
-    assert snapshot_contract_for_manifest(RP_A4_MANIFEST_SHA256) == (
-        RP_A4_SNAPSHOT_CONTRACT
-    )
+    assert snapshot_contract_for_manifest(expected_manifest_sha256) == contract
 
 
-def test_rp_a5_is_the_current_default_snapshot_contract() -> None:
+def test_rp_b5_1_is_the_current_default_snapshot_contract() -> None:
     assert DEFAULT_MANIFEST == MANIFEST
-    assert EXPECTED_MANIFEST_SHA256 == RP_A5_MANIFEST_SHA256
-    assert CURRENT_SNAPSHOT_CONTRACT == RP_A5_SNAPSHOT_CONTRACT
-    assert snapshot_contract_for_manifest(RP_A5_MANIFEST_SHA256) == (
-        RP_A5_SNAPSHOT_CONTRACT
+    assert EXPECTED_MANIFEST_SHA256 == RP_B5_1_MANIFEST_SHA256
+    assert CURRENT_SNAPSHOT_CONTRACT == RP_B5_1_SNAPSHOT_CONTRACT
+    assert snapshot_contract_for_manifest(RP_B5_1_MANIFEST_SHA256) == (
+        RP_B5_1_SNAPSHOT_CONTRACT
     )
 
 

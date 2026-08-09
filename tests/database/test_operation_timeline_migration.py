@@ -39,11 +39,11 @@ def imported_engine():
     return engine
 
 
-def test_v0006_is_the_single_migration_head() -> None:
+def test_v0007_is_the_single_migration_head() -> None:
     config = Config("database/alembic.ini")
     script = ScriptDirectory.from_config(config)
 
-    assert script.get_current_head() == "v0006_arena_counter_slice"
+    assert script.get_current_head() == "v0007_gacha_timeline_slice"
     revision = script.get_revision("v0006_arena_counter_slice")
     assert revision is not None
     assert revision.down_revision == "v0005_borrowed_tristate"
@@ -134,7 +134,7 @@ def test_orm_and_materialization_cover_the_source_axis_tables() -> None:
     assert step.c.timeline_id.nullable is False
     assert step.c.time_state.nullable is False
     assert member.c.is_borrowed.nullable is True
-    assert MATERIALIZATION_MANIFEST_VERSION == 3
+    assert MATERIALIZATION_MANIFEST_VERSION == 4
     assert {model.__tablename__ for model in SERVING_MODELS} >= {
         "operation_timelines",
         "timeline_steps",
