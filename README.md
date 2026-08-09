@@ -6,8 +6,11 @@ RP-B5-1 Gacha 垂直切片、B3／D0 exact picker、RP-A5 Arena typed slice、RP
 公開正式版；Data／Application／Automation／Production Gates A–G 均未宣稱通過。
 
 前一個 immutable 回滾點是私人 tag `rp-b5-1`；`rp-a5-2`、`rp-b3-d0-1` 與更早 checkpoints
-繼續保留，不覆寫歷史 manifest 或移動既有 tags。RP-A6-0 完成私人 CI 後才建立新的
-annotated `rp-a6-0` tag；目前仍是 release candidate，不能先宣稱 tag 或 CI 已完成。
+繼續保留，不覆寫歷史 manifest 或移動既有 tags。Code candidate commit
+[`400adc89728fa27df7ce4d963a7068f555c60e06`](https://github.com/PXShou329/PCR_TW_Project/commit/400adc89728fa27df7ce4d963a7068f555c60e06)
+已通過第一輪私人 CI。RP-A6-0 是否已成為 release，只由實際 annotated `rp-a6-0` tag 是否
+存在、且是否指向完成自身 private CI 的 exact commit 判定；README 不以候選文案、PR 或
+先前 run 推論 tag 狀態。
 
 目前端到端垂直切片包含「紅焰深域 8-10」與「蒼波深域 8-10」，各提供五支不同五人的實際通關隊伍、逐 Slot
 條件、來源分離的操作軸、逐步 Evidence Drawer，以及誠實的 `UNKNOWN`／結構化操作軸缺口。競技場
@@ -80,6 +83,8 @@ python tools/mutation_test.py
 scheduler、backup／restore、A6→B5→A6 same-schema rollback 與 mock／real desktop/mobile
 實跑輸出見
 [`docs/operations/A6_0_VERIFICATION_REPORT.md`](docs/operations/A6_0_VERIFICATION_REPORT.md)；
+其中另分開記錄 code candidate 的 private Draft PR #9／Actions run，以及 evidence commit
+仍須自行完成第二輪 CI 的 release boundary；CI instance 不與本機 materialization 混寫。
 操作順序與 fail-closed recovery boundary 見
 [`docs/operations/A6_ROLLBACK_RUNBOOK.md`](docs/operations/A6_ROLLBACK_RUNBOOK.md)。歷史
 RP-B5-1 證據仍見

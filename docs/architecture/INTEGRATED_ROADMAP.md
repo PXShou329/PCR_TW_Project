@@ -32,6 +32,13 @@
   `e44a9fa38a89a5672d00c0a58d8b8946fecd41e541c08c9733fb3d06fbc1b88a` 是可重算的
   artifact／row／edge 診斷，不是 PostgreSQL instance 的 typed materialization；後者的
   ImportRun、digest、sequence 與 epoch 不得作 portable pin。
+- RP-A6-0 code candidate commit
+  [`400adc89728fa27df7ce4d963a7068f555c60e06`](https://github.com/PXShou329/PCR_TW_Project/commit/400adc89728fa27df7ce4d963a7068f555c60e06)
+  已在 private Draft PR [#9](https://github.com/PXShou329/PCR_TW_Project/pull/9)（base
+  `codex/v3-b5-gacha-slice`、head `codex/v3-a6-0-parena-gate`）的
+  [Actions run 31337216189](https://github.com/PXShou329/PCR_TW_Project/actions/runs/31337216189)
+  通過四個 jobs。該 run 早於 CI evidence 文件 commit；文件 commit 仍須以自身 SHA 完成
+  第二輪同 workflow 全綠，才可建立 annotated `rp-a6-0` tag。這不改變 Gates A–G 狀態。
 - RP-B3-D0：research pins 與 V0006 schema 不變；已完成五角色 exact picker、AVAILABLE
   官方名稱 Evidence closure、required-but-conservative Strategy Metadata，以及只回報
   `BLOCKED_BY_DATA_GATES` 的 Application/Data structural verifier。
@@ -94,8 +101,10 @@
   `rp-a2-b2-2`；A3 使用 `rp-a3-1`；本次 A4 通過完整驗證後使用 `rp-a4-1`。
   `rp-a2-b2-1` 僅保留作 CI parity 修正前的稽核 checkpoint；`rp-a5-1` 同樣保留作 CI
   runtime 依賴安裝修正前的稽核 checkpoint；RP-A5 使用 `rp-a5-2`，B3／D0 使用
-  `rp-b3-d0-1`，RP-B5-1 使用 immutable `rp-b5-1`。RP-A6-0 目前仍是 candidate；只有
-  私人 CI 全綠後才建立新的 annotated `rp-a6-0` tag，且既有 tags 不移動。
+  `rp-b3-d0-1`，RP-B5-1 使用 immutable `rp-b5-1`。RP-A6-0 code candidate 第一輪 private
+  CI 已全綠，但 evidence commit 的第二輪尚未完成；本 Roadmap 不宣稱 annotated
+  `rp-a6-0` tag 已存在。Release 身分以實際 tag ref 及其 exact commit CI 為準，且既有 tags
+  不移動。
   A5→A4→A5 依 [`A5_ROLLBACK_RUNBOOK.md`](../operations/A5_ROLLBACK_RUNBOOK.md)，
   B5→A5→B5 依 [`B5_ROLLBACK_RUNBOOK.md`](../operations/B5_ROLLBACK_RUNBOOK.md)，
   A6→B5→A6 依 [`A6_ROLLBACK_RUNBOOK.md`](../operations/A6_ROLLBACK_RUNBOOK.md)。任何已有

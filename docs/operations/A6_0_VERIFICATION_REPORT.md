@@ -8,9 +8,10 @@ generation 設為 current snapshot contract。這不是 P-Arena content expansio
 P-Arena typed tables、API、UI 或 Planner；Alembic 仍為 V0007，materialization 仍為 v4／
 23 張 typed serving tables。
 
-本文件目前是 release candidate 證據。私人 CI、候選 commit 與 annotated `rp-a6-0` tag
-尚未完成，因此不宣稱 tag 已封存。Data Gates A／B／C、Application Gates D／E、Automation
-Gate F 與 Production Gate G 均未通過。
+本文件目前是 release candidate 證據。Code candidate 已完成第一輪私人 CI；該 run 發生在
+本次 CI evidence 文件 commit 之前，因此 annotated `rp-a6-0` tag 尚未建立。本次文件 commit
+仍須以自身 SHA 再跑同一 private workflow 全綠後才可建 tag。Data Gates A／B／C、
+Application Gates D／E、Automation Gate F 與 Production Gate G 均未通過。
 
 ## Portable source identities
 
@@ -259,6 +260,57 @@ final history_sha256 7f8bf9d617071fabd5ff9b3b72a24b001edba6f16ee22fd340f3107be69
 完整操作與 fail-closed recovery boundary 見
 [`A6_ROLLBACK_RUNBOOK.md`](A6_ROLLBACK_RUNBOOK.md)。
 
+## Private GitHub Actions：code candidate PASS，release pending
+
+Code candidate commit：
+[`400adc89728fa27df7ce4d963a7068f555c60e06`](https://github.com/PXShou329/PCR_TW_Project/commit/400adc89728fa27df7ce4d963a7068f555c60e06)。
+Private Draft PR：
+[#9](https://github.com/PXShou329/PCR_TW_Project/pull/9)，base
+`codex/v3-b5-gacha-slice`、head `codex/v3-a6-0-parena-gate`。
+
+第一輪 private Actions
+[run 31337216189](https://github.com/PXShou329/PCR_TW_Project/actions/runs/31337216189)
+四個 jobs 全部 `success`；job IDs 為 `93304934388`、`93304934395`、`93304934382`、
+`93305132822`：
+
+```text
+Research core exact baseline                 SUCCESS
+API, importer, and scheduler tests           SUCCESS
+Web typecheck and production build           SUCCESS
+Compose health and browser E2E                SUCCESS
+```
+
+實際 CI 輸出：
+
+```text
+PRE_SUITE --write  CHECKS=166 FAIL=0 WARN=22
+PRE_SUITE          CHECKS=166 FAIL=0 WARN=22
+OPERATIONAL        CHECKS=165 FAIL=0 WARN=21
+ARTIFACT_READY     CHECKS=168 FAIL=3 WARN=21（只有 Gate A／B／C）
+MUTATION_TESTS ALL_OK active_scenarios=122
+Python             334 passed / 6 skipped
+OpenAPI/client     OPENAPI_CLIENT_PARITY_OK schemas=28
+Web build          SUCCESS
+DB privileges      matrix_checks=651 actual_denials=23 allowed_smokes=10
+Backup             sha256=52e51acda9d73f8789fdcb85c2e50d723602b27137bb2641cb7e08c9f102b7a9 bytes=570900
+A6→B5→A6           PASS；final readiness database=ok / fixture=imported
+Revision history   activations=5 / revisions=3
+Real-stack E2E     26 passed
+```
+
+CI backup digest／bytes 與本機前節不同是預期的 instance evidence；它不是 portable source
+pin，也不取代本機 receipt、ImportRun、typed materialization 或 epoch。CI run 只使用其自身
+fresh PostgreSQL／Compose instance 的 exact identity 與 chronology；本報告沒有把兩套 instance
+數字合併成一個虛構基線。
+
+Runner 顯示 forced Node 20→Node 24 相容性警告；workflow 的 contract、typecheck、production
+build 與 E2E 仍全部成功。此警告列為非阻塞 runner maintenance signal，不等於可忽略未來
+Actions runtime migration，也不改變任何 Gate 狀態。
+
+這一輪 CI 驗證的是上述 code commit，早於本段 evidence 文件 commit。必須先提交本次文件，
+再讓同一 private workflow 對該 evidence commit 的 exact SHA 全綠；只有該第二輪成功後才建立
+指向同一 commit 的 annotated `rp-a6-0` tag。不能用 PR、run 或本文文字取代實際 tag ref。
+
 ## Gate status 與 release boundary
 
 ```text
@@ -275,5 +327,5 @@ Blocking warnings 14
 
 Validator correctness、healthy stack、ACL、backup／restore、same-schema rollback 與 E2E 都不能
 補出成熟 P-Arena content，也不能取代正式 Data／Application／Automation／Production Gate
-驗收。私人 GitHub Actions 尚未完成，候選 commit／PR／run 尚未記錄；只有 private workflow
-全綠後才可建立新的 annotated `rp-a6-0` tag，且不得移動 `rp-b5-1` 或其他既有 tags。
+驗收。第一輪 code-candidate CI 全綠不等於 release；本 evidence commit 的第二輪 private
+workflow 尚未完成，annotated `rp-a6-0` tag 尚未建立。既有 `rp-b5-1` 或其他 tags 不得移動。
