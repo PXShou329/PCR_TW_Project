@@ -49,3 +49,13 @@
 - 成立條件（必須逐項可交代）：剩餘兩組對位有明確優勢依據；犧牲隊損失可承受；對手出隊習慣已知或風險已標
 - 風險：對手若同樣換序則失效——標示為高變異策略，信心不足時改三隊平均
 - 狀態：**THEORY／EXAMPLE**（不計 Gate）；對應 T31（不重複）／T32（推測分離）／T33（公共三隊）／T34（順序理由）之示範
+
+## 2026-08-10 — B4-0 公開來源候選複核（DEFERRED_NOT_CANONICAL）
+
+- **實際 mature 結果：`N=0`**。本輪沒有任何候選同時滿足完整三隊、同一台服 environment、三筆成熟 39 exact 配對、18 全員 AVAILABLE／必要強化 PASS、完整三戰 WIN direct Evidence 與來源獨立性，因此 47 維持 header-only。
+- **2021 巴哈圖組**：已實際開啟正文與結果圖，畫面可讀為 `LOSE／WIN／WIN`，最多只支持一筆 D 級 single-report 候選。它不能由三張單場圖自動推出完整 case WIN；同時缺三筆 mature 39、18／必要強化 closure 與獨立來源，故固定 `DEFERRED_NOT_CANONICAL`。
+- **2024 模板／部分防守頁**：已實際開啟；內容是模板或只揭露部分防守，缺完整敵我各 3×5 與可定位的實際完整三戰結果，不可進 47。
+- **2026 問答頁**：已實際開啟；正文是提問而非通關結果，不能作 Evidence。
+- **JP／Bilibili 候選**：與台服核心範圍不符，且不得用中國平台資料填台服核心缺口；只記拒絕理由，不建立 Evidence／Claim。
+- **YouTube 候選**：候選頁已檢視，但未能精確定位同一場完整三隊、明確勝負與可驗證 15 人構成；搜尋摘要、標題或未定位片段均不作 Evidence。
+- **canonical 裁決**：上述候選全部為 `DEFERRED_NOT_CANONICAL`；不寫 47、不建立或修改 92／93、不補 39、不把三筆 Arena WIN 推論成 P-Arena 整體 WIN。Gate A／B／C 與 blocking warnings 維持既有真值。

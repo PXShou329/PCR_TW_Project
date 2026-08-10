@@ -498,6 +498,101 @@ class ArenaCounterData(BaseModel):
     claim_ids: list[str]
 
 
+class ParenaEnvironmentData(BaseModel):
+    """One environment that has at least one mature exact P-Arena case."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    server: Literal["TW"]
+    environment_version: str
+    verified_case_count: int = Field(ge=1)
+
+
+class ParenaSolveRequest(BaseModel):
+    """A complete, fully visible Princess Arena defense query."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    server: Literal["TW"]
+    environment_version: str = Field(min_length=1, max_length=100)
+    defense_teams: list[list[str]] = Field(min_length=3, max_length=3)
+
+    @model_validator(mode="after")
+    def require_complete_available_shape(self) -> ParenaSolveRequest:
+        environment = self.environment_version.strip()
+        if not environment or environment == "UNKNOWN":
+            raise ValueError("environment_version must be known")
+        self.environment_version = environment
+        normalized: list[list[str]] = []
+        for team in self.defense_teams:
+            if len(team) != 5:
+                raise ValueError("each defense team must contain exactly five unit_keys")
+            units = [unit_key.strip() for unit_key in team]
+            if any(not unit_key for unit_key in units) or len(set(units)) != 5:
+                raise ValueError("each defense team must contain five distinct unit_keys")
+            normalized.append(units)
+        if len({unit_key for team in normalized for unit_key in team}) != 15:
+            raise ValueError("the three defense teams must contain 15 distinct unit_keys")
+        self.defense_teams = normalized
+        return self
+
+
+class ArenaSourceRecordData(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    source_id: str
+    title: str
+    platform: str
+    source_type: str
+    server: Literal["TW"]
+    url: str
+    last_checked: date
+    freshness_window: str | None
+    access_status: Literal["ACTIVE"]
+    confidence_cap: Literal["C", "D", "E"]
+    extraction_method: str
+    notes: str
+
+
+class ParenaMatchupData(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    matchup_no: int = Field(ge=1, le=3)
+    defense_input_index: int = Field(ge=1, le=3)
+    result_claim_id: str
+    counter: ArenaCounterData
+
+
+class ParenaCaseData(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    case_id: str
+    server: Literal["TW"]
+    environment_version: str
+    status: Literal["VERIFIED"]
+    hidden_team_mode: Literal["NONE"]
+    verified_date: date
+    reproducibility: Literal["CONFIRMED"]
+    last_review_due: date
+    notes: str
+    case_win_claim_id: str
+    case_win_confidence: Literal["B", "C", "D"]
+    sources: list[ArenaSourceRecordData]
+    evidence_ids: list[str]
+    claim_ids: list[str]
+    matchups: list[ParenaMatchupData] = Field(min_length=3, max_length=3)
+
+
+class ParenaSolveData(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    match_type: Literal["EXACT"]
+    similar_enabled: Literal[False]
+    query_signature: str
+    defense_teams: list[list[str]] = Field(min_length=3, max_length=3)
+    cases: list[ParenaCaseData]
+
+
 class ClaimData(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -538,6 +633,12 @@ class BaselineCounts(BaseModel):
     gacha_timeline_claims: int
     gacha_community_sources: int
     gacha_timeline_community_sources: int
+    arena_source_records: int
+    parena_cases: int
+    parena_case_matchups: int
+    parena_case_sources: int
+    parena_case_evidence: int
+    parena_case_claims: int
 
 
 class GateSummary(BaseModel):

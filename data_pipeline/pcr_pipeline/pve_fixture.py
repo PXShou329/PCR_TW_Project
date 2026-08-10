@@ -23,6 +23,7 @@ from pcr_database.models import (
     ArenaCounterMember,
     ArenaDefense,
     ArenaDefenseMember,
+    ArenaSourceRecord,
     Character,
     Claim,
     ClaimEvidence,
@@ -36,6 +37,11 @@ from pcr_database.models import (
     ImportRun,
     MaterializationState,
     OperationTimeline,
+    ParenaCase,
+    ParenaCaseClaim,
+    ParenaCaseEvidence,
+    ParenaCaseMatchup,
+    ParenaCaseSource,
     RevisionActivation,
     Stage,
     StageClaim,
@@ -49,8 +55,12 @@ from pcr_database.models import (
 from pcr_database.materialization import (
     ARENA_MATERIALIZATION_MANIFEST_VERSION,
     ARENA_MATERIALIZATION_SERVING_MODELS,
+    GACHA_MATERIALIZATION_MANIFEST_VERSION,
+    GACHA_MATERIALIZATION_SERVING_MODELS,
     LEGACY_MATERIALIZATION_MANIFEST_VERSION,
     LEGACY_SERVING_MODELS,
+    MATERIALIZATION_MANIFEST_VERSION,
+    SERVING_MODELS,
     build_materialization_manifest,
     materialization_drift_reason,
 )
@@ -62,6 +72,7 @@ from pcr_pipeline.research_core_snapshot import (
     RP_A4_MANIFEST_SHA256,
     RP_A5_MANIFEST_SHA256,
     RP_A6_0_MANIFEST_SHA256,
+    RP_B4_0_MANIFEST_SHA256,
     RP_B5_1_MANIFEST_SHA256,
     ResearchCoreSnapshot,
     assert_materialized_snapshot,
@@ -74,13 +85,21 @@ from pcr_pipeline.research_core_snapshot import (
 # Compatibility identifier for the original B0 vertical-slice API.  The typed
 # projection itself is no longer restricted to this guide.
 TARGET_GUIDE_ID = "TW_DEEP_FIRE_08_10_20260802"
-APPLICATION_VERSION = "3.0.0-a6"
+APPLICATION_VERSION = "3.0.0-b4"
 CANONICAL_SOURCE = "research_core_file_ssot"
 IMPORT_LOCK_KEY = 0x5043524231
 FULL_PVE_PROJECTION = "pve_18_24_25_26_27_closure_v2"
 LEGACY_FIRE_PROJECTION = "fire_8_10_18_24_25_26_27_closure_v1"
 FULL_STRATEGY_PROJECTION = "strategy_18_24_25_26_27_39_closure_v3"
 FULL_PLATFORM_PROJECTION = "strategy_18_24_25_26_27_39_41_45_closure_v4"
+FULL_PARENA_PLATFORM_PROJECTION = (
+    "strategy_18_24_25_26_27_39_41_45_46_47_closure_v5"
+)
+# Filled only by an immutable B4 manifest pin.  A6 and every historical raw
+# tree remain v4/v3/v2 regardless of database history.
+PARENA_MATERIALIZATION_MANIFESTS: frozenset[str] = frozenset(
+    {RP_B4_0_MANIFEST_SHA256}
+)
 BORROWED_STATE_SEMANTICS_FIELD = "borrowed_state_semantics"
 BORROWED_STATE_TRISTATE_V1 = "source_truth_tristate_v1"
 BORROWED_STATE_LEGACY_FALSE_V1 = "legacy_blank_false_v1"
@@ -97,6 +116,7 @@ CHECKPOINT_LINEAGE_ORDER = {
     RP_A5_MANIFEST_SHA256: 5,
     RP_B5_1_MANIFEST_SHA256: 6,
     RP_A6_0_MANIFEST_SHA256: 7,
+    RP_B4_0_MANIFEST_SHA256: 8,
 }
 # rp-b1-1 / rp-a2 raw tree.  Its historical ImportRun materialized only the
 # Fire 8-10 vertical slice.  Keeping this identity code-owned makes a clean
@@ -131,11 +151,13 @@ PVE_TIMELINE_STEPS_FILE = "27_PVE_TIMELINE_STEPS.csv"
 ARENA_COUNTERS_FILE = "39_ARENA_COUNTER_REGISTRY.csv"
 GACHA_TIMELINE_FILE = "41_GACHA_TIMELINE.csv"
 GACHA_COMMUNITY_FILE = "45_GACHA_COMMUNITY_SOURCE_INDEX.csv"
+ARENA_SOURCES_FILE = "46_ARENA_SOURCE_REGISTRY.csv"
+PARENA_CASES_FILE = "47_PRINCESS_ARENA_CASE_REGISTRY.csv"
 EVIDENCE_FILE = "92_EVIDENCE_LEDGER.csv"
 CLAIMS_FILE = "93_CLAIM_REGISTER.csv"
 STATS_FILE = "tools/stats.json"
 
-SOURCE_FILES = (
+V4_SOURCE_FILES = (
     CHARACTERS_FILE,
     PVE_GUIDES_FILE,
     PVE_TEAMS_FILE,
@@ -148,6 +170,7 @@ SOURCE_FILES = (
     CLAIMS_FILE,
     STATS_FILE,
 )
+SOURCE_FILES = (*V4_SOURCE_FILES[:-3], ARENA_SOURCES_FILE, PARENA_CASES_FILE, *V4_SOURCE_FILES[-3:])
 
 ARENA_REQUIRED_FIELDS = (
     "counter_id",
@@ -401,6 +424,12 @@ class FixtureClosure:
     arena_rows: tuple[dict[str, str], ...]
     arena_evidence_ids_by_counter: dict[str, tuple[str, ...]]
     arena_claim_ids_by_counter: dict[str, tuple[str, ...]]
+    arena_sources: tuple[dict[str, str], ...]
+    parena_cases: tuple[dict[str, str], ...]
+    parena_matchups_by_case: dict[str, tuple[dict[str, str], ...]]
+    parena_source_ids_by_case: dict[str, tuple[str, ...]]
+    parena_evidence_ids_by_case: dict[str, tuple[str, ...]]
+    parena_claim_ids_by_case: dict[str, tuple[str, ...]]
     gacha_events: tuple[dict[str, str], ...]
     gacha_community_sources: tuple[dict[str, str], ...]
     gacha_evidence_ids_by_event: dict[str, tuple[str, ...]]
@@ -917,6 +946,7 @@ def _validate_arena_rows(
         if row["status"] == "VERIFIED" and (
             row["claim_confidence"] not in {"B", "C"}
             or row["reproducibility"] != "CONFIRMED"
+            or row["required_upgrade_check"] != "PASS"
             or row["source_tier"] not in ARENA_VERIFIED_SOURCE_TIERS
             or source_record_count < 2
             or sample_size is None
@@ -1025,6 +1055,318 @@ def _validate_arena_rows(
         tuple(sorted(arena_rows, key=lambda item: item["counter_id"])),
         evidence_ids_by_counter,
         claim_ids_by_counter,
+    )
+
+
+def _source_hostname(value: str) -> str:
+    hostname = (urlsplit(value).hostname or "").lower()
+    return hostname[4:] if hostname.startswith("www.") else hostname
+
+
+def _arena_source_is_fresh(row: dict[str, str], *, today: date) -> bool:
+    checked = _parse_date(
+        row["last_checked"], field=f"{row['source_id']}.last_checked", required=True
+    )
+    match = re.fullmatch(r"([1-9]\d*)d", row["freshness_window"].strip())
+    if checked is None or match is None:
+        return False
+    return (today - checked).days <= int(match.group(1))
+
+
+def _validate_parena_closure(
+    arena_sources: tuple[dict[str, str], ...],
+    parena_rows: tuple[dict[str, str], ...],
+    *,
+    arena_rows: tuple[dict[str, str], ...],
+    characters_by_id: dict[str, dict[str, str]],
+    evidence_by_id: dict[str, dict[str, str]],
+    claims_by_id: dict[str, dict[str, str]],
+    today: date | None = None,
+) -> tuple[
+    tuple[dict[str, str], ...],
+    tuple[dict[str, str], ...],
+    dict[str, tuple[dict[str, str], ...]],
+    dict[str, tuple[str, ...]],
+    dict[str, tuple[str, ...]],
+    dict[str, tuple[str, ...]],
+]:
+    """Apply the same fail-closed maturity boundary as research ST81."""
+
+    current_date = today or date.today()
+    source_required = {
+        "source_id", "title", "platform", "source_type", "server", "url",
+        "last_checked", "freshness_window", "access_status", "confidence_cap",
+        "extraction_method", "notes",
+    }
+    case_required = {
+        "case_id", "server", "environment_version", "enemy_team1", "enemy_team2",
+        "enemy_team3", "counter_team1", "counter_team2", "counter_team3",
+        "team1_result_claim_id", "team2_result_claim_id", "team3_result_claim_id",
+        "case_win_claim_id", "hidden_team_mode", "status", "verified_date",
+        "source_ids", "evidence_ids", "claim_ids", "tw_availability_check",
+        "non_overlap_check", "reproducibility", "last_review_due", "notes",
+    }
+    if arena_sources and not source_required <= arena_sources[0].keys():
+        raise FixtureValidationError(f"{ARENA_SOURCES_FILE} is missing canonical fields")
+    if parena_rows and not case_required <= parena_rows[0].keys():
+        raise FixtureValidationError(f"{PARENA_CASES_FILE} is missing canonical fields")
+
+    sources_by_id: dict[str, dict[str, str]] = {}
+    for row in arena_sources:
+        source_id = row["source_id"].strip()
+        if (
+            not source_id
+            or row["server"] not in {"TW", "JP"}
+            or row["access_status"]
+            not in {"ACTIVE", "PARTIAL", "BLOCKED", "STALE", "ARCHIVED"}
+            or row["confidence_cap"] not in {"C", "D", "E"}
+            or not row["title"].strip()
+            or not row["url"].strip()
+        ):
+            raise FixtureValidationError(f"invalid Arena source record {source_id!r}")
+        _parse_date(row["last_checked"], field=f"{source_id}.last_checked", required=True)
+        if row["freshness_window"] and not re.fullmatch(
+            r"[1-9]\d*d", row["freshness_window"]
+        ):
+            raise FixtureValidationError(f"{source_id}.freshness_window is invalid")
+        sources_by_id[source_id] = row
+
+    mature_arena: dict[tuple[str, str, str, str], dict[str, str]] = {}
+    for row in arena_rows:
+        if (
+            row["status"] == "VERIFIED"
+            and row["server"] == "TW"
+            and row["tw_availability_check"] == "PASS"
+            and row["reproducibility"] == "CONFIRMED"
+            and row["environment_version"].strip()
+            and all(
+                urlsplit(evidence_by_id[evidence_id]["source_url"]).scheme.lower()
+                == "https"
+                and bool(_source_hostname(evidence_by_id[evidence_id]["source_url"]))
+                for evidence_id in _split_ids(row["evidence_ids"])
+            )
+            and (_parse_date(row["verified_date"], field="arena.verified", required=True) or current_date)
+            <= current_date
+            and (_parse_date(row["last_review_due"], field="arena.due", required=True) or date.min)
+            >= current_date
+        ):
+            key = (
+                row["server"],
+                row["environment_version"],
+                arena_formation_signature(_split_ids(row["enemy_team_ids"])),
+                arena_formation_signature(_split_ids(row["counter_team_ids"])),
+            )
+            mature_arena[key] = row
+
+    mature_cases: list[dict[str, str]] = []
+    matchups_by_case: dict[str, tuple[dict[str, str], ...]] = {}
+    source_ids_by_case: dict[str, tuple[str, ...]] = {}
+    evidence_ids_by_case: dict[str, tuple[str, ...]] = {}
+    claim_ids_by_case: dict[str, tuple[str, ...]] = {}
+    seen_defenses: set[tuple[str, str, tuple[str, ...]]] = set()
+    seen_case_claims: set[str] = set()
+
+    for row in sorted(parena_rows, key=lambda item: item["case_id"]):
+        case_id = row["case_id"].strip()
+        if not case_id:
+            raise FixtureValidationError("P-Arena case_id must not be blank")
+        for field in ("source_ids", "evidence_ids", "claim_ids"):
+            values = _split_ids(row[field])
+            if len(values) != len(set(values)):
+                raise FixtureValidationError(f"{case_id}.{field} contains duplicates")
+        if row["status"] != "VERIFIED":
+            continue
+        if not (
+            row["server"] == "TW"
+            and row["environment_version"].strip() not in {"", "UNKNOWN"}
+            and row["hidden_team_mode"] == "NONE"
+            and row["tw_availability_check"] == "PASS"
+            and row["non_overlap_check"] == "PASS"
+            and row["reproducibility"] == "CONFIRMED"
+            and row["notes"].strip()
+        ):
+            raise FixtureValidationError(f"{case_id} is not a mature VERIFIED P-Arena case")
+
+        enemy_teams = tuple(_split_ids(row[f"enemy_team{i}"]) for i in (1, 2, 3))
+        counter_teams = tuple(_split_ids(row[f"counter_team{i}"]) for i in (1, 2, 3))
+        all_enemy = tuple(unit for team in enemy_teams for unit in team)
+        all_counter = tuple(unit for team in counter_teams for unit in team)
+        if not (
+            all(len(team) == 5 and len(set(team)) == 5 for team in (*enemy_teams, *counter_teams))
+            and len(set(all_enemy)) == 15
+            and len(set(all_counter)) == 15
+            and all(
+                unit in characters_by_id
+                and characters_by_id[unit]["availability_status"] == "AVAILABLE"
+                for unit in (*all_enemy, *all_counter)
+            )
+        ):
+            raise FixtureValidationError(f"{case_id} violates the 3x5 TW AVAILABLE shape")
+
+        team_claim_ids = tuple(row[f"team{i}_result_claim_id"] for i in (1, 2, 3))
+        case_claim_id = row["case_win_claim_id"]
+        if (
+            len(set(team_claim_ids)) != 3
+            or any(not value for value in team_claim_ids)
+            or not case_claim_id
+            or case_claim_id in team_claim_ids
+            or case_claim_id in seen_case_claims
+        ):
+            raise FixtureValidationError(f"{case_id} designated Claim identity is invalid")
+        case_claim = claims_by_id.get(case_claim_id)
+        if case_claim is None or not (
+            case_claim["status"] == "ACTIVE"
+            and case_claim["server"] == "TW"
+            and case_claim["module"] == "parena"
+            and case_claim["claim_type"] == "SOURCE_FACT"
+            and case_claim["claim_confidence"] in {"B", "C", "D"}
+            and case_claim["version_match"] == "YES"
+        ):
+            raise FixtureValidationError(f"{case_id} case WIN Claim is not mature")
+
+        matchup_rows: list[dict[str, str]] = []
+        for number, (enemy, counter, result_claim_id) in enumerate(
+            zip(enemy_teams, counter_teams, team_claim_ids, strict=True), start=1
+        ):
+            key = (
+                "TW",
+                row["environment_version"],
+                arena_formation_signature(enemy),
+                arena_formation_signature(counter),
+            )
+            arena_row = mature_arena.get(key)
+            if arena_row is None or _split_ids(arena_row["claim_ids"]) != (result_claim_id,):
+                raise FixtureValidationError(
+                    f"{case_id}.team{number} lacks one exact mature file39 result"
+                )
+            matchup_rows.append(arena_row)
+
+        designated_claims = (*team_claim_ids, case_claim_id)
+        if set(_split_ids(row["claim_ids"])) != set(designated_claims):
+            raise FixtureValidationError(f"{case_id}.claim_ids is not the designated closure")
+        direct_evidence: set[str] = set()
+        for claim_id in designated_claims:
+            claim = claims_by_id.get(claim_id)
+            if claim is None:
+                raise FixtureValidationError(f"{case_id} references missing Claim {claim_id}")
+            direct_evidence.update(_split_ids(claim["evidence_ids"]))
+        if set(_split_ids(row["evidence_ids"])) != direct_evidence:
+            raise FixtureValidationError(f"{case_id}.evidence_ids is not the direct closure")
+
+        case_evidence_ids = _split_ids(case_claim["evidence_ids"])
+        minimum = 1 if case_claim["claim_confidence"] == "D" else 2
+        case_evidence = [evidence_by_id.get(value) for value in case_evidence_ids]
+        if (
+            len(case_evidence_ids) < minimum
+            or len(case_evidence_ids) != len(set(case_evidence_ids))
+            or any(value is None for value in case_evidence)
+        ):
+            raise FixtureValidationError(f"{case_id} case WIN Evidence closure is incomplete")
+        typed_case_evidence = [value for value in case_evidence if value is not None]
+        if any(
+            evidence["status"] != "ACTIVE"
+            or evidence["server"] != "TW"
+            or evidence["module"] != "parena"
+            or evidence["claim_id"] != case_claim_id
+            or evidence["source_tier"] not in ARENA_VERIFIED_EVIDENCE_TIERS
+            or evidence["evidence_confidence"] not in {"A", "B", "C", "D"}
+            or not _source_hostname(evidence["source_url"])
+            or urlsplit(evidence["source_url"]).scheme.lower() != "https"
+            for evidence in typed_case_evidence
+        ):
+            raise FixtureValidationError(f"{case_id} case WIN Evidence is not admissible")
+        for evidence in typed_case_evidence:
+            evidence_verified = _parse_date(
+                evidence["verified_date"], field="case_evidence.verified", required=True
+            )
+            precision = evidence["published_date_precision"]
+            published = evidence["published_date"].strip()
+            if precision == "DAY":
+                published_date = _parse_date(
+                    published, field="case_evidence.published", required=True
+                )
+                if published_date is None or evidence_verified is None or published_date > evidence_verified:
+                    raise FixtureValidationError(
+                        f"{case_id} case WIN Evidence publication postdates verification"
+                    )
+            elif precision == "MONTH" and (
+                evidence_verified is None or published > evidence_verified.isoformat()[:7]
+            ):
+                raise FixtureValidationError(
+                    f"{case_id} case WIN Evidence publication postdates verification"
+                )
+            elif precision == "YEAR" and (
+                evidence_verified is None or published > evidence_verified.isoformat()[:4]
+            ):
+                raise FixtureValidationError(
+                    f"{case_id} case WIN Evidence publication postdates verification"
+                )
+        if case_claim["claim_confidence"] in {"B", "C"} and (
+            case_claim["independence_check"] != "YES"
+            or len({_arena_evidence_identity(value) for value in typed_case_evidence}) < 2
+        ):
+            raise FixtureValidationError(f"{case_id} B/C case WIN lacks independence")
+
+        source_ids = _split_ids(row["source_ids"])
+        if not source_ids or any(
+            source_id not in sources_by_id
+            or sources_by_id[source_id]["access_status"] != "ACTIVE"
+            or sources_by_id[source_id]["server"] != "TW"
+            or not _arena_source_is_fresh(sources_by_id[source_id], today=current_date)
+            for source_id in source_ids
+        ):
+            raise FixtureValidationError(f"{case_id} source index closure is not fresh TW ACTIVE")
+        evidence_hosts = {_source_hostname(value["source_url"]) for value in typed_case_evidence}
+        source_hosts = {_source_hostname(sources_by_id[value]["url"]) for value in source_ids}
+        if not evidence_hosts or "" in evidence_hosts or not evidence_hosts <= source_hosts:
+            raise FixtureValidationError(f"{case_id} sources do not cover case WIN hostnames")
+
+        verified = _parse_date(row["verified_date"], field=f"{case_id}.verified_date", required=True)
+        due = _parse_date(row["last_review_due"], field=f"{case_id}.last_review_due", required=True)
+        input_verified = [
+            _parse_date(value["verified_date"], field="closure.verified", required=True)
+            for value in (*matchup_rows, *(claims_by_id[value] for value in designated_claims), *typed_case_evidence)
+        ]
+        input_due = [
+            _parse_date(value["last_review_due"], field="arena.due", required=True)
+            for value in matchup_rows
+        ] + [
+            _parse_date(claims_by_id[value]["next_review_due"], field="claim.due", required=True)
+            for value in designated_claims
+        ]
+        if (
+            verified is None
+            or verified > current_date
+            or any(value is None for value in input_verified)
+            or verified < max(value for value in input_verified if value is not None)
+            or due is None
+            or due < current_date
+            or any(value is None for value in input_due)
+            or due > min(value for value in input_due if value is not None)
+        ):
+            raise FixtureValidationError(f"{case_id} verification/review chronology is invalid")
+
+        defense_key = (
+            row["server"], row["environment_version"],
+            tuple(sorted(arena_formation_signature(team) for team in enemy_teams)),
+        )
+        if defense_key in seen_defenses:
+            raise FixtureValidationError(f"{case_id} duplicates a P-Arena defense case")
+        seen_defenses.add(defense_key)
+        seen_case_claims.add(case_claim_id)
+        mature_cases.append(row)
+        matchups_by_case[case_id] = tuple(matchup_rows)
+        source_ids_by_case[case_id] = source_ids
+        evidence_ids_by_case[case_id] = _split_ids(row["evidence_ids"])
+        claim_ids_by_case[case_id] = _split_ids(row["claim_ids"])
+
+    return (
+        tuple(sorted(arena_sources, key=lambda item: item["source_id"])),
+        tuple(mature_cases),
+        matchups_by_case,
+        source_ids_by_case,
+        evidence_ids_by_case,
+        claim_ids_by_case,
     )
 
 
@@ -1932,6 +2274,16 @@ def load_pve_closure(
         source_contents[GACHA_COMMUNITY_FILE],
         "source_id",
     )
+    arena_sources_all = _read_csv(
+        ARENA_SOURCES_FILE,
+        source_contents[ARENA_SOURCES_FILE],
+        "source_id",
+    )
+    parena_rows_all = _read_csv(
+        PARENA_CASES_FILE,
+        source_contents[PARENA_CASES_FILE],
+        "case_id",
+    )
     evidence_all = _read_csv(
         EVIDENCE_FILE, source_contents[EVIDENCE_FILE], "evidence_id"
     )
@@ -1990,6 +2342,21 @@ def load_pve_closure(
         arena_claim_ids_by_counter,
     ) = _validate_arena_rows(
         arena_rows_all,
+        characters_by_id=characters_by_id,
+        evidence_by_id=evidence_by_id,
+        claims_by_id=claims_by_id,
+    )
+    (
+        arena_sources,
+        parena_cases,
+        parena_matchups_by_case,
+        parena_source_ids_by_case,
+        parena_evidence_ids_by_case,
+        parena_claim_ids_by_case,
+    ) = _validate_parena_closure(
+        arena_sources_all,
+        parena_rows_all,
+        arena_rows=arena_rows,
         characters_by_id=characters_by_id,
         evidence_by_id=evidence_by_id,
         claims_by_id=claims_by_id,
@@ -2155,6 +2522,8 @@ def load_pve_closure(
         selected_evidence.update(ids)
     for ids in gacha_evidence_ids_by_event.values():
         selected_evidence.update(ids)
+    for ids in parena_evidence_ids_by_case.values():
+        selected_evidence.update(ids)
     for character in characters:
         ids = _split_ids(character["source_evidence_ids"])
         _require_ids(ids, evidence_by_id, relation=f"{character['unit_key']} source_evidence_ids")
@@ -2166,6 +2535,8 @@ def load_pve_closure(
     for ids in arena_claim_ids_by_counter.values():
         selected_claims.update(ids)
     for ids in gacha_claim_ids_by_event.values():
+        selected_claims.update(ids)
+    for ids in parena_claim_ids_by_case.values():
         selected_claims.update(ids)
     dangling_claims: set[str] = set()
     changed = True
@@ -2226,6 +2597,12 @@ def load_pve_closure(
         arena_rows=arena_rows,
         arena_evidence_ids_by_counter=arena_evidence_ids_by_counter,
         arena_claim_ids_by_counter=arena_claim_ids_by_counter,
+        arena_sources=arena_sources,
+        parena_cases=parena_cases,
+        parena_matchups_by_case=parena_matchups_by_case,
+        parena_source_ids_by_case=parena_source_ids_by_case,
+        parena_evidence_ids_by_case=parena_evidence_ids_by_case,
+        parena_claim_ids_by_case=parena_claim_ids_by_case,
         gacha_events=gacha_events,
         gacha_community_sources=gacha_community_sources,
         gacha_evidence_ids_by_event=gacha_evidence_ids_by_event,
@@ -2326,6 +2703,12 @@ def _legacy_fire_projection(closure: FixtureClosure) -> FixtureClosure:
         arena_rows=(),
         arena_evidence_ids_by_counter={},
         arena_claim_ids_by_counter={},
+        arena_sources=(),
+        parena_cases=(),
+        parena_matchups_by_case={},
+        parena_source_ids_by_case={},
+        parena_evidence_ids_by_case={},
+        parena_claim_ids_by_case={},
         gacha_events=(),
         gacha_community_sources=(),
         gacha_evidence_ids_by_event={},
@@ -2384,6 +2767,12 @@ def _pve_only_projection(closure: FixtureClosure) -> FixtureClosure:
         arena_rows=(),
         arena_evidence_ids_by_counter={},
         arena_claim_ids_by_counter={},
+        arena_sources=(),
+        parena_cases=(),
+        parena_matchups_by_case={},
+        parena_source_ids_by_case={},
+        parena_evidence_ids_by_case={},
+        parena_claim_ids_by_case={},
         gacha_events=(),
         gacha_community_sources=(),
         gacha_evidence_ids_by_event={},
@@ -2420,6 +2809,54 @@ def _strategy_without_gacha_projection(closure: FixtureClosure) -> FixtureClosur
         gacha_evidence_ids_by_event={},
         gacha_claim_ids_by_event={},
         gacha_community_source_ids_by_event={},
+        arena_sources=(),
+        parena_cases=(),
+        parena_matchups_by_case={},
+        parena_source_ids_by_case={},
+        parena_evidence_ids_by_case={},
+        parena_claim_ids_by_case={},
+    )
+
+
+def _without_parena_projection(closure: FixtureClosure) -> FixtureClosure:
+    """Preserve immutable v4 source/typed semantics for A6 and older trees."""
+
+    parena_evidence_ids = {
+        evidence_id
+        for values in closure.parena_evidence_ids_by_case.values()
+        for evidence_id in values
+    }
+    parena_claim_ids = {
+        claim_id
+        for values in closure.parena_claim_ids_by_case.values()
+        for claim_id in values
+    }
+    # Shared Arena result claims/evidence remain selected by file39.  Only
+    # exclusively P-Arena case-WIN closure rows are removed from v4.
+    arena_evidence_ids = {
+        value
+        for values in closure.arena_evidence_ids_by_counter.values()
+        for value in values
+    }
+    arena_claim_ids = {
+        value
+        for values in closure.arena_claim_ids_by_counter.values()
+        for value in values
+    }
+    remove_evidence = parena_evidence_ids - arena_evidence_ids
+    remove_claims = parena_claim_ids - arena_claim_ids
+    return replace(
+        closure,
+        evidence=tuple(
+            row for row in closure.evidence if row["evidence_id"] not in remove_evidence
+        ),
+        claims=tuple(row for row in closure.claims if row["claim_id"] not in remove_claims),
+        arena_sources=(),
+        parena_cases=(),
+        parena_matchups_by_case={},
+        parena_source_ids_by_case={},
+        parena_evidence_ids_by_case={},
+        parena_claim_ids_by_case={},
     )
 
 
@@ -2574,6 +3011,71 @@ def _arena_counter_values(
             row["record_date_max"],
             field=f"{counter_id}.record_date_max",
             required=True,
+        ),
+        "notes": row["notes"],
+        "source_payload": row,
+        "import_run_id": import_run_id,
+    }
+
+
+def _parena_group_signature(teams: Iterable[Iterable[str]]) -> str:
+    return "||".join(sorted(arena_formation_signature(team) for team in teams))
+
+
+def _arena_source_values(
+    row: dict[str, str], *, import_run_id: str
+) -> dict[str, Any]:
+    source_id = row["source_id"]
+    return {
+        "source_id": source_id,
+        "title": row["title"],
+        "platform": row["platform"],
+        "source_type": row["source_type"],
+        "server": row["server"],
+        "url": row["url"],
+        "last_checked": _parse_date(
+            row["last_checked"], field=f"{source_id}.last_checked", required=True
+        ),
+        "freshness_window": row["freshness_window"].strip() or None,
+        "access_status": row["access_status"],
+        "confidence_cap": row["confidence_cap"],
+        "extraction_method": row["extraction_method"],
+        "notes": row["notes"],
+        "source_payload": row,
+        "import_run_id": import_run_id,
+    }
+
+
+def _parena_case_values(
+    row: dict[str, str],
+    *,
+    claims_by_id: dict[str, dict[str, str]],
+    import_run_id: str,
+) -> dict[str, Any]:
+    case_id = row["case_id"]
+    case_win_claim = claims_by_id.get(row["case_win_claim_id"])
+    if case_win_claim is None or case_win_claim["claim_confidence"] not in {"B", "C", "D"}:
+        raise FixtureValidationError(f"{case_id} case WIN confidence is invalid")
+    enemy_teams = tuple(_split_ids(row[f"enemy_team{i}"]) for i in (1, 2, 3))
+    counter_teams = tuple(_split_ids(row[f"counter_team{i}"]) for i in (1, 2, 3))
+    return {
+        "case_id": case_id,
+        "server": row["server"],
+        "environment_version": row["environment_version"],
+        "defense_signature": _parena_group_signature(enemy_teams),
+        "counter_signature": _parena_group_signature(counter_teams),
+        "case_win_claim_id": row["case_win_claim_id"],
+        "case_win_confidence": case_win_claim["claim_confidence"],
+        "hidden_team_mode": row["hidden_team_mode"],
+        "status": row["status"],
+        "verified_date": _parse_date(
+            row["verified_date"], field=f"{case_id}.verified_date", required=True
+        ),
+        "tw_availability_check": row["tw_availability_check"],
+        "non_overlap_check": row["non_overlap_check"],
+        "reproducibility": row["reproducibility"],
+        "last_review_due": _parse_date(
+            row["last_review_due"], field=f"{case_id}.last_review_due", required=True
         ),
         "notes": row["notes"],
         "source_payload": row,
@@ -2748,7 +3250,11 @@ def _counts(closure: FixtureClosure, *, projection: str) -> dict[str, int]:
         "operation_timelines": len(closure.timelines),
         "timeline_steps": len(closure.timeline_steps),
     }
-    if projection in {FULL_STRATEGY_PROJECTION, FULL_PLATFORM_PROJECTION}:
+    if projection in {
+        FULL_STRATEGY_PROJECTION,
+        FULL_PLATFORM_PROJECTION,
+        FULL_PARENA_PLATFORM_PROJECTION,
+    }:
         defense_count = len(_arena_defense_specs(closure.arena_rows))
         counts.update(
             {
@@ -2766,7 +3272,7 @@ def _counts(closure: FixtureClosure, *, projection: str) -> dict[str, int]:
                 ),
             }
         )
-    if projection == FULL_PLATFORM_PROJECTION:
+    if projection in {FULL_PLATFORM_PROJECTION, FULL_PARENA_PLATFORM_PROJECTION}:
         counts.update(
             {
                 "gacha_timeline_events": len(closure.gacha_events),
@@ -2780,6 +3286,25 @@ def _counts(closure: FixtureClosure, *, projection: str) -> dict[str, int]:
                 "gacha_timeline_community_sources": sum(
                     len(ids)
                     for ids in closure.gacha_community_source_ids_by_event.values()
+                ),
+            }
+        )
+    if projection == FULL_PARENA_PLATFORM_PROJECTION:
+        counts.update(
+            {
+                "arena_source_records": len(closure.arena_sources),
+                "parena_cases": len(closure.parena_cases),
+                "parena_case_matchups": sum(
+                    len(values) for values in closure.parena_matchups_by_case.values()
+                ),
+                "parena_case_sources": sum(
+                    len(values) for values in closure.parena_source_ids_by_case.values()
+                ),
+                "parena_case_evidence": sum(
+                    len(values) for values in closure.parena_evidence_ids_by_case.values()
+                ),
+                "parena_case_claims": sum(
+                    len(values) for values in closure.parena_claim_ids_by_case.values()
                 ),
             }
         )
@@ -2807,7 +3332,18 @@ def _materialization_expectation(
             },
         }
     if projection == FULL_PLATFORM_PROJECTION:
-        return None
+        return {
+            "schema_version": GACHA_MATERIALIZATION_MANIFEST_VERSION,
+            "tables": {
+                model.__tablename__: {}
+                for model in GACHA_MATERIALIZATION_SERVING_MODELS
+            },
+        }
+    if projection == FULL_PARENA_PLATFORM_PROJECTION:
+        return {
+            "schema_version": MATERIALIZATION_MANIFEST_VERSION,
+            "tables": {model.__tablename__: {} for model in SERVING_MODELS},
+        }
     raise MirrorDriftError(f"unsupported typed projection: {projection}")
 
 
@@ -3051,6 +3587,108 @@ def _assert_materialized(
     if actual_counter_claims != expected_counter_claims:
         raise MirrorDriftError("idempotent fixture Arena counter Claim links drifted")
 
+    expected_source_ids = {row["source_id"] for row in closure.arena_sources}
+    actual_source_ids = set(
+        session.scalars(select(ArenaSourceRecord.source_id)).all()
+    )
+    if actual_source_ids != expected_source_ids:
+        raise MirrorDriftError("idempotent fixture Arena source ids drifted")
+    for source_row in closure.arena_sources:
+        stored = session.get(ArenaSourceRecord, source_row["source_id"])
+        expected = _arena_source_values(
+            source_row, import_run_id=stored.import_run_id if stored else ""
+        )
+        if stored is None or any(
+            getattr(stored, name) != value for name, value in expected.items()
+        ):
+            raise MirrorDriftError(
+                f"idempotent fixture Arena source {source_row['source_id']} drifted"
+            )
+
+    expected_case_ids = {row["case_id"] for row in closure.parena_cases}
+    actual_case_ids = set(session.scalars(select(ParenaCase.case_id)).all())
+    if actual_case_ids != expected_case_ids:
+        raise MirrorDriftError("idempotent fixture P-Arena case ids drifted")
+    claims_by_id = {row["claim_id"]: row for row in closure.claims}
+    for source_row in closure.parena_cases:
+        stored = session.get(ParenaCase, source_row["case_id"])
+        expected = _parena_case_values(
+            source_row,
+            claims_by_id=claims_by_id,
+            import_run_id=stored.import_run_id if stored else "",
+        )
+        if stored is None or any(
+            getattr(stored, name) != value for name, value in expected.items()
+        ):
+            raise MirrorDriftError(
+                f"idempotent fixture P-Arena case {source_row['case_id']} drifted"
+            )
+
+    expected_matchups = {
+        (
+            case_id,
+            number,
+            _arena_defense_id(arena_row),
+            arena_row["counter_id"],
+            next(row for row in closure.parena_cases if row["case_id"] == case_id)[
+                f"team{number}_result_claim_id"
+            ],
+        )
+        for case_id, arena_rows in closure.parena_matchups_by_case.items()
+        for number, arena_row in enumerate(arena_rows, start=1)
+    }
+    actual_matchups = {
+        tuple(value)
+        for value in session.execute(
+            select(
+                ParenaCaseMatchup.case_id,
+                ParenaCaseMatchup.matchup_no,
+                ParenaCaseMatchup.defense_id,
+                ParenaCaseMatchup.counter_id,
+                ParenaCaseMatchup.result_claim_id,
+            )
+        ).all()
+    }
+    if actual_matchups != expected_matchups:
+        raise MirrorDriftError("idempotent fixture P-Arena matchups drifted")
+
+    relation_specs = (
+        (
+            ParenaCaseSource,
+            ParenaCaseSource.source_id,
+            closure.parena_source_ids_by_case,
+            "source",
+        ),
+        (
+            ParenaCaseEvidence,
+            ParenaCaseEvidence.evidence_id,
+            closure.parena_evidence_ids_by_case,
+            "Evidence",
+        ),
+        (
+            ParenaCaseClaim,
+            ParenaCaseClaim.claim_id,
+            closure.parena_claim_ids_by_case,
+            "Claim",
+        ),
+    )
+    for model, value_column, expected_by_case, label in relation_specs:
+        expected_links = {
+            (case_id, value)
+            for case_id, values in expected_by_case.items()
+            for value in values
+        }
+        actual_links = {
+            tuple(value)
+            for value in session.execute(
+                select(model.case_id, value_column)
+            ).all()
+        }
+        if actual_links != expected_links:
+            raise MirrorDriftError(
+                f"idempotent fixture P-Arena {label} links drifted"
+            )
+
     expected_gacha_event_ids = {row["event_id"] for row in closure.gacha_events}
     actual_gacha_event_ids = set(
         session.scalars(select(GachaTimelineEvent.event_id)).all()
@@ -3234,6 +3872,12 @@ def _clear_serving_mirror(session: Session) -> None:
     """Remove only typed serving rows, in FK-safe order, inside the activation transaction."""
 
     for model in (
+        ParenaCaseClaim,
+        ParenaCaseEvidence,
+        ParenaCaseSource,
+        ParenaCaseMatchup,
+        ParenaCase,
+        ArenaSourceRecord,
         GachaTimelineCommunitySource,
         GachaTimelineClaim,
         GachaTimelineEvidence,
@@ -3368,6 +4012,7 @@ def _projection_from_manifest(manifest: dict[str, Any]) -> str:
     projection = manifest.get("projection")
     if projection in {
         FULL_PLATFORM_PROJECTION,
+        FULL_PARENA_PLATFORM_PROJECTION,
         FULL_STRATEGY_PROJECTION,
         FULL_PVE_PROJECTION,
         LEGACY_FIRE_PROJECTION,
@@ -3407,6 +4052,8 @@ def _closure_for_projection(
     projection: str,
 ) -> FixtureClosure:
     if projection == FULL_PLATFORM_PROJECTION:
+        return _without_parena_projection(full_closure)
+    if projection == FULL_PARENA_PLATFORM_PROJECTION:
         return full_closure
     if projection == FULL_STRATEGY_PROJECTION:
         return _strategy_without_gacha_projection(full_closure)
@@ -3484,7 +4131,12 @@ def import_pve_projection(
                         FULL_STRATEGY_PROJECTION
                         if snapshot.manifest_sha256 == RP_A5_MANIFEST_SHA256
                         else (
-                            FULL_PLATFORM_PROJECTION
+                            (
+                                FULL_PARENA_PLATFORM_PROJECTION
+                                if expected_manifest_sha256
+                                in PARENA_MATERIALIZATION_MANIFESTS
+                                else FULL_PLATFORM_PROJECTION
+                            )
                             if full_closure.gacha_events
                             or full_closure.gacha_community_sources
                             else (
@@ -3785,6 +4437,50 @@ def import_pve_projection(
                 session.add(
                     ArenaCounterClaim(counter_id=counter_id, claim_id=claim_id)
                 )
+        session.flush()
+
+        for row in closure.arena_sources:
+            _upsert(
+                session,
+                ArenaSourceRecord,
+                row["source_id"],
+                _arena_source_values(row, import_run_id=run_id),
+            )
+        claims_by_id = {claim["claim_id"]: claim for claim in closure.claims}
+        for row in closure.parena_cases:
+            _upsert(
+                session,
+                ParenaCase,
+                row["case_id"],
+                _parena_case_values(
+                    row,
+                    claims_by_id=claims_by_id,
+                    import_run_id=run_id,
+                ),
+            )
+        session.flush()
+        for row in closure.parena_cases:
+            case_id = row["case_id"]
+            for matchup_no, arena_row in enumerate(
+                closure.parena_matchups_by_case[case_id], start=1
+            ):
+                session.add(
+                    ParenaCaseMatchup(
+                        case_id=case_id,
+                        matchup_no=matchup_no,
+                        defense_id=_arena_defense_id(arena_row),
+                        counter_id=arena_row["counter_id"],
+                        result_claim_id=row[f"team{matchup_no}_result_claim_id"],
+                    )
+                )
+            for source_id in closure.parena_source_ids_by_case[case_id]:
+                session.add(ParenaCaseSource(case_id=case_id, source_id=source_id))
+            for evidence_id in closure.parena_evidence_ids_by_case[case_id]:
+                session.add(
+                    ParenaCaseEvidence(case_id=case_id, evidence_id=evidence_id)
+                )
+            for claim_id in closure.parena_claim_ids_by_case[case_id]:
+                session.add(ParenaCaseClaim(case_id=case_id, claim_id=claim_id))
         session.flush()
 
         for guide in closure.guides:

@@ -29,6 +29,8 @@ from pcr_pipeline.research_core_snapshot import (
     RP_A4_SNAPSHOT_CONTRACT,
     RP_A5_MANIFEST_SHA256,
     RP_A5_SNAPSHOT_CONTRACT,
+    RP_B4_0_MANIFEST_SHA256,
+    RP_B4_0_SNAPSHOT_CONTRACT,
     RP_B5_1_MANIFEST_SHA256,
     RP_B5_1_SNAPSHOT_CONTRACT,
     SnapshotDriftError,
@@ -54,12 +56,13 @@ from pcr_pipeline.verify_round_trip import run_round_trip_smoke
 
 ROOT = Path(__file__).resolve().parents[2]
 RESEARCH_CORE = ROOT / "research_core" / "pcr_tw_project"
-MANIFEST = ROOT / "scripts" / "research_core_rp_a6_0_manifest.sha256"
+MANIFEST = ROOT / "scripts" / "research_core_rp_b4_0_manifest.sha256"
+A6_MANIFEST = ROOT / "scripts" / "research_core_rp_a6_0_manifest.sha256"
 B5_MANIFEST = ROOT / "scripts" / "research_core_rp_b5_1_manifest.sha256"
 A5_MANIFEST = ROOT / "scripts" / "research_core_rp_a5_manifest.sha256"
 A4_MANIFEST = ROOT / "scripts" / "research_core_rp_a4_manifest.sha256"
-RAW_TREE_SHA256 = "3f5e738a6a7f0463583b38d0fc2ca1ae35bdc563f3815cf436dfc10913764d97"
-SEMANTIC_TREE_SHA256 = "82495781cca66b9ca3fc221e609a3cb6c06ebaa823f7a8613c9d5d1d01d9e1ee"
+RAW_TREE_SHA256 = "1ba25a73df01ca8d9b161c60836d997f6db202a18d140ee1e92a7d96f62d7a17"
+SEMANTIC_TREE_SHA256 = "46000a4a6f9ee70067876c7c1a73fd61d4d06a6f93c5b61831c15d41c9d8811e"
 
 
 def sqlite_engine():
@@ -192,6 +195,7 @@ def test_manifest_pinned_loader_preserves_exact_rows_and_directed_edges() -> Non
 @pytest.mark.parametrize(
     ("manifest", "expected_manifest_sha256", "contract"),
     [
+        (A6_MANIFEST, RP_A6_0_MANIFEST_SHA256, RP_A6_0_SNAPSHOT_CONTRACT),
         (B5_MANIFEST, RP_B5_1_MANIFEST_SHA256, RP_B5_1_SNAPSHOT_CONTRACT),
         (A5_MANIFEST, RP_A5_MANIFEST_SHA256, RP_A5_SNAPSHOT_CONTRACT),
         (A4_MANIFEST, RP_A4_MANIFEST_SHA256, RP_A4_SNAPSHOT_CONTRACT),
@@ -216,11 +220,14 @@ def test_historical_manifests_and_contracts_remain_immutable(
     assert snapshot_contract_for_manifest(expected_manifest_sha256) == contract
 
 
-def test_rp_a6_0_is_current_and_b5_1_remains_explicit_historical_contract() -> None:
+def test_rp_b4_0_is_current_and_a6_0_remains_explicit_historical_contract() -> None:
     assert DEFAULT_MANIFEST == MANIFEST
-    assert EXPECTED_MANIFEST_SHA256 == RP_A6_0_MANIFEST_SHA256
-    assert CURRENT_SNAPSHOT_CONTRACT == RP_A6_0_SNAPSHOT_CONTRACT
-    assert RP_B5_1_SNAPSHOT_CONTRACT is not CURRENT_SNAPSHOT_CONTRACT
+    assert EXPECTED_MANIFEST_SHA256 == RP_B4_0_MANIFEST_SHA256
+    assert CURRENT_SNAPSHOT_CONTRACT == RP_B4_0_SNAPSHOT_CONTRACT
+    assert RP_A6_0_SNAPSHOT_CONTRACT is not CURRENT_SNAPSHOT_CONTRACT
+    assert snapshot_contract_for_manifest(RP_B4_0_MANIFEST_SHA256) == (
+        RP_B4_0_SNAPSHOT_CONTRACT
+    )
     assert snapshot_contract_for_manifest(RP_A6_0_MANIFEST_SHA256) == (
         RP_A6_0_SNAPSHOT_CONTRACT
     )
@@ -229,7 +236,7 @@ def test_rp_a6_0_is_current_and_b5_1_remains_explicit_historical_contract() -> N
     )
 
 
-def test_a6_princess_arena_registry_header_is_exactly_24_fields() -> None:
+def test_b4_princess_arena_registry_header_is_exactly_24_fields() -> None:
     snapshot = load_research_core_snapshot(RESEARCH_CORE, MANIFEST)
     registry = snapshot.csv_file("47_PRINCESS_ARENA_CASE_REGISTRY.csv")
 

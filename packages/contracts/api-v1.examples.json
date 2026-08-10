@@ -2,7 +2,7 @@
   "baseline": {
     "data": {
       "research_core_version": "v1.5",
-      "application_version": "3.0.0-a6",
+      "application_version": "3.0.0-b4",
       "canonical_source": "research_core_file_ssot",
       "generated_at": "2026-08-09T00:00:00Z",
       "counts": {
@@ -24,7 +24,13 @@
         "gacha_timeline_evidence": 10,
         "gacha_timeline_claims": 8,
         "gacha_community_sources": 4,
-        "gacha_timeline_community_sources": 0
+        "gacha_timeline_community_sources": 0,
+        "arena_source_records": 0,
+        "parena_cases": 0,
+        "parena_case_matchups": 0,
+        "parena_case_sources": 0,
+        "parena_case_evidence": 0,
+        "parena_case_claims": 0
       },
       "gates": {
         "gate_a": false,

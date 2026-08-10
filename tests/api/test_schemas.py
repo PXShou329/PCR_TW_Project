@@ -6,6 +6,7 @@ import pytest
 from pydantic import ValidationError
 
 from pcr_api.schemas import (
+    ArenaSourceRecordData,
     GachaCommunitySourceData,
     GachaTimelineEventData,
     ResponseMeta,
@@ -108,6 +109,33 @@ def test_gacha_community_confidence_cap_rejects_official_or_unknown_levels() -> 
         candidate["confidence_cap"] = invalid
         with pytest.raises(ValidationError):
             GachaCommunitySourceData.model_validate(candidate)
+
+
+def test_arena_source_response_confidence_cap_matches_file46() -> None:
+    payload = {
+        "source_id": "ARENA-SRC-TEST",
+        "title": "reviewed Arena source",
+        "platform": "forum",
+        "source_type": "FORUM_THREAD",
+        "server": "TW",
+        "url": "https://forum.gamer.com.tw/example",
+        "last_checked": "2026-08-09",
+        "freshness_window": "90d",
+        "access_status": "ACTIVE",
+        "confidence_cap": "D",
+        "extraction_method": "manual review",
+        "notes": "community evidence only",
+    }
+
+    for allowed in ("C", "D", "E"):
+        candidate = deepcopy(payload)
+        candidate["confidence_cap"] = allowed
+        assert ArenaSourceRecordData.model_validate(candidate).confidence_cap == allowed
+    for invalid in ("A", "B", "UNKNOWN"):
+        candidate = deepcopy(payload)
+        candidate["confidence_cap"] = invalid
+        with pytest.raises(ValidationError):
+            ArenaSourceRecordData.model_validate(candidate)
 
 
 def test_gacha_limited_status_requires_explicit_nullable_claim_provenance() -> None:

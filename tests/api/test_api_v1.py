@@ -34,7 +34,7 @@ from .conftest import make_factory
 
 GUIDE_ID = "TW_DEEP_FIRE_08_10_20260802"
 WATER_GUIDE_ID = "TW_DEEP_WATER_08_10_20260808"
-APPLICATION_VERSION = "3.0.0-a6"
+APPLICATION_VERSION = "3.0.0-b4"
 
 
 def test_postgresql_engine_uses_repeatable_read_for_route_snapshot(
@@ -619,7 +619,7 @@ def test_baseline_reports_real_counts_and_research_gates(client: TestClient) -> 
     assert_meta(payload)
     data = payload["data"]
     assert data["research_core_version"] == "v1.5"
-    assert data["application_version"] == "3.0.0-a6"
+    assert data["application_version"] == "3.0.0-b4"
     assert data["counts"] == {
         "stages": 3,
         "teams": 10,
@@ -640,6 +640,12 @@ def test_baseline_reports_real_counts_and_research_gates(client: TestClient) -> 
         "gacha_timeline_claims": 8,
         "gacha_community_sources": 4,
         "gacha_timeline_community_sources": 0,
+        "arena_source_records": 6,
+        "parena_cases": 0,
+        "parena_case_matchups": 0,
+        "parena_case_sources": 0,
+        "parena_case_evidence": 0,
+        "parena_case_claims": 0,
     }
     assert data["gates"]["gate_a"] is False
     assert data["gates"]["gate_b"] is False
@@ -990,7 +996,7 @@ def test_openapi_contains_only_get_for_public_strategy_routes(client: TestClient
         assert set(schema["paths"][path]) == {"get"}
 
 
-def test_cors_is_explicit_read_only_allowlist(client: TestClient) -> None:
+def test_cors_is_explicit_solver_query_allowlist(client: TestClient) -> None:
     allowed = client.options(
         "/api/v1/evidence/ev050",
         headers={
@@ -1013,11 +1019,17 @@ def test_cors_is_explicit_read_only_allowlist(client: TestClient) -> None:
     assert rejected.status_code == 400
     assert "access-control-allow-origin" not in rejected.headers
 
-    write_preflight = client.options(
-        "/api/v1/evidence/ev050",
+    solver_preflight = client.options(
+        "/api/v1/solver/parena",
         headers={
             "Origin": "http://127.0.0.1:3000",
             "Access-Control-Request-Method": "POST",
         },
     )
-    assert write_preflight.status_code == 400
+    assert solver_preflight.status_code == 200
+    assert "POST" in solver_preflight.headers["access-control-allow-methods"]
+
+    # CORS permits the solver's read-only POST verb, but unrelated resources
+    # still have no POST route and cannot mutate serving state.
+    rejected_write = client.post("/api/v1/evidence/ev050", json={})
+    assert rejected_write.status_code == 405

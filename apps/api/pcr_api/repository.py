@@ -18,6 +18,8 @@ from pcr_pipeline.research_core_snapshot import (
 from pcr_database.materialization import (
     ARENA_MATERIALIZATION_MANIFEST_VERSION,
     ARENA_MATERIALIZATION_SERVING_MODELS,
+    GACHA_MATERIALIZATION_MANIFEST_VERSION,
+    GACHA_MATERIALIZATION_SERVING_MODELS,
     LEGACY_MATERIALIZATION_MANIFEST_VERSION,
     LEGACY_SERVING_MODELS,
     MATERIALIZATION_MANIFEST_VERSION,
@@ -32,6 +34,7 @@ from pcr_database.models import (
     ArenaCounterMember,
     ArenaDefense,
     ArenaDefenseMember,
+    ArenaSourceRecord,
     Character,
     Claim,
     ClaimEvidence,
@@ -45,6 +48,11 @@ from pcr_database.models import (
     ImportRun,
     MaterializationState,
     OperationTimeline,
+    ParenaCase,
+    ParenaCaseClaim,
+    ParenaCaseEvidence,
+    ParenaCaseMatchup,
+    ParenaCaseSource,
     Stage,
     StageClaim,
     StageEvidence,
@@ -52,6 +60,7 @@ from pcr_database.models import (
     TeamEvidence,
     TeamMember,
     TimelineStep,
+    arena_formation_signature,
 )
 
 from .schemas import ResponseMeta, SourceMeta
@@ -77,6 +86,12 @@ _BASELINE_COUNT_TABLES = {
     "gacha_timeline_claims": GachaTimelineClaim,
     "gacha_community_sources": GachaCommunitySource,
     "gacha_timeline_community_sources": GachaTimelineCommunitySource,
+    "arena_source_records": ArenaSourceRecord,
+    "parena_cases": ParenaCase,
+    "parena_case_matchups": ParenaCaseMatchup,
+    "parena_case_sources": ParenaCaseSource,
+    "parena_case_evidence": ParenaCaseEvidence,
+    "parena_case_claims": ParenaCaseClaim,
 }
 _SERVING_TABLE_NAMES = frozenset(model.__tablename__ for model in SERVING_MODELS)
 _LEGACY_SERVING_TABLE_NAMES = frozenset(
@@ -85,9 +100,13 @@ _LEGACY_SERVING_TABLE_NAMES = frozenset(
 _ARENA_SERVING_TABLE_NAMES = frozenset(
     model.__tablename__ for model in ARENA_MATERIALIZATION_SERVING_MODELS
 )
+_GACHA_SERVING_TABLE_NAMES = frozenset(
+    model.__tablename__ for model in GACHA_MATERIALIZATION_SERVING_MODELS
+)
 _SERVING_TABLE_NAMES_BY_MANIFEST_VERSION = {
     LEGACY_MATERIALIZATION_MANIFEST_VERSION: _LEGACY_SERVING_TABLE_NAMES,
     ARENA_MATERIALIZATION_MANIFEST_VERSION: _ARENA_SERVING_TABLE_NAMES,
+    GACHA_MATERIALIZATION_MANIFEST_VERSION: _GACHA_SERVING_TABLE_NAMES,
     MATERIALIZATION_MANIFEST_VERSION: _SERVING_TABLE_NAMES,
 }
 _READINESS_CACHE_MAX_ENTRIES = 32
@@ -379,6 +398,7 @@ def has_arena_materialization(run: ImportRun) -> bool:
         materialization.get("schema_version")
         in {
             ARENA_MATERIALIZATION_MANIFEST_VERSION,
+            GACHA_MATERIALIZATION_MANIFEST_VERSION,
             MATERIALIZATION_MANIFEST_VERSION,
         }
         and isinstance(tables, dict)
@@ -402,7 +422,8 @@ def has_gacha_materialization(run: ImportRun) -> bool:
         return False
     tables = materialization.get("tables")
     return (
-        materialization.get("schema_version") == MATERIALIZATION_MANIFEST_VERSION
+        materialization.get("schema_version")
+        in {GACHA_MATERIALIZATION_MANIFEST_VERSION, MATERIALIZATION_MANIFEST_VERSION}
         and isinstance(tables, dict)
         and {
             "gacha_timeline_events",
@@ -410,6 +431,28 @@ def has_gacha_materialization(run: ImportRun) -> bool:
             "gacha_timeline_claims",
             "gacha_community_sources",
             "gacha_timeline_community_sources",
+        }
+        <= set(tables)
+    )
+
+
+def has_parena_materialization(run: ImportRun) -> bool:
+    """Return whether the active v5 manifest owns the exact P-Arena closure."""
+
+    materialization = run.manifest.get("materialization")
+    if not isinstance(materialization, dict):
+        return False
+    tables = materialization.get("tables")
+    return (
+        materialization.get("schema_version") == MATERIALIZATION_MANIFEST_VERSION
+        and isinstance(tables, dict)
+        and {
+            "arena_source_records",
+            "parena_cases",
+            "parena_case_matchups",
+            "parena_case_sources",
+            "parena_case_evidence",
+            "parena_case_claims",
         }
         <= set(tables)
     )
@@ -893,6 +936,22 @@ def _referenced_evidence_ids(value: Any) -> tuple[str, ...]:
     return tuple(normalized)
 
 
+def _stored_relation_ids(value: Any) -> tuple[str, ...]:
+    """Read an immutable relation declaration from raw CSV or normalized JSON."""
+
+    if isinstance(value, str):
+        identifiers = [item.strip() for item in value.split(";") if item.strip()]
+    elif isinstance(value, list):
+        if any(not isinstance(item, str) or not item.strip() for item in value):
+            return ()
+        identifiers = [item.strip() for item in value]
+    else:
+        return ()
+    if not identifiers or len(identifiers) != len(set(identifiers)):
+        return ()
+    return tuple(identifiers)
+
+
 def _is_active_tw_official_a_evidence(evidence: Evidence | None) -> bool:
     return bool(
         evidence is not None
@@ -1225,6 +1284,253 @@ def arena_counter_results(
             }
         )
     return result
+
+
+def parena_environment_results(session: Session) -> list[dict[str, Any]]:
+    """List only environments backed by at least one mature typed case."""
+
+    rows = session.execute(
+        select(
+            ParenaCase.server,
+            ParenaCase.environment_version,
+            func.count(ParenaCase.case_id),
+        )
+        .where(
+            ParenaCase.server == "TW",
+            ParenaCase.status == "VERIFIED",
+            ParenaCase.hidden_team_mode == "NONE",
+        )
+        .group_by(ParenaCase.server, ParenaCase.environment_version)
+        .order_by(ParenaCase.environment_version)
+    ).all()
+    return [
+        {
+            "server": server,
+            "environment_version": environment_version,
+            "verified_case_count": count,
+        }
+        for server, environment_version, count in rows
+    ]
+
+
+def mature_parena_case_count(session: Session) -> int:
+    """Return the typed mature-case count used for truthful empty semantics."""
+
+    return int(
+        session.scalar(
+            select(func.count(ParenaCase.case_id)).where(
+                ParenaCase.server == "TW",
+                ParenaCase.status == "VERIFIED",
+                ParenaCase.hidden_team_mode == "NONE",
+            )
+        )
+        or 0
+    )
+
+
+def _parena_relation_ids(
+    session: Session,
+    *,
+    model: Any,
+    value_column: Any,
+    case_ids: list[str],
+) -> dict[str, list[str]]:
+    grouped: dict[str, list[str]] = defaultdict(list)
+    if not case_ids:
+        return grouped
+    for case_id, value in session.execute(
+        select(model.case_id, value_column)
+        .where(model.case_id.in_(case_ids))
+        .order_by(model.case_id, value_column)
+    ):
+        grouped[case_id].append(value)
+    return grouped
+
+
+def parena_case_results(
+    session: Session,
+    *,
+    environment_version: str,
+    defense_teams: list[list[str]],
+) -> tuple[str, list[dict[str, Any]]]:
+    """Return deterministic exact P-Arena plans; never perform Similar matching."""
+
+    defense_signatures = [arena_formation_signature(team) for team in defense_teams]
+    if len(set(defense_signatures)) != 3:
+        raise ValueError("defense teams must have three distinct exact signatures")
+    query_signature = "||".join(sorted(defense_signatures))
+    input_index_by_signature = {
+        signature: index for index, signature in enumerate(defense_signatures, start=1)
+    }
+    cases = session.scalars(
+        select(ParenaCase)
+        .where(
+            ParenaCase.server == "TW",
+            ParenaCase.environment_version == environment_version,
+            ParenaCase.defense_signature == query_signature,
+            ParenaCase.status == "VERIFIED",
+            ParenaCase.hidden_team_mode == "NONE",
+        )
+        .order_by(ParenaCase.case_id)
+    ).all()
+    if not cases:
+        return query_signature, []
+
+    case_ids = [case.case_id for case in cases]
+    matchup_rows: dict[str, list[ParenaCaseMatchup]] = defaultdict(list)
+    for matchup in session.scalars(
+        select(ParenaCaseMatchup)
+        .where(ParenaCaseMatchup.case_id.in_(case_ids))
+        .order_by(ParenaCaseMatchup.case_id, ParenaCaseMatchup.matchup_no)
+    ):
+        matchup_rows[matchup.case_id].append(matchup)
+    source_ids_by_case = _parena_relation_ids(
+        session,
+        model=ParenaCaseSource,
+        value_column=ParenaCaseSource.source_id,
+        case_ids=case_ids,
+    )
+    evidence_ids_by_case = _parena_relation_ids(
+        session,
+        model=ParenaCaseEvidence,
+        value_column=ParenaCaseEvidence.evidence_id,
+        case_ids=case_ids,
+    )
+    claim_ids_by_case = _parena_relation_ids(
+        session,
+        model=ParenaCaseClaim,
+        value_column=ParenaCaseClaim.claim_id,
+        case_ids=case_ids,
+    )
+    source_ids = sorted({value for values in source_ids_by_case.values() for value in values})
+    source_by_id = {
+        source.source_id: source
+        for source in session.scalars(
+            select(ArenaSourceRecord).where(ArenaSourceRecord.source_id.in_(source_ids))
+        )
+    }
+    case_claim_by_id = {
+        claim.claim_id: claim
+        for claim in session.scalars(
+            select(Claim).where(
+                Claim.claim_id.in_([case.case_win_claim_id for case in cases])
+            )
+        )
+    }
+    counter_by_pair = {
+        (counter["counter_id"], counter["defense_id"]): counter
+        for counter in arena_counter_results(session)
+        if counter["status"] == "VERIFIED"
+    }
+
+    result: list[dict[str, Any]] = []
+    for case in cases:
+        case_claim = case_claim_by_id.get(case.case_win_claim_id)
+        matchups: list[dict[str, Any]] = []
+        result_claim_ids: set[str] = set()
+        for matchup in matchup_rows[case.case_id]:
+            counter = counter_by_pair.get((matchup.counter_id, matchup.defense_id))
+            if counter is None:
+                raise RuntimeError(f"P-Arena matchup has no mature counter: {case.case_id}")
+            input_index = input_index_by_signature.get(counter["defense_signature"])
+            if input_index is None:
+                raise RuntimeError(f"P-Arena matchup defense drift: {case.case_id}")
+            result_claim_ids.add(matchup.result_claim_id)
+            matchups.append(
+                {
+                    "matchup_no": matchup.matchup_no,
+                    "defense_input_index": input_index,
+                    "result_claim_id": matchup.result_claim_id,
+                    "counter": counter,
+                }
+            )
+        sources = [source_by_id.get(source_id) for source_id in source_ids_by_case[case.case_id]]
+        claim_ids = claim_ids_by_case[case.case_id]
+        declared_source_ids = _stored_relation_ids(case.source_payload.get("source_ids"))
+        declared_evidence_ids = _stored_relation_ids(case.source_payload.get("evidence_ids"))
+        declared_claim_ids = _stored_relation_ids(case.source_payload.get("claim_ids"))
+        counter_unit_keys = {
+            member["unit_key"]
+            for row in matchups
+            for member in row["counter"]["counter_members"]
+        }
+        counter_signature = "||".join(
+            sorted(row["counter"]["counter_signature"] for row in matchups)
+        )
+        if (
+            case.tw_availability_check != "PASS"
+            or case.non_overlap_check != "PASS"
+            or case.reproducibility != "CONFIRMED"
+            or case.case_win_confidence not in {"B", "C", "D"}
+            or case_claim is None
+            or case_claim.status != "ACTIVE"
+            or case_claim.server != "TW"
+            or case_claim.module != "parena"
+            or case_claim.claim_type != "SOURCE_FACT"
+            or case_claim.claim_confidence != case.case_win_confidence
+            or (
+                case.case_win_confidence in {"B", "C"}
+                and case_claim.independence_check != "YES"
+            )
+            or case_claim.version_match != "YES"
+            or len(matchups) != 3
+            or len({row["defense_input_index"] for row in matchups}) != 3
+            or len(counter_unit_keys) != 15
+            or counter_signature != case.counter_signature
+            or any(source is None for source in sources)
+            or any(
+                source is not None
+                and (
+                    source.server != "TW"
+                    or source.access_status != "ACTIVE"
+                    or source.confidence_cap not in {"C", "D", "E"}
+                )
+                for source in sources
+            )
+            or set(source_ids_by_case[case.case_id]) != set(declared_source_ids)
+            or set(evidence_ids_by_case[case.case_id]) != set(declared_evidence_ids)
+            or set(claim_ids) != result_claim_ids | {case.case_win_claim_id}
+            or set(claim_ids) != set(declared_claim_ids)
+        ):
+            raise RuntimeError(f"P-Arena serving closure is invalid: {case.case_id}")
+        matchups.sort(key=lambda row: row["defense_input_index"])
+        result.append(
+            {
+                "case_id": case.case_id,
+                "server": case.server,
+                "environment_version": case.environment_version,
+                "status": case.status,
+                "hidden_team_mode": case.hidden_team_mode,
+                "verified_date": case.verified_date,
+                "reproducibility": case.reproducibility,
+                "last_review_due": case.last_review_due,
+                "notes": case.notes,
+                "case_win_claim_id": case.case_win_claim_id,
+                "case_win_confidence": case.case_win_confidence,
+                "sources": [
+                    {
+                        "source_id": source.source_id,
+                        "title": source.title,
+                        "platform": source.platform,
+                        "source_type": source.source_type,
+                        "server": source.server,
+                        "url": source.url,
+                        "last_checked": source.last_checked,
+                        "freshness_window": source.freshness_window,
+                        "access_status": source.access_status,
+                        "confidence_cap": source.confidence_cap,
+                        "extraction_method": source.extraction_method,
+                        "notes": source.notes,
+                    }
+                    for source in sources
+                    if source is not None
+                ],
+                "evidence_ids": evidence_ids_by_case[case.case_id],
+                "claim_ids": claim_ids,
+                "matchups": matchups,
+            }
+        )
+    return query_signature, result
 
 
 def _gacha_relation_ids_by_event(

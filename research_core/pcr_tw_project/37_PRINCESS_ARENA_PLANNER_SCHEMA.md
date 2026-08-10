@@ -4,8 +4,9 @@
 
 ## 輸入
 
-- 敵方三隊（已知者逐隊五人；隱藏者標推測池）
-- 環境版本與查證日期
+- typed v5 Planner 只接受敵方三隊各五名、合計 15 名不同角色的完整可見輸入
+- 台服 environment version 與查證日期；`UNKNOWN` environment 不得查詢 mature case
+- 隱藏／部分可見防守只能留研究層，不得送入 mature-only typed lookup，也不得產生 Similar fallback
 
 ## 硬性約束
 
@@ -13,7 +14,7 @@
 2. 三隊角色不得重複
 3. 每隊五人完整
 4. 每隊有可追溯解陣來源
-5. 隱藏隊伍推測標信心
+5. typed v5 不接受隱藏隊伍；研究層推測即使標信心也不得物化為 mature case
 6. 組合求解：說明為何選這三支而非各自最高分卻角色衝突的組合
 7. 成熟案例的三組敵我配對，各自對到同一台服 environment 的唯一成熟 39 exact row
 8. `case_win_claim_id` 直接支持完整三戰結果；三筆單隊勝利不得反推整體 WIN
@@ -27,6 +28,14 @@
 ## 停止條件
 
 不得虛構敵方隱藏隊伍；無來源三隊不得標穩定；JP_ONLY 不得進台服最終三隊。
+
+## B4-0 typed v5 serving 邊界
+
+- v5 只物化通過本檔、31、39、46、47、18 與 92／93 完整成熟 predicate 的 `VERIFIED` case；47 的研究列、模板與 deferred leads 不得進 typed tables。
+- canonical 47 目前是 header-only，實際 mature case `N=0`。這是合法、可部署的 fail-closed 狀態：環境清單為空；合法 3×5／15 人／TW AVAILABLE 查詢回傳空 exact 結果與 `NO_MATURE_PARENA_CASE`，不得生成示意隊、理論隊或 Similar。
+- 若 active snapshot 不是擁有 P-Arena closure 的 v5，P-Arena endpoint 必須 `503 NO_PARENA_MATERIALIZATION`；不得把缺 table 說成正常 0 case。
+- 查詢的隊伍順序與隊內順序只影響回傳對應位置，不改變 canonical identity；相同三隊重排仍是同一 defense case。
+- 三筆獨立 Arena 勝利，即使各自顯示 `WIN`，也不能推出整體公主競技場勝利；缺少直接支持完整三戰結果的唯一 `case_win_claim_id` 時，typed case 必須為 0。
 
 ## 來源與可靠度
 

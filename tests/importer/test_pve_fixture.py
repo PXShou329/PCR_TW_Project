@@ -53,6 +53,7 @@ from pcr_pipeline.pve_fixture import (
 from pcr_pipeline.research_core_snapshot import (
     EXPECTED_CSV_ROW_COUNT,
     RP_A6_0_MANIFEST_SHA256,
+    RP_B4_0_MANIFEST_SHA256,
     RP_B5_1_MANIFEST_SHA256,
     RP_A5_MANIFEST_SHA256,
     RP_A4_MANIFEST_SHA256,
@@ -459,6 +460,7 @@ def _independent_multi_source_arena_core(tmp_path: Path) -> Path:
                 "source_platforms": "Bahamut;IndependentTest",
                 "environment_match": "EXACT",
                 "reproducibility": "CONFIRMED",
+                "required_upgrade_check": "PASS",
             }
         )
         rows[1]["claim_ids"] = result_claim_id
@@ -866,6 +868,12 @@ def test_import_is_atomic_idempotent_and_preserves_fk_closure(tmp_path: Path) ->
             "gacha_timeline_claims": 8,
             "gacha_community_sources": 4,
             "gacha_timeline_community_sources": 0,
+            "arena_source_records": 6,
+            "parena_cases": 0,
+            "parena_case_matchups": 0,
+            "parena_case_sources": 0,
+            "parena_case_evidence": 0,
+            "parena_case_claims": 0,
         }
         assert session.scalar(select(func.count()).select_from(ImportRun)) == 1
         assert session.scalar(select(func.count()).select_from(Stage)) == 3
@@ -912,7 +920,7 @@ def test_import_is_atomic_idempotent_and_preserves_fk_closure(tmp_path: Path) ->
             assert state.serving_counts[table_name] == first.row_counts[table_name]
         run = session.get(ImportRun, first.import_run_id)
         assert run is not None
-        assert run.manifest["materialization"]["schema_version"] == 4
+        assert run.manifest["materialization"]["schema_version"] == 5
 
         arena_counter = session.get(ArenaCounter, "TW_ARENA_20260525_01")
         assert arena_counter is not None
@@ -1971,10 +1979,12 @@ def test_b5_full_platform_checkpoint_is_immutable_and_replays_across_a6(
     tmp_path: Path,
 ) -> None:
     b5_core = export_checkpoint_core(tmp_path, "rp-b5-1")
+    a6_core = export_checkpoint_core(tmp_path, "rp-a6-0")
     engine = sqlite_engine()
 
     assert fixture_module.CHECKPOINT_LINEAGE_ORDER[RP_B5_1_MANIFEST_SHA256] == 6
     assert fixture_module.CHECKPOINT_LINEAGE_ORDER[RP_A6_0_MANIFEST_SHA256] == 7
+    assert fixture_module.CHECKPOINT_LINEAGE_ORDER[RP_B4_0_MANIFEST_SHA256] == 8
 
     with Session(engine) as session:
         b5 = import_pve_projection(
@@ -2006,14 +2016,15 @@ def test_b5_full_platform_checkpoint_is_immutable_and_replays_across_a6(
 
         a6 = import_pve_projection(
             session,
-            RESEARCH_CORE,
+            a6_core,
             manifest_path=A6_MANIFEST,
             expected_manifest_sha256=RP_A6_0_MANIFEST_SHA256,
         )
         a6_run = session.get(ImportRun, a6.import_run_id)
         assert a6_run is not None
-        assert a6_run.application_version == "3.0.0-a6"
+        assert a6_run.application_version == "3.0.0-b4"
         assert a6_run.manifest["projection"] == fixture_module.FULL_PLATFORM_PROJECTION
+        assert a6_run.manifest["materialization"]["schema_version"] == 4
         a6_revision = session.get(CoreRevision, a6.revision_id)
         assert a6_revision is not None
         assert (
@@ -2041,7 +2052,7 @@ def test_b5_full_platform_checkpoint_is_immutable_and_replays_across_a6(
 
         reactivate = import_pve_projection(
             session,
-            RESEARCH_CORE,
+            a6_core,
             manifest_path=A6_MANIFEST,
             expected_manifest_sha256=RP_A6_0_MANIFEST_SHA256,
         )

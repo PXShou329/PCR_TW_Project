@@ -42,6 +42,12 @@ TYPED_SERVING_TABLES = (
     "gacha_timeline_claims",
     "gacha_community_sources",
     "gacha_timeline_community_sources",
+    "arena_source_records",
+    "parena_cases",
+    "parena_case_matchups",
+    "parena_case_sources",
+    "parena_case_evidence",
+    "parena_case_claims",
 )
 CORE_MIRROR_TABLES = (
     "core_revisions",

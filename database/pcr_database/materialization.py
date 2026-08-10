@@ -5,7 +5,7 @@ import json
 from datetime import date, datetime
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import inspect, select
 from sqlalchemy.orm import Session
 
 from .models import (
@@ -15,6 +15,7 @@ from .models import (
     ArenaCounterMember,
     ArenaDefense,
     ArenaDefenseMember,
+    ArenaSourceRecord,
     Character,
     Claim,
     ClaimEvidence,
@@ -27,6 +28,11 @@ from .models import (
     ImportRun,
     MaterializationState,
     OperationTimeline,
+    ParenaCase,
+    ParenaCaseClaim,
+    ParenaCaseEvidence,
+    ParenaCaseMatchup,
+    ParenaCaseSource,
     Stage,
     StageClaim,
     StageEvidence,
@@ -39,7 +45,8 @@ from .models import (
 
 LEGACY_MATERIALIZATION_MANIFEST_VERSION = 2
 ARENA_MATERIALIZATION_MANIFEST_VERSION = 3
-MATERIALIZATION_MANIFEST_VERSION = 4
+GACHA_MATERIALIZATION_MANIFEST_VERSION = 4
+MATERIALIZATION_MANIFEST_VERSION = 5
 
 # Every table that can affect a public strategy response belongs to the serving
 # closure.  Scheduler state and ImportRun are intentionally excluded: the
@@ -76,15 +83,29 @@ GACHA_SERVING_MODELS = (
     GachaTimelineCommunitySource,
 )
 
+PARENA_SERVING_MODELS = (
+    ArenaSourceRecord,
+    ParenaCase,
+    ParenaCaseMatchup,
+    ParenaCaseSource,
+    ParenaCaseEvidence,
+    ParenaCaseClaim,
+)
+
 ARENA_MATERIALIZATION_SERVING_MODELS = (
     *LEGACY_SERVING_MODELS,
     *ARENA_SERVING_MODELS,
 )
-SERVING_MODELS = (*ARENA_MATERIALIZATION_SERVING_MODELS, *GACHA_SERVING_MODELS)
+GACHA_MATERIALIZATION_SERVING_MODELS = (
+    *ARENA_MATERIALIZATION_SERVING_MODELS,
+    *GACHA_SERVING_MODELS,
+)
+SERVING_MODELS = (*GACHA_MATERIALIZATION_SERVING_MODELS, *PARENA_SERVING_MODELS)
 
 _SUPPORTED_MODELS_BY_VERSION = {
     LEGACY_MATERIALIZATION_MANIFEST_VERSION: LEGACY_SERVING_MODELS,
     ARENA_MATERIALIZATION_MANIFEST_VERSION: ARENA_MATERIALIZATION_SERVING_MODELS,
+    GACHA_MATERIALIZATION_MANIFEST_VERSION: GACHA_MATERIALIZATION_SERVING_MODELS,
     MATERIALIZATION_MANIFEST_VERSION: SERVING_MODELS,
 }
 
@@ -137,8 +158,14 @@ def _detected_persisted_manifest(session: Session) -> dict[str, Any] | None:
     legacy projection, causing the full current closure to expose the drift.
     """
 
+    # A verified rollback can run this application at an older additive schema
+    # revision.  Only inspect serving tables that physically exist; selected
+    # legacy tables are still queried below and therefore remain fail-closed.
+    existing_tables = set(inspect(session.connection()).get_table_names())
     run_ids: set[str] = set()
     for model in SERVING_MODELS:
+        if model.__tablename__ not in existing_tables:
+            continue
         import_run_column = model.__table__.c.get("import_run_id")
         if import_run_column is None:
             continue
@@ -168,10 +195,14 @@ def _newer_tables_are_empty(
     selected_models: tuple[type[Any], ...],
 ) -> bool:
     selected = set(selected_models)
+    # Tables introduced after an immutable legacy manifest may legitimately be
+    # absent after a schema downgrade.  Any newer table that is still present
+    # must remain empty or the current full closure is forced.
+    existing_tables = set(inspect(session.connection()).get_table_names())
     return all(
         session.scalar(select(model).limit(1)) is None
         for model in SERVING_MODELS
-        if model not in selected
+        if model not in selected and model.__tablename__ in existing_tables
     )
 
 

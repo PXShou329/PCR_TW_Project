@@ -10,6 +10,9 @@ import type {
   GachaTimelineEvent,
   PvpCharacter,
   PvpCounter,
+  ParenaEnvironment,
+  ParenaSolveData,
+  ParenaSolveRequest,
   StageDetail,
   StageSummary,
   TeamDetail,
@@ -61,6 +64,30 @@ export function createApiClient({ baseUrl, fetchImpl = fetch }: ApiClientOptions
     return (await response.json()) as ApiEnvelope<T>;
   }
 
+  async function post<T>(path: string, body: unknown): Promise<ApiEnvelope<T>> {
+    const response = await fetchImpl(`${origin}${path}`, {
+      method: "POST",
+      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      cache: "no-store",
+    });
+
+    if (!response.ok) {
+      let problem: ApiProblem | undefined;
+      try {
+        problem = (await response.json()) as ApiProblem;
+      } catch {
+        problem = undefined;
+      }
+      throw new ApiError(
+        problem?.detail?.code ?? `API request failed with ${response.status}`,
+        response.status,
+        problem,
+      );
+    }
+    return (await response.json()) as ApiEnvelope<T>;
+  }
+
   return {
     getBaseline: () => get<Baseline>("/api/v1/baseline"),
     getStages: () => get<StageSummary[]>("/api/v1/stages"),
@@ -83,5 +110,9 @@ export function createApiClient({ baseUrl, fetchImpl = fetch }: ApiClientOptions
         : "";
       return get<PvpCounter[]>(`/api/v1/pvp/counters${query}`);
     },
+    getParenaEnvironments: () =>
+      get<ParenaEnvironment[]>("/api/v1/parena/environments"),
+    solveParena: (request: ParenaSolveRequest) =>
+      post<ParenaSolveData>("/api/v1/solver/parena", request),
   };
 }

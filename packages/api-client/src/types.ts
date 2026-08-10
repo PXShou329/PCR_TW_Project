@@ -81,6 +81,12 @@ export interface BaselineCounts {
   gacha_timeline_claims: number;
   gacha_community_sources: number;
   gacha_timeline_community_sources: number;
+  arena_source_records: number;
+  parena_cases: number;
+  parena_case_matchups: number;
+  parena_case_sources: number;
+  parena_case_evidence: number;
+  parena_case_claims: number;
 }
 
 export interface Coverage {
@@ -453,6 +459,66 @@ export interface PvpCounter {
   notes: string;
   evidence_ids: string[];
   claim_ids: string[];
+}
+
+export interface ParenaEnvironment {
+  server: "TW";
+  environment_version: string;
+  verified_case_count: number;
+}
+
+export interface ParenaSolveRequest {
+  server: "TW";
+  environment_version: string;
+  defense_teams: string[][];
+}
+
+export interface ArenaSourceRecord {
+  source_id: string;
+  title: string;
+  platform: string;
+  source_type: string;
+  server: "TW";
+  url: string;
+  last_checked: string;
+  freshness_window: string | null;
+  access_status: "ACTIVE";
+  confidence_cap: "C" | "D" | "E";
+  extraction_method: string;
+  notes: string;
+}
+
+export interface ParenaMatchup {
+  matchup_no: number;
+  defense_input_index: number;
+  result_claim_id: string;
+  counter: PvpCounter;
+}
+
+export interface ParenaCase {
+  case_id: string;
+  server: "TW";
+  environment_version: string;
+  status: "VERIFIED";
+  hidden_team_mode: "NONE";
+  verified_date: string;
+  reproducibility: "CONFIRMED";
+  last_review_due: string;
+  notes: string;
+  case_win_claim_id: string;
+  case_win_confidence: "B" | "C" | "D";
+  sources: ArenaSourceRecord[];
+  evidence_ids: string[];
+  claim_ids: string[];
+  matchups: ParenaMatchup[];
+}
+
+export interface ParenaSolveData {
+  match_type: "EXACT";
+  similar_enabled: false;
+  query_signature: string;
+  defense_teams: string[][];
+  cases: ParenaCase[];
 }
 
 export interface Claim {

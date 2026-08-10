@@ -15,6 +15,7 @@ from sqlalchemy.pool import StaticPool
 from pcr_database.materialization import (
     ARENA_MATERIALIZATION_MANIFEST_VERSION,
     ARENA_MATERIALIZATION_SERVING_MODELS,
+    GACHA_MATERIALIZATION_MANIFEST_VERSION,
     GACHA_SERVING_MODELS,
     MATERIALIZATION_MANIFEST_VERSION,
     build_materialization_manifest,
@@ -138,7 +139,7 @@ def test_v0007_is_head_and_offline_sql_is_additive_and_fail_closed(
 ) -> None:
     config = Config(str(ROOT / "database" / "alembic.ini"))
     script = ScriptDirectory.from_config(config)
-    assert script.get_current_head() == "v0007_gacha_timeline_slice"
+    assert script.get_current_head() == "v0008_parena_planner_slice"
     assert script.get_revision("v0007_gacha_timeline_slice").down_revision == (
         "v0006_arena_counter_slice"
     )
@@ -202,7 +203,8 @@ def test_v0007_is_head_and_offline_sql_is_additive_and_fail_closed(
 
 
 def test_gacha_orm_contract_and_manifest_v3_replay_boundary() -> None:
-    assert MATERIALIZATION_MANIFEST_VERSION == 4
+    assert GACHA_MATERIALIZATION_MANIFEST_VERSION == 4
+    assert MATERIALIZATION_MANIFEST_VERSION == 5
     assert {model.__tablename__ for model in GACHA_SERVING_MODELS} == {
         "gacha_timeline_events",
         "gacha_timeline_evidence",

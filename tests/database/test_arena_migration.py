@@ -15,6 +15,7 @@ from sqlalchemy.pool import StaticPool
 from pcr_database.materialization import (
     ARENA_MATERIALIZATION_MANIFEST_VERSION,
     ARENA_MATERIALIZATION_SERVING_MODELS,
+    GACHA_MATERIALIZATION_MANIFEST_VERSION,
     ARENA_SERVING_MODELS,
     LEGACY_MATERIALIZATION_MANIFEST_VERSION,
     LEGACY_SERVING_MODELS,
@@ -165,7 +166,7 @@ def test_v0006_remains_in_chain_and_offline_sql_contains_normalized_arena_schema
     config = Config(str(ROOT / "database" / "alembic.ini"))
     script = ScriptDirectory.from_config(config)
 
-    assert script.get_current_head() == "v0007_gacha_timeline_slice"
+    assert script.get_current_head() == "v0008_parena_planner_slice"
     revision = script.get_revision("v0006_arena_counter_slice")
     assert revision is not None
     assert revision.down_revision == "v0005_borrowed_tristate"
@@ -318,7 +319,8 @@ def test_arena_orm_contract_has_normalized_fks_and_materialization_closure() -> 
         "claim_id",
     ]
     assert ARENA_MATERIALIZATION_MANIFEST_VERSION == 3
-    assert MATERIALIZATION_MANIFEST_VERSION == 4
+    assert GACHA_MATERIALIZATION_MANIFEST_VERSION == 4
+    assert MATERIALIZATION_MANIFEST_VERSION == 5
     assert {model.__tablename__ for model in ARENA_MATERIALIZATION_SERVING_MODELS} == {
         *(model.__tablename__ for model in LEGACY_SERVING_MODELS),
         *(model.__tablename__ for model in ARENA_SERVING_MODELS),

@@ -802,6 +802,14 @@ class ArenaCounter(Base):
             "formation_signature",
             name="uq_arena_counters_defense_signature",
         ),
+        # P-Arena matchup rows use this composite candidate key so the stored
+        # counter cannot be paired with a different defense through two
+        # independent foreign keys.  ``counter_id`` remains the public identity.
+        UniqueConstraint(
+            "counter_id",
+            "defense_id",
+            name="uq_arena_counters_counter_defense",
+        ),
         CheckConstraint(
             "status IN "
             "('VERIFIED','PROVISIONAL','SINGLE_REPORT','STALE','REJECTED')",
@@ -968,6 +976,192 @@ class ArenaCounterClaim(Base):
 
     counter_id: Mapped[str] = mapped_column(
         ForeignKey("arena_counters.counter_id", ondelete="CASCADE"), primary_key=True
+    )
+    claim_id: Mapped[str] = mapped_column(
+        ForeignKey("claims.claim_id", ondelete="RESTRICT"), primary_key=True
+    )
+
+
+class ArenaSourceRecord(Base):
+    """One audited source index row from canonical file 46."""
+
+    __tablename__ = "arena_source_records"
+
+    source_id: Mapped[str] = mapped_column(String(140), primary_key=True)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    platform: Mapped[str] = mapped_column(String(100), nullable=False)
+    source_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    server: Mapped[str] = mapped_column(String(16), nullable=False)
+    url: Mapped[str] = mapped_column(Text, nullable=False)
+    last_checked: Mapped[date] = mapped_column(Date, nullable=False)
+    freshness_window: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    access_status: Mapped[str] = mapped_column(String(24), nullable=False)
+    confidence_cap: Mapped[str] = mapped_column(String(8), nullable=False)
+    extraction_method: Mapped[str] = mapped_column(Text, nullable=False)
+    notes: Mapped[str] = mapped_column(Text, nullable=False)
+    source_payload: Mapped[dict[str, Any]] = mapped_column(json_type, nullable=False)
+    import_run_id: Mapped[str] = mapped_column(
+        ForeignKey("import_runs.id", ondelete="RESTRICT"), nullable=False
+    )
+
+    __table_args__ = (
+        CheckConstraint("server IN ('TW','JP')", name="arena_source_record_server"),
+        CheckConstraint(
+            "access_status IN ('ACTIVE','PARTIAL','BLOCKED','STALE','ARCHIVED')",
+            name="arena_source_record_access_status",
+        ),
+        CheckConstraint(
+            "confidence_cap IN ('C','D','E')",
+            name="arena_source_record_confidence_cap",
+        ),
+        CheckConstraint("length(title) > 0", name="arena_source_record_title_nonempty"),
+        CheckConstraint("length(url) > 0", name="arena_source_record_url_nonempty"),
+        Index(
+            "ix_arena_source_records_server_status_checked",
+            "server",
+            "access_status",
+            "last_checked",
+        ),
+    )
+
+
+class ParenaCase(Base):
+    """A mature, fully visible three-team Princess Arena win closure."""
+
+    __tablename__ = "parena_cases"
+
+    case_id: Mapped[str] = mapped_column(String(140), primary_key=True)
+    server: Mapped[str] = mapped_column(String(16), nullable=False)
+    environment_version: Mapped[str] = mapped_column(String(100), nullable=False)
+    defense_signature: Mapped[str] = mapped_column(String(1900), nullable=False)
+    counter_signature: Mapped[str] = mapped_column(String(1900), nullable=False)
+    case_win_claim_id: Mapped[str] = mapped_column(
+        ForeignKey("claims.claim_id", ondelete="RESTRICT"), nullable=False
+    )
+    case_win_confidence: Mapped[str] = mapped_column(String(8), nullable=False)
+    hidden_team_mode: Mapped[str] = mapped_column(String(32), nullable=False)
+    status: Mapped[str] = mapped_column(String(24), nullable=False)
+    verified_date: Mapped[date] = mapped_column(Date, nullable=False)
+    tw_availability_check: Mapped[str] = mapped_column(String(20), nullable=False)
+    non_overlap_check: Mapped[str] = mapped_column(String(20), nullable=False)
+    reproducibility: Mapped[str] = mapped_column(String(32), nullable=False)
+    last_review_due: Mapped[date] = mapped_column(Date, nullable=False)
+    notes: Mapped[str] = mapped_column(Text, nullable=False)
+    source_payload: Mapped[dict[str, Any]] = mapped_column(json_type, nullable=False)
+    import_run_id: Mapped[str] = mapped_column(
+        ForeignKey("import_runs.id", ondelete="RESTRICT"), nullable=False
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "server",
+            "environment_version",
+            "defense_signature",
+            name="uq_parena_cases_server_environment_defense",
+        ),
+        UniqueConstraint(
+            "case_win_claim_id",
+            name="uq_parena_cases_case_win_claim",
+        ),
+        CheckConstraint("server = 'TW'", name="parena_case_server"),
+        CheckConstraint(
+            "case_win_confidence IN ('B','C','D')",
+            name="parena_case_win_confidence",
+        ),
+        CheckConstraint("status = 'VERIFIED'", name="parena_case_status"),
+        CheckConstraint("hidden_team_mode = 'NONE'", name="parena_case_hidden_mode"),
+        CheckConstraint(
+            "tw_availability_check = 'PASS'", name="parena_case_tw_availability"
+        ),
+        CheckConstraint("non_overlap_check = 'PASS'", name="parena_case_non_overlap"),
+        CheckConstraint(
+            "reproducibility = 'CONFIRMED'", name="parena_case_reproducibility"
+        ),
+        CheckConstraint(
+            "length(environment_version) > 0 AND environment_version != 'UNKNOWN'",
+            name="parena_case_environment_known",
+        ),
+        CheckConstraint("length(notes) > 0", name="parena_case_notes_nonempty"),
+        Index(
+            "ix_parena_cases_server_environment_status",
+            "server",
+            "environment_version",
+            "status",
+        ),
+    )
+
+
+class ParenaCaseMatchup(Base):
+    """One of the three exact Arena result pairs proving a P-Arena case."""
+
+    __tablename__ = "parena_case_matchups"
+
+    case_id: Mapped[str] = mapped_column(
+        ForeignKey("parena_cases.case_id", ondelete="CASCADE"), primary_key=True
+    )
+    matchup_no: Mapped[int] = mapped_column(Integer, primary_key=True)
+    defense_id: Mapped[str] = mapped_column(String(140), nullable=False)
+    counter_id: Mapped[str] = mapped_column(String(140), nullable=False)
+    result_claim_id: Mapped[str] = mapped_column(
+        ForeignKey("claims.claim_id", ondelete="RESTRICT"), nullable=False
+    )
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["counter_id", "defense_id"],
+            ["arena_counters.counter_id", "arena_counters.defense_id"],
+            name="fk_parena_case_matchups_counter_defense",
+            ondelete="RESTRICT",
+        ),
+        CheckConstraint(
+            "matchup_no BETWEEN 1 AND 3", name="parena_case_matchup_number_range"
+        ),
+        UniqueConstraint(
+            "case_id",
+            "defense_id",
+            name="uq_parena_case_matchups_case_defense",
+        ),
+        UniqueConstraint(
+            "case_id",
+            "counter_id",
+            name="uq_parena_case_matchups_case_counter",
+        ),
+        UniqueConstraint(
+            "case_id",
+            "result_claim_id",
+            name="uq_parena_case_matchups_case_result_claim",
+        ),
+    )
+
+
+class ParenaCaseSource(Base):
+    __tablename__ = "parena_case_sources"
+
+    case_id: Mapped[str] = mapped_column(
+        ForeignKey("parena_cases.case_id", ondelete="CASCADE"), primary_key=True
+    )
+    source_id: Mapped[str] = mapped_column(
+        ForeignKey("arena_source_records.source_id", ondelete="RESTRICT"),
+        primary_key=True,
+    )
+
+
+class ParenaCaseEvidence(Base):
+    __tablename__ = "parena_case_evidence"
+
+    case_id: Mapped[str] = mapped_column(
+        ForeignKey("parena_cases.case_id", ondelete="CASCADE"), primary_key=True
+    )
+    evidence_id: Mapped[str] = mapped_column(
+        ForeignKey("evidence.evidence_id", ondelete="RESTRICT"), primary_key=True
+    )
+
+
+class ParenaCaseClaim(Base):
+    __tablename__ = "parena_case_claims"
+
+    case_id: Mapped[str] = mapped_column(
+        ForeignKey("parena_cases.case_id", ondelete="CASCADE"), primary_key=True
     )
     claim_id: Mapped[str] = mapped_column(
         ForeignKey("claims.claim_id", ondelete="RESTRICT"), primary_key=True

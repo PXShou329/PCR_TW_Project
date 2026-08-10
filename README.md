@@ -1,130 +1,115 @@
 # 公主連結台服 AI 攻略研究所
 
-Guide-Only Strategy Platform v3.0 的 RP-A6-0 Princess Arena Gate-correctness 候選，建立在
-RP-B5-1 Gacha 垂直切片、B3／D0 exact picker、RP-A5 Arena typed slice、RP-A4 Water 成熟
-切片與 B1 full-core round-trip 里程碑之上。這是一個可部署的**本機／私人 staging**，不是
-公開正式版；Data／Application／Automation／Production Gates A–G 均未宣稱通過。
+Guide-Only Strategy Platform v3.0 的 RP-B4-0 Princess Arena Planner typed structural
+closure candidate，建立在 immutable `rp-a6-0` Gate-correctness checkpoint、RP-B5-1 Gacha、
+RP-A5 Arena、RP-A4 Water與B1 full-core round-trip之上。這是可部署的**本機／私人 staging**，
+不是公開正式版。
 
-前一個 immutable 回滾點是私人 tag `rp-b5-1`；`rp-a5-2`、`rp-b3-d0-1` 與更早 checkpoints
-繼續保留，不覆寫歷史 manifest 或移動既有 tags。Code candidate commit
-[`400adc89728fa27df7ce4d963a7068f555c60e06`](https://github.com/PXShou329/PCR_TW_Project/commit/400adc89728fa27df7ce4d963a7068f555c60e06)
-已通過第一輪私人 CI。RP-A6-0 是否已成為 release，只由實際 annotated `rp-a6-0` tag 是否
-存在、且是否指向完成自身 private CI 的 exact commit 判定；README 不以候選文案、PR 或
-先前 run 推論 tag 狀態。
+RP-B4-0目前仍是candidate：code candidate
+[`6102cfc0`](https://github.com/PXShou329/PCR_TW_Project/commit/6102cfc0e01d1d2f5f7653249d9976c57f76205f)
+已在[OPEN/DRAFT PR #10](https://github.com/PXShou329/PCR_TW_Project/pull/10)完成第一輪
+[private CI 31351894593](https://github.com/PXShou329/PCR_TW_Project/actions/runs/31351894593)
+（completed/success，26m08s）。Final evidence commit、第二輪private CI、annotated
+`rp-b4-0`與tag CI仍為`PENDING`。Data Gates A／B／C、Application Gate E、Automation F、
+Production G均為`NOT PASS`；Application Gate D為`BLOCKED_BY_DATA_GATES`。
 
-目前端到端垂直切片包含「紅焰深域 8-10」與「蒼波深域 8-10」，各提供五支不同五人的實際通關隊伍、逐 Slot
-條件、來源分離的操作軸、逐步 Evidence Drawer，以及誠實的 `UNKNOWN`／結構化操作軸缺口。競技場
-research core 已加入同環境、實際勝利截圖支持的兩筆 `SINGLE_REPORT` exact counter；不把單次
-回報包裝成勝率，也不建立示意隊。`/pvp` 現在以五個 AVAILABLE 台服官方名稱角色建立
-可分享的 exact query；不足五人、重複角色與四人重疊都 fail closed，Similar 仍未啟用。
-`/gacha` 把 5 筆 timeline 與 4 筆社群來源從 file SSOT 正規化到 PostgreSQL v4、FastAPI、
-typed client 與 Next.js UI：2 筆 MATURE、3 筆 RESEARCH；三筆已知限定身分都有指定 JP
-OFFICIAL／A Claim/Evidence，Vampy／Tia 維持 `UNKNOWN/null`。頁面不輸出個人寶石、
-持有角色條件或帳號專屬抽取建議。
+## Current B4 slice
 
-RP-A6-0 把 Princess Arena 47 Registry 從 20 欄擴成 24 欄，加入三個隊位 result Claims 與
-完整三戰 WIN Claim，並以同環境 exact 39 closure、敵我各 15 人不重複、TW AVAILABLE、
-source hostname／日期與 confidence 規則 fail closed。這輪只修 Gate correctness：47 仍是
-0 rows／0 mature cases，尚無 P-Arena typed DB／API／UI／Planner，也沒有新增 V0008。
+- Research core由`scripts/research_core_rp_b4_0_manifest.sha256`鎖定：48 files、13 CSV、
+  376 rows、Evidence→Claim 120 edges、Claim→Evidence 298 edges。
+- Alembic head是`v0008_parena_planner_slice`；materialization v5共有29張typed serving
+  tables。B4新增`arena_source_records`與五張`parena_case_*` tables。
+- `GET /api/v1/parena/environments`、`POST /api/v1/solver/parena`與`/parena`形成
+  source→DB→API→typed client→UI結構化垂直切片。
+- Canonical `47_PRINCESS_ARENA_CASE_REGISTRY.csv`仍是0 rows／0 mature cases。合法查詢
+  誠實回傳`NO_MATURE_PARENA_CASE`；沒有Similar fallback、理論隊或示意隊。
+- `/pvp`維持五角色exact query；`/gacha`維持5筆timeline與4筆community source；紅焰／
+  蒼波深域8-10各有五隊成熟PVE切片。
+
+這輪證明未來成熟P-Arena case可以安全服務化，不代表P-Arena內容Gate已完成。成熟規則、
+zero-case語意與V0008 rollback ownership見
+[`ADR-0007`](docs/architecture/ADR-0007-parena-planner-typed-closure.md)。
 
 ## 真相與安全邊界
 
-- `research_core/pcr_tw_project/` 是唯一 canonical source；目前 RP-A6-0 的 48 個檔案
-  由 `scripts/research_core_rp_a6_0_manifest.sha256` 逐檔 SHA-256 鎖定；RP-B5-1／RP-A5／
-  RP-A4／RP-A3／RP-A2 manifests 保留供 immutable rollback 相容驗證。
-- PostgreSQL 同時保存 byte-preserved artifact mirror、lossless row mirror 與 normalized typed
-  serving closure；只有 typed closure 供 API／UI 讀取，三者都不會回寫 research core。
-- 台服是攻略主體；日服只作未來視與可轉用研究。中國服／B 服資料不作核心、
-  替代或補洞依據。
-- 不含帳號匯入、roster／owned、個人寶石或個人化推薦，也不登入或操作遊戲。
-- Scheduler 預設停用且固定 Shadow Mode；目前 RP-A6-0 仍沒有 fetcher、publisher 或
-  canonical writer。
-- Migration、Importer、API、Scheduler 使用分離的 PostgreSQL roles；API 只有
-  serving tables 的 `SELECT` 權限。
+- `research_core/pcr_tw_project/`是唯一canonical source；PostgreSQL只保存byte mirror、
+  lossless rows與typed serving closure，不回寫research core。
+- 台服是攻略主體；JP只作未來視與可轉用研究。中國服／B服資料不作核心、替代或補洞依據。
+- 中文角色名只用台服官方譯名；台服未實裝日角保留日文官方名，不自行翻譯。
+- 不含Account Layer、MAIN／ALT、roster／owned、個人寶石或帳號專屬推薦，也不登入或操作遊戲。
+- Scheduler固定disabled Shadow Mode：`SCHEDULER_ENABLED=false`、`SHADOW_MODE=true`、
+  `AUTO_PUBLISH=false`。
+- Migration、Importer、API、Scheduler使用分離PostgreSQL roles；API只擁有29張serving
+  tables的`SELECT`。
 
 ```mermaid
 flowchart LR
-  RC["A6-0 research core\nFile SSOT"] --> IM["Fail-closed importer"]
-  IM --> DB["PostgreSQL\nbyte artifact + lossless rows\nnormalized typed closure"]
+  RC["B4 research core\nFile SSOT"] --> IM["Fail-closed importer"]
+  IM --> DB["PostgreSQL V0008\nbyte + rows + typed v5/29"]
   DB --> API["FastAPI read API"]
-  API --> WEB["Next.js Web UI"]
-  SCH["Disabled shadow scheduler"] --> CTRL["Scheduler control tables only"]
+  API --> WEB["Next.js /parena"]
+  SCH["Disabled shadow scheduler"] --> CTRL["Control tables only"]
 ```
 
 ## 快速驗證
 
-需要 Python 3.13.14、Node.js 24 LTS／npm 11，以及 Docker Compose v2。
+需要Python 3.13.14、Node.js 24 LTS／npm 11與Docker Compose v2。
 
 ```powershell
 python scripts/check_research_baseline.py
 python scripts/check_application_data_parity.py --run-round-trip
-python -m pytest -q
+python -m pytest tests apps/scheduler/tests
 npm ci
 npm run check:contract
 npm run typecheck
 npm run build:web
 ```
 
-研究核心的原始五命令需在 `research_core/pcr_tw_project/` 執行：
+研究baseline wrapper必須在disposable copy實際執行五命令；ARTIFACT_READY預期仍以exit 1
+揭露且只有Gate A／B／C三項FAIL，Mutation必須`ALL_OK / active_scenarios=122`。預期值不能
+替代實際stdout。
 
-```powershell
-python tools/validate_project.py --mode PRE_SUITE --write
-python tools/validate_project.py --mode PRE_SUITE
-python tools/validate_project.py --mode OPERATIONAL
-python tools/validate_project.py --mode ARTIFACT_READY
-python tools/mutation_test.py
-```
-
-目前預期 ARTIFACT_READY 仍以 exit 1 誠實揭露 Gate A／B／C 三項缺口；本里程碑不會為了
-讓測試變綠而降低研究 Gate。
-
-目前 RP-A6-0 research-core 五命令由 `scripts/check_research_baseline.py` 在乾淨暫存副本
-重現；166／166／165／168 checks、Mutation 122、fresh V0007 stack、651 格 ACL、Shadow
-scheduler、backup／restore、A6→B5→A6 same-schema rollback 與 mock／real desktop/mobile
-實跑輸出見
-[`docs/operations/A6_0_VERIFICATION_REPORT.md`](docs/operations/A6_0_VERIFICATION_REPORT.md)；
-其中另分開記錄 code candidate 的 private Draft PR #9／Actions run，以及 evidence commit
-仍須自行完成第二輪 CI 的 release boundary；CI instance 不與本機 materialization 混寫。
-操作順序與 fail-closed recovery boundary 見
-[`docs/operations/A6_ROLLBACK_RUNBOOK.md`](docs/operations/A6_ROLLBACK_RUNBOOK.md)。歷史
-RP-B5-1 證據仍見
-[`docs/operations/B5_1_VERIFICATION_REPORT.md`](docs/operations/B5_1_VERIFICATION_REPORT.md)，
-B5→A5→B5 schema rollback 仍依
-[`docs/operations/B5_ROLLBACK_RUNBOOK.md`](docs/operations/B5_ROLLBACK_RUNBOOK.md)。歷史
-A5→A4→A5 證據仍見
-[`docs/operations/A5_VERIFICATION_REPORT.md`](docs/operations/A5_VERIFICATION_REPORT.md)。
-本次 B3／D0 picker、metadata、重建 A5 stack、backup／restore 與 rollback 實跑輸出見
-[`docs/operations/B3_D0_VERIFICATION_REPORT.md`](docs/operations/B3_D0_VERIFICATION_REPORT.md)。
-RP-A4 的 round-trip、PostgreSQL、瀏覽器、E2E、restore 與 A4→A3 rollback drill 歷史輸出仍見
-[`docs/operations/A4_VERIFICATION_REPORT.md`](docs/operations/A4_VERIFICATION_REPORT.md)；
-B1 的歷史基線仍保留於
-[`docs/operations/B1_VERIFICATION_REPORT.md`](docs/operations/B1_VERIFICATION_REPORT.md)。
+RP-B4-0 local/private instance已在Compose project `pcr-tw-b4-parena`完成health、
+`DB_PRIVILEGES_OK 777/26/12`、verified backup/restore、V0008 active-v5 downgrade guard、
+B4→A6→B4第三輪演練與real E2E `28/28`。前兩輪分別在physical V7 missing-table與A6 public
+baseline 19/25 shape邊界fail closed，且都先安全恢復exact B4才修正重跑；完整chronology與
+retained backup見
+[`B4_0_VERIFICATION_REPORT.md`](docs/operations/B4_0_VERIFICATION_REPORT.md)。精確操作順序與
+失敗復原邊界見[`B4_ROLLBACK_RUNBOOK.md`](docs/operations/B4_ROLLBACK_RUNBOOK.md)。Final
+local regression亦已通過：Python `404/404`、operations `97/97`、research baseline
+`166/0/22 → 165/0/21 → 168/3/21`（ARTIFACT_READY只有A/B/C）、Mutation 122、contract
+schemas 34、typecheck/build PASS、full mock `30/30`。Code candidate、Draft PR與第一輪CI已
+實錄；final evidence commit、第二輪CI與`rp-b4-0` tag仍為`PENDING`。CI instance的backup、
+rollback epochs與history digest不覆寫上述local evidence。
 
 ## 啟動本機私人堆疊
 
-先將 `.env.example` 複製為 Git 忽略的 `.env`，並把四組密碼替換為彼此不同、至少
-16 字元的 URL-safe 值：
+將`.env.example`複製為Git忽略的`.env`，並把owner、API、Importer與Scheduler密碼設為彼此
+不同、至少16字元的URL-safe值：
 
 ```powershell
 docker compose --env-file .env -f infra/compose.yml config --quiet
 docker compose --env-file .env -f infra/compose.yml up --build --wait
 ```
 
-服務入口：
-
 - Web：<http://127.0.0.1:3000>
-- API 文件：<http://127.0.0.1:8000/docs>
+- API docs：<http://127.0.0.1:8000/docs>
 - API readiness：<http://127.0.0.1:8000/health/ready>
 - Scheduler health：<http://127.0.0.1:8081/health>
 
-目前 A6 的權限、串行 verifier、backup／restore 與 A6→B5→A6 流程請依
-[`docs/operations/A6_ROLLBACK_RUNBOOK.md`](docs/operations/A6_ROLLBACK_RUNBOOK.md)；
-完整 B1 round-trip 基礎仍見
-[`docs/operations/B1_RUNBOOK.md`](docs/operations/B1_RUNBOOK.md)；A4→A3 的版本回退與
-重新前進請依 [`docs/operations/A4_ROLLBACK_RUNBOOK.md`](docs/operations/A4_ROLLBACK_RUNBOOK.md)；
-A5→A4 的 backup-first 回退與重新前進請依
-[`docs/operations/A5_ROLLBACK_RUNBOOK.md`](docs/operations/A5_ROLLBACK_RUNBOOK.md)；B5→A5
-的 V0007／V0006 回退與重新前進請依
-[`docs/operations/B5_ROLLBACK_RUNBOOK.md`](docs/operations/B5_ROLLBACK_RUNBOOK.md)。
-架構決策與後續依賴順序見
-[`docs/architecture/INTEGRATED_ROADMAP.md`](docs/architecture/INTEGRATED_ROADMAP.md)。
+Verification services會改動control rows、typed rows、cache epoch與revision history，必須依
+[`infra/README.md`](infra/README.md)的固定串行順序執行，不得profile-wide併發`up`。
+
+## Immutable history
+
+歷史文件與scripts不因B4更新而改寫：
+
+- RP-A6-0：[`A6_0_VERIFICATION_REPORT.md`](docs/operations/A6_0_VERIFICATION_REPORT.md)、
+  [`A6_ROLLBACK_RUNBOOK.md`](docs/operations/A6_ROLLBACK_RUNBOOK.md)
+- RP-B5-1：[`B5_1_VERIFICATION_REPORT.md`](docs/operations/B5_1_VERIFICATION_REPORT.md)、
+  [`B5_ROLLBACK_RUNBOOK.md`](docs/operations/B5_ROLLBACK_RUNBOOK.md)
+- 更早A5／A4／B1 checkpoints仍保留其manifest、reports、runbooks與immutable tags。
+
+目前B4的回滾target是immutable `rp-a6-0`；B4與A6跨越V0008／V0007 schema boundary，不能
+套用歷史A6→B5 same-schema流程，也不能只checkout舊tag。整合依賴與未完成項見
+[`INTEGRATED_ROADMAP.md`](docs/architecture/INTEGRATED_ROADMAP.md)。

@@ -19,8 +19,12 @@ from ..repository import (
     gacha_timeline_results,
     has_arena_materialization,
     has_gacha_materialization,
+    has_parena_materialization,
     latest_import,
     mirror_readiness,
+    mature_parena_case_count,
+    parena_case_results,
+    parena_environment_results,
     pvp_character_options,
     response_meta,
     stage_detail,
@@ -38,6 +42,9 @@ from ..schemas import (
     GachaCommunitySourceData,
     GachaTimelineEventData,
     PvpCharacterData,
+    ParenaEnvironmentData,
+    ParenaSolveData,
+    ParenaSolveRequest,
     StageDetail,
     StageSummary,
     TeamDetail,
@@ -377,6 +384,142 @@ def pvp_counters(
             run,
             revision,
             records=_arena_meta_records(counters),
+            extra_warnings=warnings,
+        ),
+    )
+
+
+@router.get(
+    "/parena/environments",
+    response_model=Envelope[list[ParenaEnvironmentData]],
+)
+def parena_environments(
+    session: Session = Depends(get_session),
+) -> Envelope[list[ParenaEnvironmentData]]:
+    run, revision = _run_or_503(session)
+    if not has_parena_materialization(run):
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "NO_PARENA_MATERIALIZATION",
+                "resource": "parena_materialization",
+                "id": None,
+            },
+        )
+    environments = parena_environment_results(session)
+    records = [
+        ResponseMetaRecord(
+            server=row["server"],
+            environment_version=row["environment_version"],
+        )
+        for row in environments
+    ]
+    return Envelope(
+        data=environments,
+        meta=response_meta(
+            run,
+            revision,
+            records=records,
+            extra_warnings=[] if environments else ["NO_MATURE_PARENA_CASE"],
+        ),
+    )
+
+
+@router.post("/solver/parena", response_model=Envelope[ParenaSolveData])
+def solve_parena(
+    request: ParenaSolveRequest,
+    session: Session = Depends(get_session),
+) -> Envelope[ParenaSolveData]:
+    run, revision = _run_or_503(session)
+    try:
+        character_rows, _records = pvp_character_options(session)
+    except RuntimeError as error:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "FIXTURE_DRIFT",
+                "resource": "pvp_characters",
+                "id": None,
+                "reason": "character_serving_closure_invalid",
+            },
+        ) from error
+    available = {row["unit_key"] for row in character_rows}
+    requested = {unit_key for team in request.defense_teams for unit_key in team}
+    unavailable = sorted(requested - available)
+    if unavailable:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "INVALID_PARENA_DEFENSE",
+                "resource": "parena_defense",
+                "id": None,
+                "reason": "all 15 unit_keys must be TW AVAILABLE",
+                "unavailable_unit_ids": unavailable,
+            },
+        )
+
+    if not has_parena_materialization(run):
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "NO_PARENA_MATERIALIZATION",
+                "resource": "parena_materialization",
+                "id": None,
+            },
+        )
+    try:
+        query_signature, cases = parena_case_results(
+            session,
+            environment_version=request.environment_version,
+            defense_teams=request.defense_teams,
+        )
+    except (RuntimeError, ValueError) as error:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "FIXTURE_DRIFT",
+                "resource": "parena_materialization",
+                "id": None,
+                "reason": "parena_serving_closure_invalid",
+            },
+        ) from error
+    warnings: list[str] = []
+    if not cases:
+        warnings.append(
+            "NO_MATURE_PARENA_CASE"
+            if mature_parena_case_count(session) == 0
+            else "NO_EXACT_PARENA_PLAN"
+        )
+    elif any(case["case_win_confidence"] == "D" for case in cases):
+        warnings.extend(
+            [
+                "CASE_WIN_SINGLE_SOURCE_REFERENCE",
+                "CASE_WIN_CONFIDENCE_D_BLOCKS_GATE_C",
+            ]
+        )
+    records = [
+        ResponseMetaRecord(
+            server=case["server"],
+            environment_version=case["environment_version"],
+            verified_at=case["verified_date"],
+            confidence=case["case_win_confidence"],
+            evidence_ids=tuple(case["evidence_ids"]),
+            claim_ids=tuple(case["claim_ids"]),
+        )
+        for case in cases
+    ]
+    return Envelope(
+        data=ParenaSolveData(
+            match_type="EXACT",
+            similar_enabled=False,
+            query_signature=query_signature,
+            defense_teams=request.defense_teams,
+            cases=cases,
+        ),
+        meta=response_meta(
+            run,
+            revision,
+            records=records,
             extra_warnings=warnings,
         ),
     )

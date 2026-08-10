@@ -27,9 +27,9 @@ def test_service_role_password_accepts_non_placeholder_secret(monkeypatch) -> No
 
 
 def test_timeline_tables_are_inside_the_least_privilege_serving_closure() -> None:
-    assert len(TYPED_SERVING_TABLES) == 24
-    assert len(MUTABLE_MIRROR_TABLES) == 28
-    assert len(SERVING_TABLES) == 29
+    assert len(TYPED_SERVING_TABLES) == 30
+    assert len(MUTABLE_MIRROR_TABLES) == 34
+    assert len(SERVING_TABLES) == 35
     assert "operation_timelines" in SERVING_TABLES
     assert "timeline_steps" in SERVING_TABLES
     assert set(CORE_MIRROR_TABLES) == {
@@ -56,6 +56,14 @@ def test_timeline_tables_are_inside_the_least_privilege_serving_closure() -> Non
         "gacha_community_sources",
         "gacha_timeline_community_sources",
     } <= set(TYPED_SERVING_TABLES)
+    assert {
+        "arena_source_records",
+        "parena_cases",
+        "parena_case_matchups",
+        "parena_case_sources",
+        "parena_case_evidence",
+        "parena_case_claims",
+    } <= set(TYPED_SERVING_TABLES)
 
 
 def test_runtime_privilege_verifier_covers_gacha_allow_and_deny_probes() -> None:
@@ -80,4 +88,37 @@ def test_runtime_privilege_verifier_covers_gacha_allow_and_deny_probes() -> None
     assert "SET LOCAL ROLE pcr_importer; UPDATE gacha_timeline_events" in verifier
     for privilege in ("TRUNCATE", "REFERENCES", "TRIGGER"):
         assert f'"{privilege}"' in verifier
-    assert "$matrixChecks -ne 651 -or $actualDenials -ne 23 -or $allowedSmokes -ne 10" in verifier
+    assert "$expectedMatrixChecks -ne 777" in verifier
+    assert "$matrixChecks -ne $expectedMatrixChecks" in verifier
+    assert "$actualDenials -ne 26" in verifier
+    assert "$allowedSmokes -ne 12" in verifier
+
+
+def test_runtime_privilege_verifier_covers_exact_parena_table_set_and_real_probes() -> None:
+    verifier_path = (
+        Path(__file__).resolve().parents[2] / "scripts" / "check_db_privileges.ps1"
+    )
+    verifier = verifier_path.read_text(encoding="utf-8")
+    expected_tables = {
+        "arena_source_records",
+        "parena_cases",
+        "parena_case_matchups",
+        "parena_case_sources",
+        "parena_case_evidence",
+        "parena_case_claims",
+    }
+
+    serving_block = verifier[
+        verifier.index("$servingTables = @(") : verifier.index("$appendOnlyTables")
+    ]
+    for table in expected_tables:
+        assert serving_block.count(f'"{table}"') == 1
+    assert 'Assert-SqlDenied "api-parena-update"' in verifier
+    assert 'Assert-SqlDenied "api-parena-truncate"' in verifier
+    assert '"permission denied for table parena_case_claims"' in verifier
+    assert 'Assert-SqlDenied "scheduler-parena-update"' in verifier
+    assert "SET LOCAL ROLE pcr_api; SELECT 1 FROM parena_cases" in verifier
+    assert "SET LOCAL ROLE pcr_importer; UPDATE parena_cases" in verifier
+    assert "($servingTables.Count + $controlTables.Count)" in verifier
+    assert "$tablePrivileges.Count" in verifier
+    assert "$serviceRoles.Count" in verifier

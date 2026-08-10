@@ -32,7 +32,9 @@ def create_app(
         CORSMiddleware,
         allow_origins=list(resolved.cors_origins),
         allow_credentials=False,
-        allow_methods=["GET"],
+        # POST is limited to the read-only exact P-Arena solver. No endpoint
+        # mutates canonical or serving data.
+        allow_methods=["GET", "POST"],
         allow_headers=["Accept", "Content-Type"],
         max_age=600,
     )

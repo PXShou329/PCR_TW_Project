@@ -1,6 +1,8 @@
-# API v1 contract (Arena exact slice + Gacha timeline vertical slice)
+# API v1 contract (Arena, P-Arena exact planner, and Gacha timeline)
 
-All public strategy endpoints are read-only `GET` endpoints and return:
+All public strategy endpoints are read-only queries. Most use `GET`; the P-Arena
+solver uses `POST` solely because a complete 3×5 query does not fit safely in a
+URL. It never mutates serving or canonical data. Every successful query returns:
 
 ```json
 {
@@ -47,6 +49,34 @@ Endpoints:
 - `GET /api/v1/gacha/community-sources`
 - `GET /api/v1/pvp/characters`
 - `GET /api/v1/pvp/counters?defense_signature=...`
+- `GET /api/v1/parena/environments`
+- `POST /api/v1/solver/parena`
+
+`POST /api/v1/solver/parena` requires `server=TW`, a known non-empty
+`environment_version`, exactly three defense teams of five distinct `unit_key`s,
+15 globally distinct characters, and every character must be in the same
+TW `AVAILABLE` picker closure as `/pvp/characters`. Team and member order do not
+change exact identity. Results are always `match_type=EXACT` and
+`similar_enabled=false`; each mature case has exactly three matchups, returned in
+the caller's defense-team order. Hidden teams, partial teams, Similar reuse, and
+theoretical counters are never inferred.
+
+Every returned case carries the designated WIN Claim's stored
+`case_win_confidence` (`B|C|D`). `B` and `C` require the research validator's
+independent multi-host closure and are presented as `VERIFIED`. `D` remains a
+single-report reference: the response adds `CASE_WIN_SINGLE_SOURCE_REFERENCE`
+and `CASE_WIN_CONFIDENCE_D_BLOCKS_GATE_C`, and the Web UI must visibly label it
+`SINGLE_REPORT` / `BLOCKS GATE C`. The API never derives or upgrades this value.
+Referenced file-46 source rows must be `ACTIVE` to serve a case; the typed source
+registry itself preserves only canonical `ACTIVE|PARTIAL|BLOCKED|STALE|ARCHIVED`
+access statuses and `C|D|E` confidence caps.
+
+When a v5 typed P-Arena materialization contains zero mature cases, any otherwise
+valid query returns `200`, `cases=[]`, and `NO_MATURE_PARENA_CASE`. When mature
+cases exist but the requested environment or exact three-team signature does not
+match, it returns `200`, `cases=[]`, and `NO_EXACT_PARENA_PLAN`. An active v4
+snapshot has no typed P-Arena closure, so both P-Arena endpoints fail closed with
+`503 NO_PARENA_MATERIALIZATION`; they never present a normal empty result.
 
 `GET /api/v1/pvp/characters` returns only typed `Character` rows whose TW
 availability is exactly `AVAILABLE`. Each row has `unit_key`, the stored TW
@@ -183,7 +213,8 @@ nullability against `packages/api-client/src/types.ts`, and fails closed on
 drift. Set `PCR_OPENAPI_PYTHON` only when the project Python interpreter cannot
 be discovered automatically.
 
-Browser access uses an explicit read-only CORS allowlist. Current defaults are
+Browser access uses an explicit origin and method CORS allowlist. Current defaults are
 `http://localhost:3000` and `http://127.0.0.1:3000`; deployments may replace it
 with the comma-separated `PCR_CORS_ORIGINS` environment value. Wildcards,
-credentialed requests, and non-GET preflights are rejected.
+credentialed requests, and methods other than `GET` / read-only solver `POST`
+are rejected. Resources without a POST route still return `405`.

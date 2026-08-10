@@ -36,12 +36,20 @@ $servingTables = @(
     "arena_defenses", "arena_defense_members", "arena_counters", "arena_counter_members",
     "arena_counter_evidence", "arena_counter_claims", "gacha_timeline_events",
     "gacha_timeline_evidence", "gacha_timeline_claims", "gacha_community_sources",
-    "gacha_timeline_community_sources"
+    "gacha_timeline_community_sources", "arena_source_records", "parena_cases",
+    "parena_case_matchups", "parena_case_sources", "parena_case_evidence",
+    "parena_case_claims"
 )
 $appendOnlyTables = @("revision_activations")
 $controlTables = @("scheduler_leases", "scheduler_runs")
 $tablePrivileges = @(
     "SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE", "REFERENCES", "TRIGGER"
+)
+$serviceRoles = @("pcr_api", "pcr_importer", "pcr_scheduler")
+$expectedMatrixChecks = (
+    ($servingTables.Count + $controlTables.Count) *
+    $tablePrivileges.Count *
+    $serviceRoles.Count
 )
 $matrixChecks = 0
 $actualDenials = 0
@@ -99,7 +107,7 @@ function Assert-SqlDenied {
     Write-Host "DENY_OK $Name"
 }
 
-foreach ($role in @("pcr_api", "pcr_importer", "pcr_scheduler")) {
+foreach ($role in $serviceRoles) {
     $safeRole = Get-Scalar -Sql "SELECT rolcanlogin AND NOT rolsuper AND NOT rolcreatedb AND NOT rolcreaterole AND NOT rolinherit AND NOT rolreplication AND NOT rolbypassrls FROM pg_roles WHERE rolname='$role'"
     if ($safeRole -ne "t") {
         throw "Unsafe or missing service role: $role"
@@ -142,6 +150,8 @@ Assert-SqlDenied "api-serving-update" "BEGIN; SET LOCAL ROLE pcr_api; UPDATE sta
 Assert-SqlDenied "api-arena-update" "BEGIN; SET LOCAL ROLE pcr_api; UPDATE arena_counters SET notes=notes WHERE FALSE; ROLLBACK"
 Assert-SqlDenied "api-gacha-update" "BEGIN; SET LOCAL ROLE pcr_api; UPDATE gacha_timeline_events SET status=status WHERE FALSE; ROLLBACK"
 Assert-SqlDenied "api-gacha-truncate" "BEGIN; SET LOCAL ROLE pcr_api; TRUNCATE TABLE gacha_timeline_claims; ROLLBACK" -ExpectedPattern "permission denied for table gacha_timeline_claims"
+Assert-SqlDenied "api-parena-update" "BEGIN; SET LOCAL ROLE pcr_api; UPDATE parena_cases SET notes=notes WHERE FALSE; ROLLBACK"
+Assert-SqlDenied "api-parena-truncate" "BEGIN; SET LOCAL ROLE pcr_api; TRUNCATE TABLE parena_case_claims; ROLLBACK" -ExpectedPattern "permission denied for table parena_case_claims"
 Assert-SqlDenied "api-core-update" "BEGIN; SET LOCAL ROLE pcr_api; UPDATE core_revisions SET status=status WHERE FALSE; ROLLBACK"
 Assert-SqlDenied "api-scheduler-update" "BEGIN; SET LOCAL ROLE pcr_api; UPDATE scheduler_runs SET status=status WHERE FALSE; ROLLBACK"
 Assert-SqlDenied "importer-scheduler-update" "BEGIN; SET LOCAL ROLE pcr_importer; UPDATE scheduler_runs SET status=status WHERE FALSE; ROLLBACK"
@@ -150,6 +160,7 @@ Assert-SqlDenied "importer-activation-delete" "BEGIN; SET LOCAL ROLE pcr_importe
 Assert-SqlDenied "scheduler-serving-update" "BEGIN; SET LOCAL ROLE pcr_scheduler; UPDATE stages SET notes=notes WHERE FALSE; ROLLBACK"
 Assert-SqlDenied "scheduler-arena-update" "BEGIN; SET LOCAL ROLE pcr_scheduler; UPDATE arena_counters SET notes=notes WHERE FALSE; ROLLBACK"
 Assert-SqlDenied "scheduler-gacha-update" "BEGIN; SET LOCAL ROLE pcr_scheduler; UPDATE gacha_timeline_events SET status=status WHERE FALSE; ROLLBACK"
+Assert-SqlDenied "scheduler-parena-update" "BEGIN; SET LOCAL ROLE pcr_scheduler; UPDATE parena_cases SET notes=notes WHERE FALSE; ROLLBACK"
 Assert-SqlDenied "scheduler-core-update" "BEGIN; SET LOCAL ROLE pcr_scheduler; UPDATE core_files SET size_bytes=size_bytes WHERE FALSE; ROLLBACK"
 Assert-SqlDenied "scheduler-control-delete" "BEGIN; SET LOCAL ROLE pcr_scheduler; DELETE FROM scheduler_runs WHERE FALSE; ROLLBACK"
 Assert-SqlDenied "api-schema-create" "BEGIN; SET LOCAL ROLE pcr_api; CREATE TABLE pcr_b0_forbidden_probe(id integer); ROLLBACK"
@@ -166,10 +177,12 @@ foreach ($allowedSql in @(
     "BEGIN; SET LOCAL ROLE pcr_api; SELECT 1 FROM stages LIMIT 0; ROLLBACK",
     "BEGIN; SET LOCAL ROLE pcr_api; SELECT 1 FROM arena_counters LIMIT 0; ROLLBACK",
     "BEGIN; SET LOCAL ROLE pcr_api; SELECT 1 FROM gacha_timeline_events LIMIT 0; ROLLBACK",
+    "BEGIN; SET LOCAL ROLE pcr_api; SELECT 1 FROM parena_cases LIMIT 0; ROLLBACK",
     "BEGIN; SET LOCAL ROLE pcr_api; SELECT 1 FROM core_revisions LIMIT 0; ROLLBACK",
     "BEGIN; SET LOCAL ROLE pcr_importer; UPDATE stages SET notes=notes WHERE FALSE; ROLLBACK",
     "BEGIN; SET LOCAL ROLE pcr_importer; UPDATE arena_counters SET notes=notes WHERE FALSE; ROLLBACK",
     "BEGIN; SET LOCAL ROLE pcr_importer; UPDATE gacha_timeline_events SET status=status WHERE FALSE; ROLLBACK",
+    "BEGIN; SET LOCAL ROLE pcr_importer; UPDATE parena_cases SET notes=notes WHERE FALSE; ROLLBACK",
     "BEGIN; SET LOCAL ROLE pcr_importer; UPDATE core_files SET size_bytes=size_bytes WHERE FALSE; ROLLBACK",
     "BEGIN; SET LOCAL ROLE pcr_importer; INSERT INTO revision_activations (activation_id,sequence_no,to_revision_id,kind,reason,actor,epoch) SELECT '00000000-0000-0000-0000-000000000000',1,repeat('0',64),'IMPORT','probe','probe',0 WHERE FALSE; ROLLBACK",
     "BEGIN; SET LOCAL ROLE pcr_scheduler; UPDATE scheduler_runs SET status=status WHERE FALSE; ROLLBACK"
@@ -178,7 +191,12 @@ foreach ($allowedSql in @(
     $allowedSmokes += 1
 }
 
-if ($matrixChecks -ne 651 -or $actualDenials -ne 23 -or $allowedSmokes -ne 10) {
+if (
+    $expectedMatrixChecks -ne 777 -or
+    $matrixChecks -ne $expectedMatrixChecks -or
+    $actualDenials -ne 26 -or
+    $allowedSmokes -ne 12
+) {
     throw "Privilege probe coverage drifted (matrix=$matrixChecks denials=$actualDenials allowed=$allowedSmokes)"
 }
 Write-Host "DB_PRIVILEGES_OK matrix_checks=$matrixChecks actual_denials=$actualDenials allowed_smokes=$allowedSmokes"
