@@ -27,6 +27,13 @@ def test_db_privilege_runtime_matrix_covers_all_table_privileges() -> None:
     assert '"permission denied for table gacha_timeline_claims"' in source
     assert '$privilege -in @("SELECT", "INSERT", "UPDATE", "DELETE")' in source
     assert '$privilege -in @("SELECT", "INSERT", "UPDATE")' in source
-    assert "$matrixChecks -ne 651" in source
-    assert "$actualDenials -ne 23" in source
-    assert "$allowedSmokes -ne 10" in source
+    assert "($servingTables.Count + $controlTables.Count)" in source
+    assert "$tablePrivileges.Count" in source
+    assert "$serviceRoles.Count" in source
+    assert "$expectedMatrixChecks -ne 777" in source
+    assert "$matrixChecks -ne $expectedMatrixChecks" in source
+    assert "$actualDenials -ne 26" in source
+    assert "$allowedSmokes -ne 12" in source
+    assert 'Assert-SqlDenied "api-parena-update"' in source
+    assert 'Assert-SqlDenied "api-parena-truncate"' in source
+    assert 'Assert-SqlDenied "scheduler-parena-update"' in source

@@ -44,6 +44,8 @@ VERIFIED effective teams（詳見 22／23／25）。相同五人多來源只計�
 
 **A5 Arena 暫行成熟度（2026/08/09）**：`VERIFIED` 只承認 B／C 的可機械驗證多來源閉合；`source_record_count` 與實戰 `sample_size` 分離，scalar Tier／筆數不代表來源獨立。SELF_TESTED 尚無可追溯 run registry，因此不得以本人實測聲明或手填 CONFIRMED 升級。Arena Gate 計 mature defenses：同環境同防守至少兩支不同成熟 exact counters 才算一案；目前兩筆同作者單次 Win 均維持 SINGLE_REPORT，Gate 為 0。
 
+**B4-0 P-Arena structural candidate（2026/08/10）**：v5 typed serving 只承接完整成熟 47 closure；canonical 47 仍為 header-only，實際 mature case `N=0`。本輪實開 2021 巴哈 `LOSE／WIN／WIN` 圖組、2024 模板／部分防守、2026 問答與 YouTube 候選後，均因缺完整 case WIN、三筆 mature 39、18／必要強化或獨立性而標 `DEFERRED_NOT_CANONICAL`；JP／Bilibili 亦依台服核心與禁用中國服資料規則排除。未新增 39／47／92／93 資料，Gate A／B／C 與 blocking warnings 不變；0-case 由 Planner 誠實 fail closed，不生成 Similar 或理論隊。
+
 ## 檔案清單（唯一權威清單）
 
 > ZIP 內 48 檔＝編號 43＋README＋tools×4（validate_project.py／validation_config.json／stats.json／

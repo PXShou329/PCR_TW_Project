@@ -27,6 +27,7 @@ export default function RootLayout({ children }: Readonly<{ children: ReactNode 
             <nav aria-label="主要導覽">
               <Link href="/">深域攻略</Link>
               <Link href="/pvp">競技場解陣</Link>
+              <Link href="/parena">公主競技場</Link>
               <Link href="/gacha">抽卡未來視</Link>
             </nav>
           </div>

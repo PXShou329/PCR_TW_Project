@@ -32,13 +32,23 @@
   `e44a9fa38a89a5672d00c0a58d8b8946fecd41e541c08c9733fb3d06fbc1b88a` 是可重算的
   artifact／row／edge 診斷，不是 PostgreSQL instance 的 typed materialization；後者的
   ImportRun、digest、sequence 與 epoch 不得作 portable pin。
-- RP-A6-0 code candidate commit
-  [`400adc89728fa27df7ce4d963a7068f555c60e06`](https://github.com/PXShou329/PCR_TW_Project/commit/400adc89728fa27df7ce4d963a7068f555c60e06)
-  已在 private Draft PR [#9](https://github.com/PXShou329/PCR_TW_Project/pull/9)（base
-  `codex/v3-b5-gacha-slice`、head `codex/v3-a6-0-parena-gate`）的
-  [Actions run 31337216189](https://github.com/PXShou329/PCR_TW_Project/actions/runs/31337216189)
-  通過四個 jobs。該 run 早於 CI evidence 文件 commit；文件 commit 仍須以自身 SHA 完成
-  第二輪同 workflow 全綠，才可建立 annotated `rp-a6-0` tag。這不改變 Gates A–G 狀態。
+- RP-A6-0 已封存為 immutable annotated `rp-a6-0`，指向
+  [`25070a2342c65d21051d3b54292915895abf8812`](https://github.com/PXShou329/PCR_TW_Project/commit/25070a2342c65d21051d3b54292915895abf8812)；
+  tag CI [Actions run 31338517920](https://github.com/PXShou329/PCR_TW_Project/actions/runs/31338517920)
+  已通過。A6 verification report 保存封版當時仍待 tag 的歷史敘述，不回填或改寫。
+- RP-B4-0 current candidate：48 檔 manifest
+  `eda30340c02f2f470475e652786104c521faf2ea4cc20be44cf09f3798fe8c5f`，raw／revision
+  `1ba25a73df01ca8d9b161c60836d997f6db202a18d140ee1e92a7d96f62d7a17`，semantic
+  `46000a4a6f9ee70067876c7c1a73fd61d4d06a6f93c5b61831c15d41c9d8811e`，artifact
+  diagnostic `bb71dce87b8a651de794672741a5481a6b754861d694561974ce534e17eb9720`。
+  B4 建立 V0008／materialization v5／29 tables，以及 `/parena`、environment API、exact
+  solver API 的 typed structural closure；canonical 47 仍是 0 rows／0 mature cases。
+  Local project `pcr-tw-b4-parena`已完成health、ACL `777/26/12`、verified backup/restore、
+  第三輪B4→A6→B4與real E2E `28/28`；前兩輪各自在physical V7 missing-table及public
+  baseline 19/25 shape邊界fail closed並安全恢復。Final regression另完成Python `404/404`、
+  operations `97/97`、Mutation 122、contract schemas 34、typecheck/build PASS與full mock
+  `30/30`。Final commit、private CI、PR、annotated `rp-b4-0`與tag CI仍為`PENDING`，詳見
+  [`B4_0_VERIFICATION_REPORT.md`](../operations/B4_0_VERIFICATION_REPORT.md)。
 - RP-B3-D0：research pins 與 V0006 schema 不變；已完成五角色 exact picker、AVAILABLE
   官方名稱 Evidence closure、required-but-conservative Strategy Metadata，以及只回報
   `BLOCKED_BY_DATA_GATES` 的 Application/Data structural verifier。
@@ -65,8 +75,10 @@
    defenses 仍為 0；擴充到具多來源 VERIFIED closure 的 Gate B／C 成熟案例。
 11. ✅ A6-0：Princess Arena Gate correctness；47 擴為 24 欄，成熟案例要求三組同環境
     exact 39 results＋一個完整三戰 WIN closure，Mutation 122 ALL_OK。這不等於內容完成。
-12. ⏳ B4＋A6：建立 Planner、typed DB／API／UI 與成熟三隊案例；目前 P-Arena 仍為
-    0 mature rows／0 mature cases。
+12. 🟨 B4＋A6：✅ Planner、V0008 typed DB、API、typed client、`/parena` 與 Evidence
+    Drawer structural slice 已建立；⏳ 成熟三隊內容仍為 0 rows／0 mature cases。結構完成
+    不得冒充 content milestone 或 Gate PASS；設計見
+    [`ADR-0007`](ADR-0007-parena-planner-typed-closure.md)。
 13. 正式 A4＋B5 content expansion：Timeline 由 2/6 補足、建立 News data／UI；不得把
     RP-B5-1 的薄切片誤標為整個 milestone 完成。
 14. B6 Shadow → B7 Review／Audit／Rollback。
@@ -88,26 +100,27 @@
 
 - TM-F810-01 為 `SOURCE_GAP 0/3`、TM-F810-02 為 `PARTIAL 1/4`、
   TM-F810-03 為 `SOURCE_GAP 0/1`；局部來源軸不會被合併成虛構共識軸。
-- RP-A2 當時的 PostgreSQL typed closure 為 8 條 timeline、14 個 atomic steps；目前 RP-A6-0
+- RP-A2 當時的 PostgreSQL typed closure 為 8 條 timeline、14 個 atomic steps；目前 RP-B4-0
   已是 15／37。Artifact／row mirror 保存原始內容，只有 typed serving closure 正規化；
   import replay、完整 fixture fingerprint 與 serving-boundary drift 均 fail-closed。
 - 正式 A3 PVE expansion 已交付 RP-A3／RP-A4 兩個成熟關卡；PVE Gate B 的數量條件
   為 2/2，Gate C 仍為 2/5。RP-A5 與 B3／D0 picker 已完成；RP-B5-1 已把首個 Gacha
   slice 實際服務化，但 Timeline Gate 仍為 2/6、News 尚缺，Arena Gate 仍為 0。A6-0
-  Princess Arena Gate correctness 已完成；P-Arena content 仍是 0 mature rows／0 mature
-  cases，下一步才是 B4＋A6 Planner／typed slice 與成熟案例。Data Gate
+  Princess Arena Gate correctness 已完成；B4-0 又完成 Planner／typed structural slice，
+  但 P-Arena content 仍是 0 mature rows／0 mature cases，下一步是取得能閉合 39 predicates
+  的真實台服成熟三隊案例。Data Gate
   A／B／C 與 Gates D–G 仍未宣稱通過。
 - 回滾點：A2 research core 使用 `rp-a2-2`；A2＋B2 通過 Compose CI 的完整切片使用
   `rp-a2-b2-2`；A3 使用 `rp-a3-1`；本次 A4 通過完整驗證後使用 `rp-a4-1`。
   `rp-a2-b2-1` 僅保留作 CI parity 修正前的稽核 checkpoint；`rp-a5-1` 同樣保留作 CI
   runtime 依賴安裝修正前的稽核 checkpoint；RP-A5 使用 `rp-a5-2`，B3／D0 使用
-  `rp-b3-d0-1`，RP-B5-1 使用 immutable `rp-b5-1`。RP-A6-0 code candidate 第一輪 private
-  CI 已全綠，但 evidence commit 的第二輪尚未完成；本 Roadmap 不宣稱 annotated
-  `rp-a6-0` tag 已存在。Release 身分以實際 tag ref 及其 exact commit CI 為準，且既有 tags
-  不移動。
+  `rp-b3-d0-1`，RP-B5-1 使用 immutable `rp-b5-1`，RP-A6-0 使用 immutable `rp-a6-0`。
+  RP-B4-0 final commit、private CI、annotated `rp-b4-0` 與 tag CI 均為 `PENDING`；Release
+  身分只由實際 tag ref 及其 exact commit CI 判定，且既有 tags 不移動。
   A5→A4→A5 依 [`A5_ROLLBACK_RUNBOOK.md`](../operations/A5_ROLLBACK_RUNBOOK.md)，
   B5→A5→B5 依 [`B5_ROLLBACK_RUNBOOK.md`](../operations/B5_ROLLBACK_RUNBOOK.md)，
-  A6→B5→A6 依 [`A6_ROLLBACK_RUNBOOK.md`](../operations/A6_ROLLBACK_RUNBOOK.md)。任何已有
+  A6→B5→A6 依 [`A6_ROLLBACK_RUNBOOK.md`](../operations/A6_ROLLBACK_RUNBOOK.md)，B4→A6→B4
+  依 [`B4_ROLLBACK_RUNBOOK.md`](../operations/B4_ROLLBACK_RUNBOOK.md)。任何已有
   較新 schema 的資料庫都不得只 checkout 舊 tag，必須同時依版本回滾手冊處理 DB。
 
 ## 不可突破的停止條件

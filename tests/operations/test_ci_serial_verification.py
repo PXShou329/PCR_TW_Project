@@ -22,7 +22,7 @@ POST_RELEASE_VERIFIERS = (
 ORDERED_VERIFICATION_PIPELINE = PRE_RELEASE_VERIFIERS + POST_RELEASE_VERIFIERS
 RELEASE_OPERATIONS = (
     "./scripts/backup_restore_smoke.ps1",
-    "./scripts/a6_b5_rollback_drill.ps1",
+    "./scripts/b4_a6_rollback_drill.ps1",
 )
 
 
@@ -87,3 +87,19 @@ def test_documented_local_command_uses_the_same_fail_closed_order() -> None:
         r"不得用\s+`docker compose --profile verification \.\.\. up` 併發啟動。",
         readme,
     )
+
+
+def test_ci_runs_mock_parena_contract_before_the_real_stack_browser_suite() -> None:
+    workflow = CI_WORKFLOW.read_text(encoding="utf-8")
+    install = workflow.index("- name: Install Chromium")
+    mock = workflow.index("- name: Run mock-backed P-Arena browser E2E", install)
+    real = workflow.index("- name: Run real-stack browser E2E", mock)
+    capture = workflow.index("- name: Capture container state", real)
+    mock_step = workflow[mock:real]
+    real_step = workflow[real:capture]
+
+    assert install < mock < real < capture
+    assert 'PLAYWRIGHT_BASE_URL: ""' in mock_step
+    assert "npm run test:e2e -- tests/e2e/parena-planner.spec.ts" in mock_step
+    assert "PLAYWRIGHT_BASE_URL" not in real_step
+    assert "run: npm run test:e2e" in real_step

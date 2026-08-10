@@ -11,13 +11,13 @@ def source() -> str:
     return BACKUP_RESTORE_SCRIPT.read_text(encoding="utf-8")
 
 
-def test_a6_ci_uses_exact_stack_backup_and_rollback_contract() -> None:
+def test_b4_ci_uses_exact_stack_backup_and_rollback_contract() -> None:
     workflow = CI_WORKFLOW.read_text(encoding="utf-8")
     for marker in (
-        "group: rp-a6-0-",
-        "COMPOSE_PROJECT_NAME: pcr-tw-a6-ci",
-        "PCR_API_IMAGE: pcr-tw-platform-api:a6-ci",
-        "PCR_SCHEDULER_IMAGE: pcr-tw-platform-scheduler:a6-ci",
+        "group: rp-b4-0-",
+        "COMPOSE_PROJECT_NAME: pcr-tw-b4-ci",
+        "PCR_API_IMAGE: pcr-tw-platform-api:b4-ci",
+        "PCR_SCHEDULER_IMAGE: pcr-tw-platform-scheduler:b4-ci",
         "-ProjectName $env:COMPOSE_PROJECT_NAME",
         "-ExpectedApiImage $env:PCR_API_IMAGE",
         "-ExpectedSchedulerImage $env:PCR_SCHEDULER_IMAGE",
@@ -25,14 +25,15 @@ def test_a6_ci_uses_exact_stack_backup_and_rollback_contract() -> None:
         "-ExpectedWebPort ([int]$env:WEB_PORT)",
         "-ExpectedSchedulerPort ([int]$env:SCHEDULER_HEALTH_PORT)",
         'if (-not $env:RUNNER_TEMP)',
-        'Join-Path $env:RUNNER_TEMP "rp-b5-1-checkpoint"',
-        'Join-Path $env:RUNNER_TEMP "rp-b5-1-checkpoint.tar"',
-        "git archive --format=tar --output=$checkpointArchive rp-b5-1",
-        "./scripts/a6_b5_rollback_drill.ps1",
+        'Join-Path $env:RUNNER_TEMP "rp-a6-0-checkpoint"',
+        'Join-Path $env:RUNNER_TEMP "rp-a6-0-checkpoint.tar"',
+        "git archive --format=tar --output=$checkpointArchive rp-a6-0",
+        "./scripts/b4_a6_rollback_drill.ps1",
+        "-A6CheckpointRoot $checkpointRoot",
     ):
         assert marker in workflow
     assert "-SeedRevisionHistory" not in workflow
-    assert 'Join-Path $PWD ".runtime/rp-b5-1-checkpoint"' not in workflow
+    assert 'Join-Path $PWD ".runtime/rp-a6-0-checkpoint"' not in workflow
 
 
 def test_target_identity_is_mandatory_and_precedes_database_access() -> None:
@@ -49,10 +50,19 @@ def test_target_identity_is_mandatory_and_precedes_database_access() -> None:
     ):
         assert parameter in parameter_block
     assert text.count("[Parameter(Mandatory = $true)]") >= 7
-    assert (
-        '"pcr-tw-b5-gacha", "pcr-tw-a5-arena", "pcr-tw-a4-water", "pcr-tw-b1"'
-        in text
-    )
+    for reserved_project in (
+        "pcr-tw-a6",
+        "pcr-tw-a6-parena",
+        "pcr-tw-a6-parena-serial",
+        "pcr-tw-a6-parena-drill",
+        "pcr-tw-b5-gacha",
+        "pcr-tw-a5-arena",
+        "pcr-tw-a4-water",
+        "pcr-tw-a3-fire",
+        "pcr-tw-b1",
+        "pcr-tw-b1-final",
+    ):
+        assert f'"{reserved_project}"' in text
     assert '"--project-name", $ProjectName' in text
     assert '"--profile", "verification"' in text
     assert "function Assert-ComposePreflight" in text
@@ -99,13 +109,13 @@ def test_preflight_pins_images_ports_network_and_scheduler_safety() -> None:
     assert '$scheduler.environment.AUTO_PUBLISH -cne "false"' in preflight
 
 
-def test_a6_identity_and_all_count_closures_are_exact() -> None:
+def test_b4_identity_and_all_count_closures_are_exact() -> None:
     text = source()
     for digest in (
-        "fbcac9cb9aadcd1569f881469189dc791c68a4a329637cc9db2c0d7263d68ed1",
-        "3f5e738a6a7f0463583b38d0fc2ca1ae35bdc563f3815cf436dfc10913764d97",
-        "82495781cca66b9ca3fc221e609a3cb6c06ebaa823f7a8613c9d5d1d01d9e1ee",
-        "e44a9fa38a89a5672d00c0a58d8b8946fecd41e541c08c9733fb3d06fbc1b88a",
+        "eda30340c02f2f470475e652786104c521faf2ea4cc20be44cf09f3798fe8c5f",
+        "1ba25a73df01ca8d9b161c60836d997f6db202a18d140ee1e92a7d96f62d7a17",
+        "46000a4a6f9ee70067876c7c1a73fd61d4d06a6f93c5b61831c15d41c9d8811e",
+        "bb71dce87b8a651de794672741a5481a6b754861d694561974ce534e17eb9720",
         "a2fa8f263d612cd393bbd25d29d01f9ffde4015ed924e7b28a8ed909b99c67af",
         "24c1cbce3588926d4efe657c8da94b968aa25dd288e764ebbed0f18c1203d43c",
     ):
@@ -113,9 +123,9 @@ def test_a6_identity_and_all_count_closures_are_exact() -> None:
     for marker in (
         "file_count || '|' || csv_file_count || '|' || csv_row_count",
         "SUCCEEDED|48|13|376|120",
-        "research_core_file_ssot|4|$activeMaterialization|23",
-        "$a6RowCounts = [ordered]@{",
-        "$a6ServingCounts = [ordered]@{",
+        "research_core_file_ssot|5|$activeMaterialization|29",
+        "$b4RowCounts = [ordered]@{",
+        "$b4ServingCounts = [ordered]@{",
         "evidence = 73",
         "claims = 69",
         "stage_evidence = 47",
@@ -127,28 +137,34 @@ def test_a6_identity_and_all_count_closures_are_exact() -> None:
         "gacha_timeline_claims = 8",
         "gacha_community_sources = 4",
         "gacha_timeline_community_sources = 0",
+        "arena_source_records = 6",
+        "parena_cases = 0",
+        "parena_case_matchups = 0",
+        "parena_case_sources = 0",
+        "parena_case_evidence = 0",
+        "parena_case_claims = 0",
     ):
         assert marker in text
-    assert '"v0007_gacha_timeline_slice"' in text
-    assert '"3.0.0-a6"' in text
-    assert "A6_ARTIFACT_DIAGNOSTIC_PINNED" in text
-    assert "artifact_mirror_diagnostic_sha256 = $a6ArtifactMirrorSha256" in text
+    assert '"v0008_parena_planner_slice"' in text
+    assert '"3.0.0-b4"' in text
+    assert "B4_ARTIFACT_DIAGNOSTIC_PINNED" in text
+    assert "artifact_mirror_diagnostic_sha256 = $b4ArtifactMirrorSha256" in text
 
 
 def test_source_identity_and_epoch_are_stable_across_dump_and_drill() -> None:
     text = source()
     source_identity = text.index(
-        '$sourceIdentity = Assert-A6DatabaseIdentity -Database $SourceDatabase'
+        '$sourceIdentity = Assert-B4DatabaseIdentity -Database $SourceDatabase'
     )
     dump = text.index("Invoke-DockerChecked exec -T db pg_dump", source_identity)
     after_dump = text.index(
-        '$sourceIdentityAfterDump = Assert-A6DatabaseIdentity', dump
+        '$sourceIdentityAfterDump = Assert-B4DatabaseIdentity', dump
     )
     restored = text.index(
-        '$restoreIdentity = Assert-A6DatabaseIdentity', after_dump
+        '$restoreIdentity = Assert-B4DatabaseIdentity', after_dump
     )
     final = text.index(
-        '$finalSourceIdentity = Assert-A6DatabaseIdentity', restored
+        '$finalSourceIdentity = Assert-B4DatabaseIdentity', restored
     )
 
     assert source_identity < dump < after_dump < restored < final
@@ -158,13 +174,16 @@ def test_source_identity_and_epoch_are_stable_across_dump_and_drill() -> None:
     assert "Source and restored public table sets differ" in text
 
 
-def test_restore_covers_gacha_api_web_and_unknown_semantics() -> None:
+def test_restore_covers_gacha_parena_api_web_and_unknown_semantics() -> None:
     text = source()
     assert "$proxyGacha" not in text
     for route in (
         "/api/v1/gacha/timeline",
         "/api/v1/gacha/community-sources",
+        "/api/v1/parena/environments",
+        "/api/v1/solver/parena",
         "/gacha",
+        "/parena",
     ):
         assert route in text
     assert '@($gachaRows | Where-Object { $_.maturity -eq "MATURE" }).Count -ne 2' in text
@@ -185,41 +204,47 @@ def test_restore_covers_gacha_api_web_and_unknown_semantics() -> None:
     assert 'gachaResponse.Content -notmatch "抽卡未來視"' in text
     assert 'gachaResponse.Content -notmatch "限定身分 UNKNOWN"' in text
     assert "RESTORED_API_READINESS_OK" in text
+    assert "arena_sources=6 parena_cases=0" in text
     assert "gacha_events=5 gacha_sources=4" in text
+    assert '@($parenaEnvironments.data).Count -ne 0' in text
+    assert 'NO_MATURE_PARENA_CASE' in text
+    assert '$parenaPlan.data.match_type -ne "EXACT"' in text
+    assert '[bool]$parenaPlan.data.similar_enabled' in text
+    assert 'parenaResponse.Content -notmatch "公主競技場三隊規劃"' in text
 
 
-def test_v0007_empty_v4_probe_is_separate_and_fails_closed() -> None:
+def test_v0008_active_v5_parena_probe_is_separate_and_fails_closed() -> None:
     text = source()
     probe = text[text.index("# A second restored database") :]
 
     assert "$probeDatabase" in probe
     assert "$probeCreated = $true" in probe
-    assert "TRUNCATE TABLE gacha_timeline_community_sources" in probe
-    assert "$probeGachaRows -ne 0" in probe
-    assert "downgrade v0006_arena_counter_slice" in probe
+    assert "$probeParenaRows -ne 6" in probe
+    assert "downgrade v0007_gacha_timeline_slice" in probe
     assert "$downgradeExit -eq 0" in probe
-    assert "verified Arena v3 materialization owns the mirror" in probe
-    assert '$postDowngradeRevision -ne "v0007_gacha_timeline_slice"' in probe
-    assert "$postDowngradeGachaTables -ne 5" in probe
+    assert "P-Arena serving rows exist" in probe
+    assert '$postDowngradeRevision -ne "v0008_parena_planner_slice"' in probe
+    assert "$postDowngradeParenaTables -ne 6" in probe
+    assert "$postDowngradeParenaRows -ne $probeParenaRows" in probe
     assert "$postDowngradeActiveRevision -ne $probeIdentity.Revision" in probe
     assert "$postDowngradeActiveRun -ne $probeIdentity.ImportRun" in probe
     assert "$postDowngradeMaterialization -ne $probeIdentity.Materialization" in probe
     assert "$postDowngradeEpoch -ne $probeIdentity.Epoch" in probe
-    assert "$postDowngradeNonGachaRows -ne $probeNonGachaRows" in probe
-    assert "GACHA_DOWNGRADE_BLOCKED_OK" in probe
-    assert "ARENA_DOWNGRADE_BLOCKED_OK" not in probe
+    assert "$postDowngradeNonParenaRows -ne $probeNonParenaRows" in probe
+    assert "PARENA_DOWNGRADE_BLOCKED_OK" in probe
+    assert "GACHA_DOWNGRADE_BLOCKED_OK" not in probe
 
     probe_create = probe.index("createdb")
     probe_restore = probe.index("pg_restore", probe_create)
-    truncate = probe.index("TRUNCATE TABLE", probe_restore)
-    downgrade = probe.index("downgrade v0006_arena_counter_slice", truncate)
-    assert probe_create < probe_restore < truncate < downgrade
+    identity = probe.index("Assert-B4DatabaseIdentity", probe_restore)
+    downgrade = probe.index("downgrade v0007_gacha_timeline_slice", identity)
+    assert probe_create < probe_restore < identity < downgrade
 
 
 def test_cleanup_and_machine_readable_receipt_are_fail_closed() -> None:
     text = source()
     receipt = text.index('status = "BACKUP_RESTORE_VERIFIED"')
-    final_identity = text.index("$finalSourceIdentity =", text.index("GACHA_DOWNGRADE_BLOCKED_OK"))
+    final_identity = text.index("$finalSourceIdentity =", text.index("PARENA_DOWNGRADE_BLOCKED_OK"))
     receipt_output = text.index("Write-Output ($receipt | ConvertTo-Json -Compress)", receipt)
     cleanup_failure = text.index('throw "Backup/restore succeeded but cleanup failed:', receipt)
     assert final_identity < receipt
@@ -240,8 +265,8 @@ def test_cleanup_and_machine_readable_receipt_are_fail_closed() -> None:
     assert 'throw "Backup/restore completed without a verification receipt"' in text[cleanup_failure:receipt_output]
     assert "backup_retained = [bool]$KeepBackup" in text[receipt:]
     assert "restore_database_retained = [bool]$KeepRestoredDatabase" in text[receipt:]
-    assert 'Invoke-CleanupStep -Name "V0007 probe database"' in text
-    assert "Removed disposable V0007 probe database" in text
+    assert 'Invoke-CleanupStep -Name "V0008 probe database"' in text
+    assert "Removed disposable V0008 probe database" in text
     assert 'Invoke-CleanupStep -Name "restore database"' in text
     assert 'Invoke-CleanupStep -Name "backup files"' in text
 
@@ -256,13 +281,13 @@ def test_backup_fallback_uses_verified_db_container_identity() -> None:
     assert 'cp "db:/backups/$backupName"' not in text
 
 
-def test_restored_acl_gate_requires_final_a6_matrix_marker() -> None:
+def test_restored_acl_gate_requires_final_b4_matrix_marker() -> None:
     text = source()
     helper = text[text.index("function Assert-DbPrivilegeContract") : text.index("$primaryError")]
     assert '"scripts\\check_db_privileges.ps1"' in helper
-    assert "DB_PRIVILEGES_OK matrix_checks=651 actual_denials=23 allowed_smokes=10" in helper
+    assert "DB_PRIVILEGES_OK matrix_checks=777 actual_denials=26 allowed_smokes=12" in helper
     assert "privilegeExit -ne 0" in helper
-    assert "exact 7-privilege A6 contract" in helper
+    assert "exact 7-privilege B4 contract" in helper
     call = text.index("Assert-DbPrivilegeContract -Database $restoreDatabase")
     round_trip = text.index("round-trip-smoke", call)
     assert call < round_trip
@@ -273,6 +298,7 @@ def test_api_image_contains_current_and_rollback_manifests() -> None:
     text = API_DOCKERFILE.read_text(encoding="utf-8")
 
     assert "scripts/research_core_rp_a6_0_manifest.sha256" in text
+    assert "scripts/research_core_rp_b4_0_manifest.sha256" in text
     assert "scripts/research_core_rp_b5_1_manifest.sha256" in text
     assert "scripts/research_core_rp_a5_manifest.sha256" in text
     assert "scripts/research_core_rp_a4_manifest.sha256" in text

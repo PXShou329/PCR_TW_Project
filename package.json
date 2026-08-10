@@ -1,6 +1,6 @@
 {
   "name": "pcr-tw-strategy-platform",
-  "version": "3.0.0-a6",
+  "version": "3.0.0-b4",
   "private": true,
   "workspaces": [
     "apps/*",

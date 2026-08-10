@@ -335,7 +335,7 @@ const typedBaselineCounts = {
 
 const baseline = envelope({
   research_core_version: "v1.5",
-  application_version: "3.0.0-a6",
+  application_version: "3.0.0-b4",
   canonical_source: "research_core_file_ssot",
   generated_at: "2026-08-09T00:00:00Z",
   counts: typedBaselineCounts,
@@ -988,7 +988,15 @@ const arenaCounters = arenaCounterMembers.map((counter_members, index) => ({
 }));
 
 const arenaCharacters = [...new Map(
-  [...arenaDefenseMembers, ...arenaCounterMembers.flat()].map((member) => [
+  [
+    ...arenaDefenseMembers,
+    ...arenaCounterMembers.flat(),
+    ...Object.entries(character).map(([unit_key, display_name], index) => ({
+      slot: index + 1,
+      unit_key,
+      display_name,
+    })),
+  ].map((member) => [
     member.unit_key,
     {
       unit_key: member.unit_key,
@@ -998,6 +1006,111 @@ const arenaCharacters = [...new Map(
     },
   ]),
 ).values()];
+
+const parenaEnvironments = [
+  { server: "TW", environment_version: "TW-MOCK-2026-08", verified_case_count: 1 },
+  { server: "TW", environment_version: "TW-MOCK-NO-EXACT", verified_case_count: 1 },
+];
+
+function mockParenaCounter(defenseTeam, matchupNo) {
+  const base = arenaCounters[0];
+  const byKey = new Map(arenaCharacters.map((row) => [row.unit_key, row.tw_name]));
+  const defense_members = defenseTeam.map((unit_key, index) => ({
+    slot: index + 1,
+    unit_key,
+    display_name: byKey.get(unit_key) ?? unit_key,
+    display_name_source: "TW_OFFICIAL",
+  }));
+  return {
+    ...base,
+    counter_id: `TEST-PARENA-COUNTER-${matchupNo}`,
+    defense_id: `TEST-PARENA-DEFENSE-${matchupNo}`,
+    environment_version: "TW-MOCK-2026-08",
+    defense_signature: defenseTeam.slice().sort().join(";"),
+    defense_members,
+    status: "VERIFIED",
+    claim_confidence: "C",
+    reproducibility: "CONFIRMED",
+    source_record_count: 2,
+    sample_size: 2,
+    wins: 2,
+    required_upgrade_check: "PASS",
+    environment_match: "EXACT",
+    notes: "TEST_ONLY：完整 exact 三隊案例，不代表 canonical research data。",
+    evidence_ids: ["ev113", "ev114"],
+    claim_ids: [`CLM-TEST-PARENA-${matchupNo}`],
+  };
+}
+
+function mockParenaSolve(body) {
+  const defenseTeams = body?.defense_teams;
+  if (!Array.isArray(defenseTeams) || defenseTeams.length !== 3) return null;
+  const allUnits = defenseTeams.flat();
+  if (defenseTeams.some((team) => !Array.isArray(team) || team.length !== 5)
+      || new Set(allUnits).size !== 15) return null;
+  const querySignature = defenseTeams
+    .map((team) => team.slice().sort().join(";"))
+    .sort()
+    .join("||");
+  if (body.environment_version === "TW-MOCK-NO-EXACT") {
+    return envelope({
+      match_type: "EXACT",
+      similar_enabled: false,
+      query_signature: querySignature,
+      defense_teams: defenseTeams,
+      cases: [],
+    }, ["NO_EXACT_PARENA_PLAN"]);
+  }
+  const matchups = defenseTeams.map((team, index) => ({
+    matchup_no: index + 1,
+    defense_input_index: index + 1,
+    result_claim_id: `CLM-TEST-PARENA-${index + 1}`,
+    counter: mockParenaCounter(team, index + 1),
+  }));
+  return envelope({
+    match_type: "EXACT",
+    similar_enabled: false,
+    query_signature: querySignature,
+    defense_teams: defenseTeams,
+    cases: [{
+      case_id: "TEST-PARENA-001",
+      server: "TW",
+      environment_version: "TW-MOCK-2026-08",
+      status: "VERIFIED",
+      hidden_team_mode: "NONE",
+      verified_date: "2026-08-10",
+      reproducibility: "CONFIRMED",
+      last_review_due: "2026-09-10",
+      notes: "TEST_ONLY synthetic positive fixture。",
+      case_win_claim_id: "CLM-TEST-PARENA-WIN",
+      case_win_confidence: "D",
+      sources: [{
+        source_id: "SRC-TEST-PARENA",
+        title: "TEST_ONLY P-Arena source",
+        platform: "TEST_ONLY",
+        source_type: "TEST_FIXTURE",
+        server: "TW",
+        url: "https://example.invalid/test-only-parena",
+        last_checked: "2026-08-10",
+        freshness_window: "CURRENT",
+        access_status: "ACTIVE",
+        confidence_cap: "C",
+        extraction_method: "TEST_ONLY",
+        notes: "Never canonical。",
+      }],
+      evidence_ids: ["ev113", "ev114"],
+      claim_ids: ["CLM-TEST-PARENA-1", "CLM-TEST-PARENA-2", "CLM-TEST-PARENA-3", "CLM-TEST-PARENA-WIN"],
+      matchups,
+    }],
+  }, ["CASE_WIN_SINGLE_SOURCE_REFERENCE", "CASE_WIN_CONFIDENCE_D_BLOCKS_GATE_C"], {
+    server: "TW",
+    environment_version: "TW-MOCK-2026-08",
+    verified_at: "2026-08-10",
+    confidence: "D",
+    evidence_ids: ["ev113", "ev114"],
+    claim_ids: ["CLM-TEST-PARENA-1", "CLM-TEST-PARENA-2", "CLM-TEST-PARENA-3", "CLM-TEST-PARENA-WIN"],
+  });
+}
 
 function gachaEvent({
   eventId,
@@ -1336,7 +1449,7 @@ const evidenceFixtures = new Map([
 function send(response, status, payload) {
   response.writeHead(status, {
     "Access-Control-Allow-Headers": "Content-Type",
-    "Access-Control-Allow-Methods": "GET, OPTIONS",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
     "Access-Control-Allow-Origin": "*",
     "Cache-Control": "no-store",
     "Content-Type": "application/json; charset=utf-8",
@@ -1344,9 +1457,25 @@ function send(response, status, payload) {
   response.end(JSON.stringify(payload));
 }
 
-const server = createServer((request, response) => {
+async function readJson(request) {
+  const chunks = [];
+  for await (const chunk of request) chunks.push(chunk);
+  try {
+    return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+  } catch {
+    return null;
+  }
+}
+
+const server = createServer(async (request, response) => {
   const url = new URL(request.url ?? "/", `http://${host}:${port}`);
   if (request.method === "OPTIONS") return send(response, 204, {});
+  if (request.method === "POST" && url.pathname === "/api/v1/solver/parena") {
+    const payload = mockParenaSolve(await readJson(request));
+    return payload
+      ? send(response, 200, payload)
+      : send(response, 422, { detail: { code: "INVALID_PARENA_DEFENSE" } });
+  }
   if (request.method !== "GET") return send(response, 405, { detail: { code: "METHOD_NOT_ALLOWED" } });
   if (url.pathname === "/health/live" || url.pathname === "/health/ready") {
     return send(response, 200, { status: "ok", checks: { fixture: "TEST_ONLY" } });
@@ -1380,6 +1509,12 @@ const server = createServer((request, response) => {
     return send(response, 200, envelope(arenaCharacters, [], {
       server: "TW",
       evidence_ids: ["ev041", "ev107", "ev108", "ev109", "ev110", "ev111", "ev112"],
+    }));
+  }
+  if (url.pathname === "/api/v1/parena/environments") {
+    return send(response, 200, envelope(parenaEnvironments, [], {
+      server: "TW",
+      environment_version: "MIXED",
     }));
   }
   if (url.pathname === "/api/v1/pvp/counters") {

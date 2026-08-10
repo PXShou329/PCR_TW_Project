@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the immutable RP-A6-0 research-core baseline in a disposable copy."""
+"""Run the immutable RP-B4-0 research-core baseline in a disposable copy."""
 
 from __future__ import annotations
 
@@ -25,8 +25,8 @@ from pcr_pipeline.research_core_snapshot import (  # noqa: E402
 )
 
 
-EXPECTED_MANIFEST_SHA256 = "fbcac9cb9aadcd1569f881469189dc791c68a4a329637cc9db2c0d7263d68ed1"
-MANIFEST_PATH = Path(__file__).with_name("research_core_rp_a6_0_manifest.sha256")
+EXPECTED_MANIFEST_SHA256 = "eda30340c02f2f470475e652786104c521faf2ea4cc20be44cf09f3798fe8c5f"
+MANIFEST_PATH = Path(__file__).with_name("research_core_rp_b4_0_manifest.sha256")
 MANIFEST_LINE = re.compile(r"^([0-9a-f]{64})  ([^\\]+(?:/[^\\]+)*)$")
 VALIDATOR_RUNTIME_PATHS = {
     "tools/reports/pre_suite.json",
@@ -98,13 +98,13 @@ def source_files(root: Path) -> list[Path]:
 def load_manifest() -> tuple[dict[str, str], list[str]]:
     errors: list[str] = []
     if not MANIFEST_PATH.is_file():
-        return {}, [f"missing RP-A6-0 manifest: {MANIFEST_PATH}"]
+        return {}, [f"missing RP-B4-0 manifest: {MANIFEST_PATH}"]
     lines = MANIFEST_PATH.read_text(encoding="utf-8").splitlines()
     canonical = ("\n".join(lines) + "\n").encode("utf-8")
     manifest_sha256 = hashlib.sha256(canonical).hexdigest()
     if manifest_sha256 != EXPECTED_MANIFEST_SHA256:
         errors.append(
-            "RP-A6-0 manifest digest mismatch "
+            "RP-B4-0 manifest digest mismatch "
             f"(expected {EXPECTED_MANIFEST_SHA256}, got {manifest_sha256})"
         )
     entries: dict[str, str] = {}
@@ -130,14 +130,14 @@ def verify_tree(root: Path) -> list[str]:
     expected_names = set(manifest)
     actual_names = set(actual_paths)
     for missing in sorted(expected_names - actual_names):
-        errors.append(f"RP-A6-0 file missing: {missing}")
+        errors.append(f"RP-B4-0 file missing: {missing}")
     for unexpected in sorted(actual_names - expected_names):
         errors.append(f"unexpected research-core file: {unexpected}")
     for relative in sorted(expected_names & actual_names):
         actual_digest = hashlib.sha256(actual_paths[relative].read_bytes()).hexdigest()
         if actual_digest != manifest[relative]:
             errors.append(
-                f"RP-A6-0 SHA mismatch: {relative} "
+                f"RP-B4-0 SHA mismatch: {relative} "
                 f"(expected {manifest[relative]}, got {actual_digest})"
             )
     return errors
@@ -200,7 +200,7 @@ def main() -> int:
             print(f"ERROR: {error}", file=sys.stderr)
         return 1
 
-    with tempfile.TemporaryDirectory(prefix="pcr-a6-0-baseline-") as temporary:
+    with tempfile.TemporaryDirectory(prefix="pcr-b4-0-baseline-") as temporary:
         project = Path(temporary) / "pcr_tw_project"
         shutil.copytree(original, project)
         for expected in VALIDATOR_RUNS:
