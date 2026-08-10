@@ -5,10 +5,13 @@ closure candidate，建立在 immutable `rp-a6-0` Gate-correctness checkpoint、
 RP-A5 Arena、RP-A4 Water與B1 full-core round-trip之上。這是可部署的**本機／私人 staging**，
 不是公開正式版。
 
-RP-B4-0目前仍是candidate：final commit、private CI、annotated `rp-b4-0` tag與tag CI均為
-`PENDING`，不得由README、工作樹或先前A6 run推論完成。Data Gates A／B／C、Application
-Gate E、Automation F、Production G均為`NOT PASS`；Application Gate D為
-`BLOCKED_BY_DATA_GATES`。
+RP-B4-0目前仍是candidate：code candidate
+[`6102cfc0`](https://github.com/PXShou329/PCR_TW_Project/commit/6102cfc0e01d1d2f5f7653249d9976c57f76205f)
+已在[OPEN/DRAFT PR #10](https://github.com/PXShou329/PCR_TW_Project/pull/10)完成第一輪
+[private CI 31351894593](https://github.com/PXShou329/PCR_TW_Project/actions/runs/31351894593)
+（completed/success，26m08s）。Final evidence commit、第二輪private CI、annotated
+`rp-b4-0`與tag CI仍為`PENDING`。Data Gates A／B／C、Application Gate E、Automation F、
+Production G均為`NOT PASS`；Application Gate D為`BLOCKED_BY_DATA_GATES`。
 
 ## Current B4 slice
 
@@ -75,8 +78,9 @@ retained backup見
 失敗復原邊界見[`B4_ROLLBACK_RUNBOOK.md`](docs/operations/B4_ROLLBACK_RUNBOOK.md)。Final
 local regression亦已通過：Python `404/404`、operations `97/97`、research baseline
 `166/0/22 → 165/0/21 → 168/3/21`（ARTIFACT_READY只有A/B/C）、Mutation 122、contract
-schemas 34、typecheck/build PASS、full mock `30/30`。Commit、private CI、PR與`rp-b4-0` tag
-仍為`PENDING`。
+schemas 34、typecheck/build PASS、full mock `30/30`。Code candidate、Draft PR與第一輪CI已
+實錄；final evidence commit、第二輪CI與`rp-b4-0` tag仍為`PENDING`。CI instance的backup、
+rollback epochs與history digest不覆寫上述local evidence。
 
 ## 啟動本機私人堆疊
 

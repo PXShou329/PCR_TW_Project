@@ -47,8 +47,12 @@
   第三輪B4→A6→B4與real E2E `28/28`；前兩輪各自在physical V7 missing-table及public
   baseline 19/25 shape邊界fail closed並安全恢復。Final regression另完成Python `404/404`、
   operations `97/97`、Mutation 122、contract schemas 34、typecheck/build PASS與full mock
-  `30/30`。Final commit、private CI、PR、annotated `rp-b4-0`與tag CI仍為`PENDING`，詳見
-  [`B4_0_VERIFICATION_REPORT.md`](../operations/B4_0_VERIFICATION_REPORT.md)。
+  `30/30`。Code candidate
+  [`6102cfc0`](https://github.com/PXShou329/PCR_TW_Project/commit/6102cfc0e01d1d2f5f7653249d9976c57f76205f)
+  已由[OPEN/DRAFT PR #10](https://github.com/PXShou329/PCR_TW_Project/pull/10)的第一輪
+  [private CI 31351894593](https://github.com/PXShou329/PCR_TW_Project/actions/runs/31351894593)
+  驗證成功；final evidence commit、第二輪CI、annotated `rp-b4-0`與tag CI仍為`PENDING`，
+  詳見[`B4_0_VERIFICATION_REPORT.md`](../operations/B4_0_VERIFICATION_REPORT.md)。
 - RP-B3-D0：research pins 與 V0006 schema 不變；已完成五角色 exact picker、AVAILABLE
   官方名稱 Evidence closure、required-but-conservative Strategy Metadata，以及只回報
   `BLOCKED_BY_DATA_GATES` 的 Application/Data structural verifier。
@@ -115,8 +119,9 @@
   `rp-a2-b2-1` 僅保留作 CI parity 修正前的稽核 checkpoint；`rp-a5-1` 同樣保留作 CI
   runtime 依賴安裝修正前的稽核 checkpoint；RP-A5 使用 `rp-a5-2`，B3／D0 使用
   `rp-b3-d0-1`，RP-B5-1 使用 immutable `rp-b5-1`，RP-A6-0 使用 immutable `rp-a6-0`。
-  RP-B4-0 final commit、private CI、annotated `rp-b4-0` 與 tag CI 均為 `PENDING`；Release
-  身分只由實際 tag ref 及其 exact commit CI 判定，且既有 tags 不移動。
+  RP-B4-0 code candidate與第一輪private CI已實錄；final evidence commit、第二輪private CI、
+  annotated `rp-b4-0`與tag CI仍為`PENDING`。Release身分只由實際tag ref及其exact commit CI
+  判定，且既有tags不移動。
   A5→A4→A5 依 [`A5_ROLLBACK_RUNBOOK.md`](../operations/A5_ROLLBACK_RUNBOOK.md)，
   B5→A5→B5 依 [`B5_ROLLBACK_RUNBOOK.md`](../operations/B5_ROLLBACK_RUNBOOK.md)，
   A6→B5→A6 依 [`A6_ROLLBACK_RUNBOOK.md`](../operations/A6_ROLLBACK_RUNBOOK.md)，B4→A6→B4

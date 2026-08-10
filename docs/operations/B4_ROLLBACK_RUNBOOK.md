@@ -7,7 +7,8 @@
 
 本手冊定義 backup-first 的 B4→A6→B4 演練與永久回退安全邊界。第三輪已在
 `pcr-tw-b4-parena`實跑成功；實際digests、ACL、backup、兩次安全失敗與final chronology見
-`B4_0_VERIFICATION_REPORT.md`。這不代表private CI、tag或Gates PASS。
+`B4_0_VERIFICATION_REPORT.md`。同一candidate的第一輪private CI亦已成功，但這不代表final
+evidence commit第二輪CI、tag或Gates PASS；local與CI instance evidence不得互相覆寫。
 
 ## 1. 不可省略的前置條件
 

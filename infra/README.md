@@ -6,7 +6,8 @@ network。Alembic是唯一schema migration owner。
 
 Current application version是`3.0.0-b4`，Alembic head是
 `v0008_parena_planner_slice`，typed materialization是v5／29 tables。B4 local runtime、ACL、
-backup/restore與rollback第三輪已實跑；private CI、commit、PR與tag仍為`PENDING`。
+backup/restore與rollback第三輪已實跑；code candidate `6102cfc0`及第一輪private CI
+`31351894593`已成功。Final evidence commit、第二輪private CI與tag仍為`PENDING`。
 
 啟動依賴鏈：
 
@@ -156,3 +157,8 @@ ACL、backup、rollback、E2E或private CI成功都不能自行提升Gate。
 
 Annotated `rp-b4-0`只能在exact final commit完成private CI後建立；既有A6/B5/A5/A4 tags與
 歷史reports/scripts/tests保持immutable。
+
+第一輪CI是獨立ephemeral instance：其backup SHA、rollback epochs、history digest、cleanup與
+job links見[`B4_0_VERIFICATION_REPORT.md`](../docs/operations/B4_0_VERIFICATION_REPORT.md)，
+不得覆寫第5節的local instance證據。全綠run中的failure-only artifact skipped屬預期；Node 20
+deprecation／forced Node 24提示仍保留為nonblocking維運訊號。

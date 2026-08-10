@@ -1,6 +1,6 @@
 # RP-B4-0 Verification Report
 
-- 狀態：`CANDIDATE / LOCAL RUNTIME+ROLLBACK VERIFIED / PRIVATE CI PENDING`
+- 狀態：`CANDIDATE / LOCAL VERIFIED / FIRST PRIVATE CI VERIFIED / FINAL EVIDENCE CI+TAG PENDING`
 - 日期：2026-08-10
 - 範圍：Princess Arena Planner typed structural closure
 - 前一 immutable rollback target：`rp-a6-0`
@@ -8,8 +8,9 @@
 
 本報告分開記錄 portable identity、已實跑的 local/private instance，以及尚未發生的 release
 identity。Local Docker health、ACL、backup／restore、B4→A6→B4、Python／operations、
-contract／typecheck／build與mock／real E2E均已取得實證；CI、commit、PR與tag仍為
-`PENDING`。不得由local PASS、A6歷史報告或目前程式碼存在推論release／Gate PASS。
+contract／typecheck／build與mock／real E2E均已取得實證；code candidate及其第一輪private
+CI亦已完成。Final evidence commit、第二輪private CI與tag仍為`PENDING`。不得由local或
+第一輪CI PASS推論release／Gate PASS。
 
 ## 1. Release identity
 
@@ -17,14 +18,18 @@ contract／typecheck／build與mock／real E2E均已取得實證；CI、commit�
 |---|---|
 | application version | `3.0.0-b4` |
 | Python version | `3.0.0b4` |
-| candidate commit | `PENDING` |
-| private branch CI | `PENDING` |
+| code candidate commit | [`6102cfc0e01d1d2f5f7653249d9976c57f76205f`](https://github.com/PXShou329/PCR_TW_Project/commit/6102cfc0e01d1d2f5f7653249d9976c57f76205f) |
+| Draft PR | [#10](https://github.com/PXShou329/PCR_TW_Project/pull/10)，`OPEN/DRAFT`，base A6，exact candidate head |
+| first private CI | [run 31351894593](https://github.com/PXShou329/PCR_TW_Project/actions/runs/31351894593)，`completed/success`，26m08s |
+| final evidence commit | `PENDING` |
+| second private CI | `PENDING` |
 | annotated tag `rp-b4-0` | `PENDING / NOT CREATED BY THIS REPORT` |
 | tag CI | `PENDING` |
 | local working tree cleanliness | `PENDING` |
 
-Tag 只能在 exact final commit 的 private CI 實際成功後建立。Tag-triggered CI 必須另列，不得
-用 branch run、A6 run 或未發生的 run number替代。
+第一輪run只證明code candidate exact head；本文件回填後的final evidence commit必須以自身
+SHA再跑第二輪private CI。Tag只能在該exact final commit成功後建立；tag-triggered CI必須
+另列，不得用第一輪branch run、A6 run或未發生的run number替代。
 
 ## 2. Portable research identity
 
@@ -258,7 +263,57 @@ Rollback後再執行兩個history verifiers，產生synthetic sequences `8`／`9
   `e9ed63221d6500e9db213eeb720074c7e93f4eb093f3a4b03dac8a71958b6bc0`
 - active revision／ImportRun／materialization與第5節final IDs完全一致。
 
-## 8. Gate declaration
+## 8. First private CI candidate evidence — VERIFIED
+
+CI evidence與第5至7節local instance完全分離。下列backup、epoch、ImportRun history與容器
+生命週期只屬GitHub-hosted CI；不得覆寫或冒充本機IDs、retained backup或local chronology。
+
+### Workflow identity
+
+- Exact head：
+  [`6102cfc0e01d1d2f5f7653249d9976c57f76205f`](https://github.com/PXShou329/PCR_TW_Project/commit/6102cfc0e01d1d2f5f7653249d9976c57f76205f)
+- Draft PR：[OPEN/DRAFT #10](https://github.com/PXShou329/PCR_TW_Project/pull/10)，base A6。
+- Workflow：[run 31351894593](https://github.com/PXShou329/PCR_TW_Project/actions/runs/31351894593)，
+  `completed/success`，26m08s，exact head相符。
+
+| Job | Job ID／link | Result／duration |
+|---|---|---|
+| Web | [93344169982](https://github.com/PXShou329/PCR_TW_Project/actions/runs/31351894593/job/93344169982) | success／53s |
+| API | [93344169997](https://github.com/PXShou329/PCR_TW_Project/actions/runs/31351894593/job/93344169997) | success／109s |
+| Research | [93344170015](https://github.com/PXShou329/PCR_TW_Project/actions/runs/31351894593/job/93344170015) | success／31s |
+| Compose | [93344424584](https://github.com/PXShou329/PCR_TW_Project/actions/runs/31351894593/job/93344424584) | success／1451s |
+
+### CI static/research evidence
+
+- PRE_SUITE：`166/0/22`；OPERATIONAL：`165/0/21`；ARTIFACT_READY：`168/3/21`，只有
+  Gate A/B/C三個FAIL，blocking warnings `14`；Mutation `ALL_OK / 122`。
+- Manifest仍為
+  `eda30340c02f2f470475e652786104c521faf2ea4cc20be44cf09f3798fe8c5f`；raw、semantic、
+  artifact及edge pins與第2節完全一致，沒有建立CI專屬portable identity。
+- Python：`398 passed + 6 skipped = 404`，70.01s；round-trip deterministic。
+- OpenAPI/client parity：schemas `34`；typecheck PASS；production build PASS，11.2s。
+
+### CI Compose instance evidence
+
+- ACL：`DB_PRIVILEGES_OK matrix_checks=777 actual_denials=26 allowed_smokes=12`。
+- Backup SHA-256
+  `a73a38dc120e9c739baa38f04deedbb2e4adc1d2f39c2ba46bde8a27dcaffbf6`，599009 bytes；
+  restore digest
+  `8f635c4c63e48521a1014a7319d75912fb5c080c7757db023e73c559e66a0b9a`，38 tables。
+- Active-v5 downgrade negative probe：`PARENA_DOWNGRADE_BLOCKED_OK rows=6 tables=6`。
+- Rollback origin：sequence `1`、activation epoch `1162`、state epoch `1171`。
+- A6 rollback：sequence `2`、epoch `2343`；physical V0008→V0007且兩個P-Arena endpoints均
+  HTTP 503；V0007→V0008後進入`A6_REACTIVATE` recovery mode。
+- Final B4：sequence `3`、epoch `3092`；`B4_A6_ROLLBACK_DRILL_OK`。
+- Final history：revisions `3`、ImportRuns `3`、inactive revisions `2`、activations `5`；digest
+  `7b75bf08c2f8f36cb593613fa3201c78a917c7d00a93580f32be2934568022b2`。
+- Targeted mock P-Arena `4/4`，23.8s；real-stack E2E `28/28`，58.5s。
+- Cleanup完成7 containers、2 networks及project volume；failure-only artifact upload因全綠而
+  skipped，屬預期行為。
+- GitHub Action顯示Node 20 deprecation／forced Node 24提示；本run未因此失敗，列為
+  nonblocking維運訊號，不得包裝成零warning。
+
+## 9. Gate declaration
 
 | Gate | RP-B4-0 declaration |
 |---|---|
@@ -273,7 +328,7 @@ Rollback後再執行兩個history verifiers，產生synthetic sequences `8`／`9
 Current P-Arena mature case count是 0。B4 structural slice、綠色 application tests、local Docker
 health 或 private CI 都不能改寫這個 Gate 結論。
 
-## 9. Finalization checklist
+## 10. Finalization checklist
 
 - [x] Final tree重跑 portable baseline且 pins完全一致。
 - [x] Python／operations／contract／typecheck／Web build實跑。
@@ -282,7 +337,8 @@ health 或 private CI 都不能改寫這個 Gate 結論。
 - [x] Backup／empty-DB restore／V0008 negative probe實錄。
 - [x] B4→A6→B4 rollback與 recovery實錄。
 - [x] Full/targeted mock與real-stack desktop/mobile E2E實錄。
-- [ ] Final candidate commit及 private CI實錄。
+- [x] Code candidate commit、Draft PR及第一輪private CI實錄。
+- [ ] Final evidence commit及第二輪private CI實錄。
 - [ ] Annotated `rp-b4-0` 指向 exact commit，tag CI另行實錄。
 - [ ] GitHub repository保持 private。
 
