@@ -2,7 +2,8 @@
 import { createServer } from "node:http";
 
 const host = "127.0.0.1";
-const port = 4100;
+const port = Number.parseInt(process.env.MOCK_API_PORT ?? "4100", 10);
+const gachaCanonicalUnavailable = process.env.MOCK_GACHA_CANONICAL_UNAVAILABLE === "1";
 const fireGuideId = "TW_DEEP_FIRE_08_10_20260802";
 const waterGuideId = "TW_DEEP_WATER_08_10_20260808";
 
@@ -395,6 +396,353 @@ const stageDetailsByGuide = new Map([
 ]);
 const teamSeeds = [...fireTeamSeeds, ...waterTeamSeeds];
 const teamSeedsById = new Map(teamSeeds.map((seed) => [seed.team_id, seed]));
+
+const pveDatasetSha = "2".repeat(64);
+const pveWorkbookOneSha = "a".repeat(64);
+const pveWorkbookTwoSha = "b".repeat(64);
+const pveStagingOneSha = "c".repeat(64);
+const pveStagingTwoSha = "d".repeat(64);
+const pveAssetShas = ["1", "3", "4", "5", "6"].map((value) => value.repeat(64));
+const pveFixturePng = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+  "base64",
+);
+
+const gachaLibraryImageShas = [
+  "0b37c66dcb7869511a6c59ba238bd1fe47652c3c9c1d7de190d5d83f2cd9bbc3",
+  "b2e32e1184e5c9810837e4dd024de10029e5ba04910567d3165a30b37b73eb66",
+  "8bad4463ce79600a45a9b73eafa4c5779063851828a8e984867e2720268acd8e",
+  "5e740fd0dde0bf4fff6ed04c142ec6ee952446ada793919ceaf046751f2f79f5",
+  "b75260f60e5f16bf43b236c267419858911c0f2cd1dc179e8805aa144580ae25",
+  "4b27066b807534427e4db5e445a09630401b962cbbd04bb7f1cda8388e3b7f75",
+  "f5e82caa50b5119a4cad82bbb525f368aca6bca1098132390c41eafbf44b68b6",
+  "7f1d8061f139907536fa46006bdd221f93531bc7e78de90f4f4b36a530539e2b",
+  "7357ea0d26e8038453f13b766834ea710cab62aef14bbb5e8262ad29f889e5bb",
+  "727f81eed2c0ef6ea47dd39866c8e4fb70a09136c03c2ab75ad9d387c6cceae4",
+  "d72ca660b1926682d16d9fe11327e3c616f2d33115f3b01c56eba313ad2786f2",
+  "5db0ce2363a22bf3485c7aa74e3f46ac8a0e1a417720ce5e6ab8a8b70e651592",
+  "f3cf1983ba8afbd1057fa24dbe6e0dd91c77ef4abe1fe5d6042272c887ee8a39",
+  "67270092cc18790f36e448a6d9398a9e201775f90880674db25f3e5146602d13",
+  "6b579d82c11fdd43a55bba0fd10666a707528206e72a79138cf097f85066560a",
+  "964b011048860dfbf17b17bc687d438ca362bc4ac4f16aa4f16aaeaa22234b6c",
+  "94cf72fb030ed3a0b8a66fd050225f0a5856c8873411d40a3bcccefc264d2f61",
+];
+const gachaLibraryMissingSha = "7".repeat(64);
+const gachaLibraryRedirectSha = "8".repeat(64);
+const gachaLibrarySvgSha = "9".repeat(64);
+const gachaLibraryHtmlErrorSha = "a".repeat(64);
+
+const gachaLibrarySeeds = [
+  ["RERUN", ["步未(怪盜)", "真琴(指揮官)", "可可蘿(遊俠)"], "2026-08-01", "2026-08-16"],
+  ["LIMITED_PICKUP", ["鏡華（歌德）"], "2026-08-11", "2026-08-23"],
+  ["RERUN", ["克蘿茜(風靈)", "碧(駕駛員)", "鳳凰", "美冬(工作服)", "碧(工作服)"], "2026-08-16", "2026-08-31"],
+  ["LIMITED_PICKUP", ["凱留（霸瞳天星）"], "2026-08-23", "2026-08-31"],
+  ["LIMITED_PICKUP", ["真穗（少女與戰車）"], "2026-08-31", "2026-09-22"],
+  ["LIMITED_PICKUP", ["艾麗卡（少女與戰車）"], "2026-09-11", "2026-09-22"],
+  ["PERMANENT_PICKUP", ["露露伊"], "2026-09-22", "2026-10-01"],
+  ["RERUN", ["鏡華(春日)", "碧卡拉", "吉塔(魔導士)"], "2026-09-22", "2026-10-01"],
+  ["LIMITED_PICKUP", ["莉莉（女武神）"], "2026-10-01", "2026-10-11"],
+  ["LIMITED_PICKUP", ["普蕾希亞（女武神）"], "2026-10-11", "2026-10-23"],
+  ["RERUN", ["彩羽", "霞（修女）", "華音", "紡希（煉獄）"], "2026-10-11", "2026-10-23"],
+  ["LIMITED_PICKUP", ["可璃亞（女武神）"], "2026-10-23", "2026-10-31"],
+  ["RERUN", ["咲戀（夏日）", "真步（夢想樂園）", "伊莉亞（祭服）", "鈴奈（夏日）", "鈴莓（夏日）", "珠希（夏日）", "凱留（夏日）", "貪吃佩可（夏日）"], "2026-10-23", "2026-10-31"],
+  ["LIMITED_PICKUP", ["雪菲（瓦德拉赫）"], "2026-10-31", "2026-11-03"],
+  ["LIMITED_PICKUP", ["露易絲瑪莉（夏日）"], "2026-11-03", "2026-11-15"],
+  ["RERUN", ["優依（聖誕節）", "美空（聖誕節）", "普蕾西亞(夏日)", "雪菲(夏日)", "厄莉絲(夏日)"], "2026-11-03", "2026-11-15"],
+  ["LIMITED_PICKUP", ["克蕾琪塔（夏日）"], "2026-11-15", "2026-12-01"],
+];
+
+const gachaLibraryForecasts = gachaLibrarySeeds.map((seed, index) => ({
+  candidate_id: `GACHA-DOCX-${String(index + 1).padStart(24, "0")}`,
+  review_order: index + 1,
+  source_declared_pool_kind: seed[0],
+  raw_character_names: seed[1],
+  forecast_start: seed[2],
+  forecast_end: seed[3],
+  precision: "DAY",
+  date_boundary_semantics: "SOURCE_UNSPECIFIED",
+  raw_description_lines: [seed[1].join("、")],
+  raw_forecast_text: `台服預測${seed[2]}～${seed[3]}`,
+  raw_sequence_label: index === 16 ? "第144次" : null,
+  identity_status: "UNVERIFIED_COMMUNITY_NAME",
+  review_status: "PENDING",
+  review_reason: index === 12
+    ? "UNDELIMITED_CHARACTER_TEXT_REQUIRES_REVIEW"
+    : "EXACT_EVENT_LINK_NOT_REVIEWED",
+  promotion_eligible: false,
+  proposed_event_id: null,
+  parser_warnings: index === 12 ? ["UNQUOTED_CHARACTER_SEQUENCE"] : [],
+  image: {
+    asset_url: `/api/v1/gacha-library/assets/${gachaLibraryImageShas[index]}`,
+    byte_length: 1000 + index,
+    mime_type: "image/jpeg",
+    sha256: gachaLibraryImageShas[index],
+  },
+  provenance: {
+    description_locators: [`word/document.xml#paragraph=${index * 4 + 1}`],
+    source_locator: `word/document.xml#paragraph=${index * 4 + 2}`,
+    image_locator: `word/document.xml#paragraph=${index * 4 + 4};image=1`,
+    relationship_id: `rId${index + 4}`,
+    package_path: `word/media/image${index + 1}.jpeg`,
+  },
+}));
+
+const gachaLibraryPayload = {
+  data: {
+    items: gachaLibraryForecasts,
+    total: 17,
+  },
+  meta: {
+    api_version: "v1",
+    schema_version: "gacha-community-docx-candidates/v1",
+    dataset_sha256: "e".repeat(64),
+    source_status: "USER_SUPPLIED",
+    authority: "COMMUNITY_FORECAST",
+    source_id: "GACHA-COMM-002",
+    independence_group: "GACHA-COMM-002",
+    canonical_write_count: 0,
+    source_document: {
+      content_addressed_filename: "0600faf911747c6df1a98afddfe1fe8e5af585ff72af11e2d34299f5e70c4cfe.docx",
+      sha256: "0600faf911747c6df1a98afddfe1fe8e5af585ff72af11e2d34299f5e70c4cfe",
+      byte_length: 2102864,
+    },
+  },
+};
+
+const pveLibraryMeta = {
+  api_version: "v1",
+  schema_version: "private-pve-local-catalog/v1",
+  dataset_sha256: pveDatasetSha,
+  source_status: "SOURCE_PROVIDED",
+  independent_clear_verification: "NOT_PERFORMED",
+  source_workbooks: [
+    {
+      filename: "深域關卡備戰所有屬性1~7.xlsx",
+      sha256: pveWorkbookOneSha,
+      byte_length: 123456,
+      staging_catalog_sha256: pveStagingOneSha,
+    },
+    {
+      filename: "深域關卡8~10&追憶&露娜塔.xlsx",
+      sha256: pveWorkbookTwoSha,
+      byte_length: 234567,
+      staging_catalog_sha256: pveStagingTwoSha,
+    },
+  ],
+};
+
+const pveLibraryEnvelope = (data) => ({ data, meta: pveLibraryMeta });
+const pveProvenance = (sheetName, sourceRange, workbook = 1) => ({
+  source_workbook_sha256: workbook === 1 ? pveWorkbookOneSha : pveWorkbookTwoSha,
+  source_workbook_filename: workbook === 1
+    ? "深域關卡備戰所有屬性1~7.xlsx"
+    : "深域關卡8~10&追憶&露娜塔.xlsx",
+  staging_catalog_sha256: workbook === 1 ? pveStagingOneSha : pveStagingTwoSha,
+  sheet_name: sheetName,
+  source_range: sourceRange,
+});
+
+const pveStageSummaries = [
+  {
+    stage_id: "pve-deep-fire-1-1",
+    mode: "DEEP",
+    element: "FIRE",
+    label_raw: "紅焰深域 1-1",
+    stage_refs: [{ kind: "DEEP_STAGE", area: 1, stage: 1 }],
+    team_count: 1,
+    provenance: pveProvenance("紅焰の深域(火屬性)", "A4:H6"),
+  },
+  {
+    stage_id: "pve-deep-fire-1-2",
+    mode: "DEEP",
+    element: "FIRE",
+    label_raw: "紅焰深域 1-2",
+    stage_refs: [{ kind: "DEEP_STAGE", area: 1, stage: 2 }],
+    team_count: 2,
+    provenance: pveProvenance("紅焰の深域(火屬性)", "J4:Q8"),
+  },
+  {
+    stage_id: "pve-remembrance-arachne-1-5",
+    mode: "REMEMBRANCE",
+    element: "DARK",
+    label_raw: "追憶戰域 阿剌克涅 1–5層",
+    stage_refs: [
+      { kind: "REMEMBRANCE_GROUP", area: 1, stage: 1 },
+      { kind: "REMEMBRANCE_GROUP", area: 1, stage: 5 },
+    ],
+    team_count: 1,
+    provenance: pveProvenance("追憶阿剌克涅1-5", "A9:N12", 2),
+  },
+  {
+    stage_id: "pve-luna-top-ex",
+    mode: "LUNA_TOWER",
+    element: "NONE",
+    label_raw: "露娜塔頂層 EX",
+    stage_refs: [{ kind: "LUNA_TOWER", area: 0, stage: 1 }],
+    team_count: 1,
+    provenance: pveProvenance("露娜塔頂層EX", "A4:L8", 2),
+  },
+];
+
+const pveCurrentDeepNumbers = Array.from({ length: 10 }, (_, index) => index + 1);
+
+function pveAvailableFilters(mode, element) {
+  const modes = [...new Set(pveStageSummaries.map((item) => item.mode))].sort();
+  const elements = [...new Set(
+    pveStageSummaries
+      .filter((item) => !mode || item.mode === mode)
+      .map((item) => item.element),
+  )].sort();
+
+  if (mode === "DEEP" && (!element || element === "FIRE")) {
+    return {
+      modes,
+      elements,
+      areas: pveCurrentDeepNumbers,
+      stages: pveCurrentDeepNumbers,
+    };
+  }
+
+  const refs = pveStageSummaries
+    .filter((item) => (!mode || item.mode === mode) && (!element || item.element === element))
+    .flatMap((item) => item.stage_refs);
+  return {
+    modes,
+    elements,
+    areas: [...new Set(refs.map((ref) => ref.area))].sort((left, right) => left - right),
+    stages: [...new Set(refs.map((ref) => ref.stage))].sort((left, right) => left - right),
+  };
+}
+
+const pveYoutubeSource = {
+  kind: "HYPERLINK",
+  label_raw: "通關影片",
+  origin_cell: "I4",
+  resolution_status: "RESOLVED",
+  alias_id: null,
+  alias_label: null,
+  applies_to_cell: "H4",
+  url: "https://www.youtube.com/watch?v=pveTest1234",
+  media: {
+    kind: "YOUTUBE",
+    external_url: "https://www.youtube.com/watch?v=pveTest1234",
+    embed_url: "https://www.youtube-nocookie.com/embed/pveTest1234",
+    video_id: "pveTest1234",
+  },
+};
+
+const pveExternalSource = {
+  kind: "HYPERLINK",
+  label_raw: "外部解陣參考",
+  origin_cell: "I5",
+  resolution_status: "RESOLVED",
+  alias_id: null,
+  alias_label: null,
+  applies_to_cell: "H5",
+  url: "https://appmedia.jp/priconne-redive/4466131",
+  media: {
+    kind: "EXTERNAL",
+    external_url: "https://appmedia.jp/priconne-redive/4466131",
+    embed_url: null,
+    video_id: null,
+  },
+};
+
+const pvePortraits = pveAssetShas.map((assetSha, index) => ({
+  display_position: index + 1,
+  asset_sha256: assetSha,
+  asset_url: `/api/v1/pve-library/assets/${assetSha}`,
+  icon_url: index === 0
+    ? "https://redive.estertion.win/icon/unit/100161.webp"
+    : index === 1
+      ? "https://redive.estertion.win.example/icon/unit/100131.webp"
+      : null,
+  mapping_status: index === 0 ? "RESOLVED" : "UNRESOLVED",
+  tw_name: index === 0 ? "日和" : null,
+  display_rarity: index === 0 ? "SIX_STAR" : null,
+  display_source: index === 0 ? "ESTERTION" : "WORKBOOK_EMBEDDED",
+  unit_key: index === 0 ? "hiyori_orig" : null,
+  anchor_cell: `${String.fromCharCode(74 + index)}4`,
+}));
+
+const pveDeepDetail = {
+  ...pveStageSummaries[1],
+  teams: [
+    {
+      team_id: "pve-team-fire-1-2-001",
+      display_order: 1,
+      notes_raw: "跳跳虎可換情姐；依 Excel 原文保留。",
+      flags: ["SOURCE_PROVIDED"],
+      source_range: "J4:Q5",
+      portraits: pvePortraits,
+      axes: [
+        {
+          axis_id: "pve-axis-fire-1-2-001-a",
+          operation_raw: "OXOOX",
+          notes_raw: "半自動；來源沒有角色位置對齊聲明。",
+          source_cell: "H4",
+          operation: {
+            kind: "SOURCE_PATTERN",
+            order_basis: "WORKBOOK_TEXT_LEFT_TO_RIGHT",
+            member_alignment: "UNRESOLVED",
+            execution_hints: ["半自動"],
+            variants: [
+              {
+                kind: "SET_PATTERN",
+                raw: "OXOOX",
+                origin_field: "OPERATION_TEXT",
+                origin_cell: "H4",
+                source_order_states: ["SET", "NOT_SET", "SET", "SET", "NOT_SET"],
+              },
+            ],
+          },
+          source_links: [pveYoutubeSource],
+        },
+        {
+          axis_id: "pve-axis-fire-1-2-001-b",
+          operation_raw: "全SET",
+          notes_raw: "另一條 Excel 收錄軸。",
+          source_cell: "H5",
+          operation: {
+            kind: "ALL_SET",
+            order_basis: "WORKBOOK_TEXT_LEFT_TO_RIGHT",
+            member_alignment: "UNRESOLVED",
+            execution_hints: [],
+            variants: [
+              {
+                kind: "ALL_SET",
+                raw: "全SET",
+                origin_field: "OPERATION_TEXT",
+                origin_cell: "H5",
+                source_order_states: ["SET", "SET", "SET", "SET", "SET"],
+              },
+            ],
+          },
+          source_links: [pveExternalSource],
+        },
+      ],
+      source_links: [pveYoutubeSource, pveExternalSource],
+      provenance: pveProvenance("紅焰の深域(火屬性)", "J4:Q5"),
+    },
+    {
+      team_id: "pve-team-fire-1-2-002",
+      display_order: 2,
+      notes_raw: null,
+      flags: ["SOURCE_PROVIDED", "NO_OPERATION_AXIS"],
+      source_range: "J6:Q6",
+      portraits: pvePortraits.map((portrait) => ({ ...portrait, anchor_cell: portrait.anchor_cell.replace("4", "6") })),
+      axes: [],
+      source_links: [],
+      provenance: pveProvenance("紅焰の深域(火屬性)", "J6:Q6"),
+    },
+  ],
+};
+
+const pveLibraryDetails = new Map([
+  [pveDeepDetail.stage_id, pveDeepDetail],
+  [pveStageSummaries[2].stage_id, { ...pveStageSummaries[2], teams: [] }],
+  [pveStageSummaries[3].stage_id, { ...pveStageSummaries[3], teams: [] }],
+]);
 
 function splitTimeline(raw) {
   return raw.split(";").map((value) => {
@@ -1457,6 +1805,17 @@ function send(response, status, payload) {
   response.end(JSON.stringify(payload));
 }
 
+function sendPng(response, payload) {
+  response.writeHead(200, {
+    "Access-Control-Allow-Origin": "*",
+    "Cache-Control": "no-store",
+    "Content-Length": payload.byteLength,
+    "Content-Type": "image/png",
+    "X-Content-Type-Options": "nosniff",
+  });
+  response.end(payload);
+}
+
 async function readJson(request) {
   const chunks = [];
   for await (const chunk of request) chunks.push(chunk);
@@ -1480,9 +1839,87 @@ const server = createServer(async (request, response) => {
   if (url.pathname === "/health/live" || url.pathname === "/health/ready") {
     return send(response, 200, { status: "ok", checks: { fixture: "TEST_ONLY" } });
   }
+  const pveAssetMatch = url.pathname.match(/^\/api\/v1\/pve-library\/assets\/([0-9a-f]{64})$/);
+  if (pveAssetMatch && pveAssetShas.includes(pveAssetMatch[1])) {
+    return sendPng(response, pveFixturePng);
+  }
+  const gachaLibraryAssetMatch = url.pathname.match(/^\/api\/v1\/gacha-library\/assets\/([0-9a-f]{64})$/);
+  if (gachaLibraryAssetMatch) {
+    const sha = gachaLibraryAssetMatch[1];
+    if (gachaLibraryImageShas.includes(sha)) return sendPng(response, pveFixturePng);
+    if (sha === gachaLibraryMissingSha) {
+      return send(response, 404, {
+        error: { code: "GACHA_ASSET_NOT_FOUND", message: "Fixture asset was not found." },
+      });
+    }
+    if (sha === gachaLibraryRedirectSha) {
+      response.writeHead(302, {
+        Location: `/api/v1/gacha-library/assets/${gachaLibraryImageShas[0]}`,
+      });
+      return response.end();
+    }
+    if (sha === gachaLibrarySvgSha) {
+      response.writeHead(200, {
+        "Cache-Control": "no-store",
+        "Content-Type": "image/svg+xml",
+      });
+      return response.end('<svg xmlns="http://www.w3.org/2000/svg"><text>unsafe fixture</text></svg>');
+    }
+    if (sha === gachaLibraryHtmlErrorSha) {
+      response.writeHead(404, {
+        "Cache-Control": "no-store",
+        "Content-Type": "text/html; charset=utf-8",
+      });
+      return response.end("<h1>fixture not found</h1>");
+    }
+  }
+  if (url.pathname === "/api/v1/gacha-library/forecasts") {
+    return send(response, 200, gachaLibraryPayload);
+  }
+  if (url.pathname === "/api/v1/pve-library/stages") {
+    const mode = url.searchParams.get("mode")?.trim() || null;
+    const element = url.searchParams.get("element")?.trim() || null;
+    const parseFilterNumber = (name) => {
+      const raw = url.searchParams.get(name)?.trim();
+      if (!raw) return null;
+      const value = Number(raw);
+      return Number.isInteger(value) && value >= 0 ? value : null;
+    };
+    const area = parseFilterNumber("area");
+    const stage = parseFilterNumber("stage");
+    const items = pveStageSummaries.filter((item) => (
+      (!mode || item.mode === mode)
+      && (!element || item.element === element)
+      && (area === null || item.stage_refs.some((ref) => ref.area === area))
+      && (stage === null || item.stage_refs.some((ref) => ref.stage === stage))
+    ));
+    return send(response, 200, pveLibraryEnvelope({
+      items,
+      filters: { mode, element, area, stage },
+      available_filters: pveAvailableFilters(mode, element),
+      total: items.length,
+    }));
+  }
+  const pveStageMatch = url.pathname.match(/^\/api\/v1\/pve-library\/stages\/([^/]+)$/);
+  if (pveStageMatch) {
+    const detail = pveLibraryDetails.get(decodeURIComponent(pveStageMatch[1]));
+    if (detail) return send(response, 200, pveLibraryEnvelope(detail));
+    return send(response, 404, {
+      error: {
+        code: "PVE_STAGE_NOT_FOUND",
+        message: "PVE library stage was not found.",
+        details: { stage_id: decodeURIComponent(pveStageMatch[1]) },
+      },
+    });
+  }
   if (url.pathname === "/api/v1/baseline") return send(response, 200, baseline);
   if (url.pathname === "/api/v1/stages") return send(response, 200, envelope(stageSummaries));
   if (url.pathname === "/api/v1/gacha/timeline") {
+    if (gachaCanonicalUnavailable) {
+      return send(response, 503, {
+        detail: { code: "DATABASE_UNAVAILABLE" },
+      });
+    }
     return send(response, 200, envelope(gachaTimeline, ["GACHA_RESEARCH_ROWS_PRESENT"], {
       server: "MIXED",
       evidence_ids: ["ev010", "ev011", "ev012", "ev013", "ev014", "ev032", "ev033", "ev048", "ev123"],
@@ -1498,6 +1935,11 @@ const server = createServer(async (request, response) => {
     }));
   }
   if (url.pathname === "/api/v1/gacha/community-sources") {
+    if (gachaCanonicalUnavailable) {
+      return send(response, 503, {
+        detail: { code: "DATABASE_UNAVAILABLE" },
+      });
+    }
     return send(response, 200, envelope(gachaCommunitySources, ["STALE_COMMUNITY_SOURCES_PRESENT"]));
   }
   const stageMatch = url.pathname.match(/^\/api\/v1\/stages\/([^/]+)$/);

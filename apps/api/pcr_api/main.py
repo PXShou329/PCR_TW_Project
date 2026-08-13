@@ -10,7 +10,19 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from .config import Settings
 from .database import build_engine, build_session_factory
+from .gacha_library import (
+    GachaLibraryNotFound,
+    GachaLibraryRuntime,
+    GachaLibraryUnavailable,
+)
+from .pve_library import (
+    PveLibraryNotFound,
+    PveLibraryRuntime,
+    PveLibraryUnavailable,
+)
 from .routes.health import router as health_router
+from .routes.gacha_library import router as gacha_library_router
+from .routes.pve_library import router as pve_library_router
 from .routes.v1 import router as v1_router
 
 
@@ -28,6 +40,8 @@ def create_app(
     )
     app.state.settings = resolved
     app.state.session_factory = session_factory or build_session_factory(build_engine(resolved))
+    app.state.pve_library_runtime = PveLibraryRuntime.from_settings(resolved)
+    app.state.gacha_library_runtime = GachaLibraryRuntime.from_settings(resolved)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=list(resolved.cors_origins),
@@ -63,6 +77,70 @@ def create_app(
             },
         )
 
+    @app.exception_handler(PveLibraryUnavailable)
+    async def pve_library_unavailable(
+        _request: Request,
+        error: PveLibraryUnavailable,
+    ) -> JSONResponse:
+        body: dict[str, object] = {
+            "code": error.code,
+            "message": error.message,
+        }
+        if error.details is not None:
+            body["details"] = error.details
+        return JSONResponse(status_code=503, content={"error": body})
+
+    @app.exception_handler(PveLibraryNotFound)
+    async def pve_library_not_found(
+        _request: Request,
+        error: PveLibraryNotFound,
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=404,
+            content={
+                "error": {
+                    "code": "PVE_LIBRARY_NOT_FOUND",
+                    "message": "The requested PVE library resource was not found.",
+                    "details": {
+                        "resource": error.resource,
+                        "id": error.identifier,
+                    },
+                }
+            },
+        )
+
+    @app.exception_handler(GachaLibraryUnavailable)
+    async def gacha_library_unavailable(
+        _request: Request,
+        error: GachaLibraryUnavailable,
+    ) -> JSONResponse:
+        body: dict[str, object] = {
+            "code": error.code,
+            "message": error.message,
+        }
+        if error.details is not None:
+            body["details"] = error.details
+        return JSONResponse(status_code=503, content={"error": body})
+
+    @app.exception_handler(GachaLibraryNotFound)
+    async def gacha_library_not_found(
+        _request: Request,
+        error: GachaLibraryNotFound,
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=404,
+            content={
+                "error": {
+                    "code": "GACHA_LIBRARY_NOT_FOUND",
+                    "message": "The requested Gacha library resource was not found.",
+                    "details": {
+                        "resource": error.resource,
+                        "id": error.identifier,
+                    },
+                }
+            },
+        )
+
     @app.middleware("http")
     async def security_headers(request: Request, call_next: Callable) -> Response:
         response = await call_next(request)
@@ -73,6 +151,8 @@ def create_app(
 
     app.include_router(health_router)
     app.include_router(v1_router)
+    app.include_router(pve_library_router)
+    app.include_router(gacha_library_router)
     return app
 
 

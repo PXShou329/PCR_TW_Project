@@ -45,6 +45,161 @@ export interface ApiEnvelope<T> {
   meta: ApiMetadata;
 }
 
+export interface PveLibrarySourceWorkbook {
+  filename: string;
+  sha256: string;
+  byte_length: number;
+  staging_catalog_sha256: string;
+}
+
+export interface PveLibraryMeta {
+  api_version: "v1";
+  schema_version: "private-pve-local-catalog/v1";
+  dataset_sha256: string;
+  source_status: "SOURCE_PROVIDED";
+  independent_clear_verification: "NOT_PERFORMED";
+  source_workbooks: PveLibrarySourceWorkbook[];
+}
+
+export interface PveLibraryEnvelope<T> {
+  data: T;
+  meta: PveLibraryMeta;
+}
+
+export interface PveStageRef {
+  kind: string;
+  area: number;
+  stage: number;
+}
+
+export interface PveProvenance {
+  source_workbook_sha256: string;
+  source_workbook_filename: string;
+  staging_catalog_sha256: string;
+  sheet_name: string;
+  source_range: string;
+}
+
+export interface PveStageSummary {
+  stage_id: string;
+  mode: string;
+  element: string;
+  label_raw: string | null;
+  stage_refs: PveStageRef[];
+  team_count: number;
+  provenance: PveProvenance;
+}
+
+export interface PveLibraryStageFilters {
+  mode?: string;
+  element?: string;
+  area?: number;
+  stage?: number;
+}
+
+export interface PveStageListData {
+  items: PveStageSummary[];
+  filters: {
+    mode: string | null;
+    element: string | null;
+    area: number | null;
+    stage: number | null;
+  };
+  available_filters: {
+    modes: string[];
+    elements: string[];
+    areas: number[];
+    stages: number[];
+  };
+  total: number;
+}
+
+export interface PveYoutubeMedia {
+  kind: "YOUTUBE";
+  external_url: string;
+  embed_url: string;
+  video_id: string;
+}
+
+export interface PveExternalMedia {
+  kind: "EXTERNAL";
+  external_url: string;
+  embed_url: null;
+  video_id: null;
+}
+
+export type PveLinkMedia = PveYoutubeMedia | PveExternalMedia;
+
+export interface PveSourceLink {
+  kind: string;
+  label_raw: string | null;
+  origin_cell: string;
+  resolution_status: string;
+  alias_id: string | null;
+  alias_label: string | null;
+  applies_to_cell: string | null;
+  url: string | null;
+  media: PveLinkMedia | null;
+}
+
+export type PveSourceOrderState = "SET" | "NOT_SET";
+
+export interface PveOperationVariant {
+  kind: string;
+  raw: string;
+  origin_field: string;
+  origin_cell: string;
+  source_order_states: PveSourceOrderState[];
+}
+
+export interface PveOperation {
+  kind: string;
+  order_basis: string;
+  member_alignment: string;
+  execution_hints: string[];
+  variants: PveOperationVariant[];
+}
+
+export interface PveAxis {
+  axis_id: string;
+  operation_raw: string | null;
+  notes_raw: string | null;
+  source_cell: string;
+  operation: PveOperation;
+  source_links: PveSourceLink[];
+}
+
+export type PveDisplayRarity = "THREE_STAR" | "SIX_STAR";
+
+export interface PvePortrait {
+  display_position: number;
+  asset_sha256: string;
+  asset_url: string;
+  icon_url: string | null;
+  mapping_status: string;
+  unit_key: string | null;
+  tw_name: string | null;
+  display_rarity: PveDisplayRarity | null;
+  display_source: string;
+  anchor_cell: string;
+}
+
+export interface PveTeam {
+  team_id: string;
+  display_order: number;
+  notes_raw: string | null;
+  flags: string[];
+  source_range: string;
+  portraits: PvePortrait[];
+  axes: PveAxis[];
+  source_links: PveSourceLink[];
+  provenance: PveProvenance;
+}
+
+export interface PveStageDetail extends PveStageSummary {
+  teams: PveTeam[];
+}
+
 export interface GateSummary {
   gate_a: boolean;
   gate_b: boolean;
@@ -420,6 +575,76 @@ export interface GachaCommunitySource {
   notes: string;
 }
 
+export type GachaLibraryPoolKind =
+  | "LIMITED_PICKUP"
+  | "PERMANENT_PICKUP"
+  | "RERUN";
+
+export interface GachaLibraryForecast {
+  candidate_id: string;
+  review_order: number;
+  source_declared_pool_kind: GachaLibraryPoolKind;
+  /** User-supplied document labels; never treated as official TW names. */
+  raw_character_names: string[];
+  forecast_start: string;
+  forecast_end: string;
+  raw_sequence_label: string | null;
+  raw_description_lines: string[];
+  raw_forecast_text: string;
+  precision: "DAY";
+  date_boundary_semantics: "SOURCE_UNSPECIFIED";
+  identity_status: "UNVERIFIED_COMMUNITY_NAME";
+  review_status: "PENDING";
+  review_reason:
+    | "EXACT_EVENT_LINK_NOT_REVIEWED"
+    | "UNDELIMITED_CHARACTER_TEXT_REQUIRES_REVIEW";
+  promotion_eligible: false;
+  proposed_event_id: null;
+  parser_warnings: Array<"UNQUOTED_CHARACTER_SEQUENCE">;
+  image: {
+    sha256: string;
+    mime_type: "image/jpeg" | "image/png" | "image/webp";
+    byte_length: number;
+    /** Must be a same-origin /api/v1/gacha-library/assets/<sha256> path. */
+    asset_url: string;
+  };
+  provenance: {
+    description_locators: string[];
+    source_locator: string;
+    image_locator: string;
+    relationship_id: string;
+    package_path: string;
+  };
+}
+
+export interface GachaLibrarySourceDocument {
+  content_addressed_filename: string;
+  sha256: string;
+  byte_length: number;
+}
+
+export interface GachaLibraryForecastData {
+  items: GachaLibraryForecast[];
+  total: number;
+}
+
+export interface GachaLibraryMeta {
+  api_version: "v1";
+  schema_version: "gacha-community-docx-candidates/v1";
+  dataset_sha256: string;
+  source_status: "USER_SUPPLIED";
+  authority: "COMMUNITY_FORECAST";
+  source_id: "GACHA-COMM-002";
+  independence_group: "GACHA-COMM-002";
+  canonical_write_count: 0;
+  source_document: GachaLibrarySourceDocument;
+}
+
+export interface GachaLibraryEnvelope<T> {
+  data: T;
+  meta: GachaLibraryMeta;
+}
+
 export interface PvpCounter {
   counter_id: string;
   defense_id: string;
@@ -543,5 +768,10 @@ export interface ApiProblem {
     resource?: string;
     id?: string | null;
     reason?: string;
+  };
+  error?: {
+    code?: string;
+    message?: string;
+    details?: Record<string, string | number | null>;
   };
 }
