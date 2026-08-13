@@ -464,9 +464,14 @@ if ($pve.data.total -lt 1 -or $gacha.data.total -lt 1) { throw 'Empty private li
 if ($gacha.meta.canonical_write_count -ne 0) { throw 'Gacha canonical write guard failed' }
 
 $env:PLAYWRIGHT_BASE_URL = 'http://127.0.0.1:3600'
-npx playwright test tests/e2e/private-libraries/pve-library.spec.ts tests/e2e/private-libraries/gacha-library.spec.ts `
-  --project=desktop-chromium --project=mobile-chromium
-Remove-Item Env:PLAYWRIGHT_BASE_URL
+$env:PLAYWRIGHT_PRIVATE_LIBRARIES_REAL = '1'
+try {
+  npx playwright test tests/e2e/private-libraries/pve-library.spec.ts tests/e2e/private-libraries/gacha-library.spec.ts `
+    --project=desktop-chromium --project=mobile-chromium
+} finally {
+  Remove-Item Env:PLAYWRIGHT_PRIVATE_LIBRARIES_REAL -ErrorAction SilentlyContinue
+  Remove-Item Env:PLAYWRIGHT_BASE_URL -ErrorAction SilentlyContinue
+}
 ```
 
 保留本週期的 `guards/`、`rollback/`、`audit/`、`retired/` 與驗證輸出；不要在同一更新

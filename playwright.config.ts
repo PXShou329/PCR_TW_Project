@@ -1,6 +1,9 @@
 import { defineConfig, devices, type PlaywrightTestConfig } from "@playwright/test";
 
 const externalBaseUrl = process.env.PLAYWRIGHT_BASE_URL?.trim() || undefined;
+const privateLibrariesProvisioned =
+  !externalBaseUrl
+  || process.env.PLAYWRIGHT_PRIVATE_LIBRARIES_REAL?.trim() === "1";
 // Keep mock-backed E2E isolated from the real Compose web port used by local
 // deployment smoke tests, so reuseExistingServer cannot silently test a stale image.
 const localBaseUrl = "http://127.0.0.1:3101";
@@ -76,6 +79,9 @@ const localFailureProjects: PlaywrightTestConfig["projects"] = externalBaseUrl
 
 export default defineConfig({
   testDir: "./tests/e2e",
+  // Private-library specs use the local mock catalog by default. An external
+  // stack must opt in only after provisioning the ignored XLSX/DOCX artifacts.
+  testIgnore: privateLibrariesProvisioned ? [] : [/private-libraries/],
   fullyParallel: true,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 1 : 0,

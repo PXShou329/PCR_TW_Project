@@ -220,10 +220,10 @@ jobs:
         run: docker compose --env-file .env.ci --project-name "$COMPOSE_PROJECT_NAME" --profile verification -f infra/compose.yml run --rm --no-deps revision-history-verify
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
-      - name: Run mock-backed P-Arena browser E2E
+      - name: Run mock-backed P-Arena and private-library browser E2E
         env:
           PLAYWRIGHT_BASE_URL: ""
-        run: npm run test:e2e -- tests/e2e/parena-planner.spec.ts
+        run: npm run test:e2e -- tests/e2e/parena-planner.spec.ts tests/e2e/private-libraries
       - name: Run real-stack browser E2E
         run: npm run test:e2e
       - name: Capture container state
