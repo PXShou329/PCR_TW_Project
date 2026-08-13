@@ -249,6 +249,31 @@ def test_personal_gacha_post_is_not_compute_allowlisted(
     assert "APPLICATION_GATE_D_STATUS=STRUCTURAL_FAILED" in output.out
 
 
+def test_local_file_library_skips_canonical_envelope_but_remains_get_only(
+    live_openapi: dict,
+    current_stats: dict,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    expanded = deepcopy(live_openapi)
+    expanded["paths"]["/api/v1/pve-library/stages"]["post"] = deepcopy(
+        expanded["paths"]["/api/v1/pvp/counters"]["get"]
+    )
+
+    result = verifier.main(
+        [],
+        openapi_loader=lambda: expanded,
+        stats_loader=lambda: current_stats,
+    )
+
+    output = capsys.readouterr()
+    assert result == 1
+    assert (
+        "/api/v1/pve-library/stages: public write method is forbidden: POST"
+        in output.err
+    )
+    assert "APPLICATION_GATE_D_STATUS=STRUCTURAL_FAILED" in output.out
+
+
 def test_require_pass_exits_one_while_data_gates_are_blocked(
     live_openapi: dict,
     current_stats: dict,

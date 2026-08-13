@@ -1662,6 +1662,160 @@ code {
   min-height: 4.2em;
 }
 
+.private-gacha-scope {
+  margin-bottom: 1rem;
+  background:
+    linear-gradient(135deg, rgba(242, 203, 109, 0.11), transparent 46%),
+    var(--surface);
+  border-color: rgba(242, 203, 109, 0.24);
+}
+
+.private-gacha-scope__heading,
+.private-gacha-card__heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.private-gacha-scope__heading h3 {
+  margin: 0.8rem 0 0;
+}
+
+.private-gacha-scope__heading > code {
+  color: var(--faint);
+  font-size: 0.68rem;
+}
+
+.private-gacha-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 1.2rem 0 0;
+  gap: 0.65rem;
+}
+
+.private-gacha-disclosure {
+  margin: 1rem 0 0;
+  padding: 0.8rem;
+  color: #e7d7b5;
+  background: rgba(242, 203, 109, 0.08);
+  border: 1px solid rgba(242, 203, 109, 0.18);
+  border-radius: 10px;
+  font-size: 0.82rem;
+}
+
+.private-gacha-status {
+  min-height: 9rem;
+}
+
+.private-gacha-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.private-gacha-card {
+  min-width: 0;
+  overflow: hidden;
+  padding: 0;
+  border-color: rgba(242, 203, 109, 0.2);
+}
+
+.private-gacha-card__media {
+  display: grid;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  place-items: center;
+  background: rgba(18, 16, 24, 0.75);
+  border-bottom: 1px solid var(--line);
+}
+
+.private-gacha-card__media img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.private-gacha-image-fallback {
+  display: grid;
+  min-height: 100%;
+  padding: 1.2rem;
+  color: var(--muted);
+  text-align: center;
+  place-content: center;
+  gap: 0.3rem;
+}
+
+.private-gacha-image-fallback span {
+  color: var(--ink);
+  font-weight: 800;
+}
+
+.private-gacha-card__body {
+  padding: 1.25rem;
+}
+
+.private-gacha-card__heading > span {
+  color: var(--faint);
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+.private-gacha-names {
+  display: flex;
+  flex-wrap: wrap;
+  margin: 1.1rem 0 0;
+  padding: 0;
+  gap: 0.45rem;
+  list-style: none;
+}
+
+.private-gacha-names li {
+  max-width: 100%;
+  padding: 0.45rem 0.65rem;
+  overflow-wrap: anywhere;
+  background: rgba(255, 255, 255, 0.045);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-weight: 750;
+}
+
+.private-gacha-raw-note,
+.private-gacha-no-warning {
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.private-gacha-raw-note {
+  margin: 0.6rem 0 0;
+}
+
+.private-gacha-window {
+  margin-top: 1rem;
+  background: rgba(242, 203, 109, 0.065);
+  border-color: rgba(242, 203, 109, 0.17);
+}
+
+.private-gacha-warnings {
+  margin-top: 1rem;
+  padding: 0.8rem;
+  color: #e7d7b5;
+  background: rgba(255, 125, 114, 0.08);
+  border: 1px solid rgba(255, 125, 114, 0.18);
+  border-radius: 10px;
+  font-size: 0.78rem;
+}
+
+.private-gacha-warnings ul {
+  margin: 0.45rem 0 0;
+  padding-left: 1.1rem;
+}
+
+.private-gacha-no-warning {
+  margin: 1rem 0 0;
+}
+
 .source-link {
   display: inline-flex;
   align-items: center;
@@ -1938,7 +2092,8 @@ code {
   }
 
   .gacha-timeline-grid,
-  .community-grid {
+  .community-grid,
+  .private-gacha-grid {
     grid-template-columns: 1fr;
   }
 }
@@ -2044,6 +2199,7 @@ code {
   .arena-search-grid,
   .arena-search-scope,
   .gacha-summary,
+  .private-gacha-summary,
   .gacha-facts,
   .gacha-values,
   .community-card dl {
@@ -2052,8 +2208,17 @@ code {
 
   .gacha-scope__heading,
   .gacha-card__heading,
-  .community-card__heading {
+  .community-card__heading,
+  .private-gacha-scope__heading,
+  .private-gacha-card__heading {
     display: block;
+  }
+
+  .private-gacha-scope__heading > code,
+  .private-gacha-card__heading > span {
+    display: block;
+    margin-top: 0.75rem;
+    white-space: normal;
   }
 
   .gacha-scope__heading .badge-row,
@@ -2268,6 +2433,707 @@ code {
   .parena-query-actions {
     align-items: stretch;
     flex-direction: column;
+  }
+}
+
+/* Local workbook-backed PVE library. Kept separate from canonical Evidence UI. */
+.pve-mode-nav {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 1rem 0 2.25rem;
+  padding: 0.35rem;
+  gap: 0.35rem;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid var(--line);
+  border-radius: calc(var(--radius-md) + 4px);
+}
+
+.pve-mode-nav__item {
+  display: grid;
+  min-width: 0;
+  padding: 0.85rem 1rem;
+  gap: 0.15rem;
+  color: var(--muted);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  text-decoration: none;
+  transition: color 160ms ease, background 160ms ease, border-color 160ms ease;
+}
+
+.pve-mode-nav__item:hover {
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.pve-mode-nav__item[aria-current="page"] {
+  color: var(--ink);
+  background: linear-gradient(135deg, rgba(143, 188, 255, 0.16), rgba(242, 203, 109, 0.08));
+  border-color: rgba(143, 188, 255, 0.28);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.16);
+}
+
+.pve-mode-nav__item strong {
+  font-size: 0.95rem;
+}
+
+.pve-mode-nav__item span {
+  overflow: hidden;
+  color: var(--faint);
+  font-size: 0.68rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pve-library-hero {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(260px, 0.65fr);
+  align-items: end;
+  overflow: hidden;
+  padding: clamp(1.25rem, 3vw, 2.25rem);
+  gap: clamp(1.5rem, 5vw, 4rem);
+  margin: 1.25rem 0 2rem;
+  background:
+    radial-gradient(circle at 9% 0%, rgba(143, 188, 255, 0.12), transparent 38%),
+    rgba(255, 255, 255, 0.025);
+  border: 1px solid var(--line);
+  border-radius: calc(var(--radius-lg) + 2px);
+}
+
+.pve-library-hero--remembrance {
+  background:
+    radial-gradient(circle at 8% 0%, rgba(225, 149, 255, 0.13), transparent 38%),
+    rgba(255, 255, 255, 0.025);
+}
+
+.pve-library-hero--luna {
+  background:
+    radial-gradient(circle at 8% 0%, rgba(242, 203, 109, 0.13), transparent 38%),
+    rgba(255, 255, 255, 0.025);
+}
+
+.pve-library-hero h1,
+.pve-library-detail h1 {
+  margin: 0.45rem 0 1rem;
+  font-size: clamp(2.45rem, 6vw, 4.9rem);
+}
+
+.pve-library-hero__lead,
+.pve-library-detail__lead {
+  max-width: 760px;
+  color: var(--muted);
+}
+
+.pve-library-disclosure {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  padding: 1rem;
+  gap: 0.85rem;
+  background: linear-gradient(145deg, rgba(242, 203, 109, 0.1), rgba(255, 125, 114, 0.055));
+  border: 1px solid rgba(242, 203, 109, 0.28);
+  border-radius: var(--radius-md);
+}
+
+.pve-library-disclosure strong,
+.pve-library-disclosure div > span {
+  display: block;
+}
+
+.pve-library-disclosure__mark {
+  display: grid;
+  width: 3rem;
+  height: 3rem;
+  place-items: center;
+  color: #18110a;
+  background: var(--gold);
+  border-radius: 12px;
+  font-size: 0.65rem;
+  font-weight: 950;
+  letter-spacing: 0.04em;
+}
+
+.pve-library-disclosure strong {
+  color: #ffe09a;
+  font-size: 1.05rem;
+}
+
+.pve-library-disclosure div > span {
+  margin-top: 0.35rem;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.pve-library-filters {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
+  align-items: end;
+  padding: clamp(1rem, 2vw, 1.4rem);
+  gap: 0.85rem;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.02));
+}
+
+.pve-library-filters--compact {
+  grid-template-columns: minmax(220px, 0.5fr) auto minmax(0, 1fr);
+}
+
+.pve-library-filters label {
+  display: grid;
+  min-width: 0;
+  gap: 0.35rem;
+}
+
+.pve-library-filters label > span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.pve-library-filters select,
+.pve-library-filters input {
+  width: 100%;
+  min-height: 46px;
+  padding: 0.65rem 0.75rem;
+  color: var(--ink);
+  background: var(--bg-raised);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  outline: none;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.pve-library-filters select:hover {
+  border-color: rgba(143, 188, 255, 0.48);
+}
+
+.pve-library-filters select:focus-visible {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px rgba(143, 188, 255, 0.13);
+}
+
+.pve-library-filters select:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.pve-library-filter-actions {
+  display: flex;
+  align-items: center;
+  min-height: 46px;
+  gap: 0.65rem;
+  white-space: nowrap;
+}
+
+.pve-library-filter-actions .primary-action {
+  min-height: 46px;
+}
+
+.pve-library-results {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  margin: 2.5rem 0 1rem;
+  gap: 1rem;
+}
+
+.pve-library-results-block {
+  margin-top: clamp(2.25rem, 6vw, 4rem);
+}
+
+.pve-filter-notice {
+  margin: 1rem 0 0;
+  padding: 0.8rem 1rem;
+  color: #f4ddb0;
+  background: rgba(242, 203, 109, 0.07);
+  border: 1px solid rgba(242, 203, 109, 0.18);
+  border-radius: var(--radius-sm);
+  font-size: 0.8rem;
+}
+
+.pve-library-results h2,
+.pve-library-results p {
+  margin-bottom: 0;
+}
+
+.pve-library-results p {
+  color: var(--muted);
+}
+
+.pve-library-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 270px), 1fr));
+  gap: 0.85rem;
+}
+
+.pve-library-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 225px;
+  padding: 1.25rem;
+  transition: border-color 160ms ease, transform 160ms ease, background 160ms ease;
+  text-decoration: none;
+}
+
+.pve-library-card::before {
+  position: absolute;
+  top: 0;
+  right: 1.25rem;
+  left: 1.25rem;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, rgba(143, 188, 255, 0.6), transparent);
+  content: "";
+}
+
+.pve-library-card:hover {
+  background: var(--surface-strong);
+  border-color: rgba(143, 188, 255, 0.42);
+  transform: translateY(-2px);
+}
+
+.pve-library-card__topline,
+.pve-library-card__footer,
+.pve-library-team__heading,
+.pve-axis__heading,
+.pve-source__heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.pve-library-card h3 {
+  margin: 1.35rem 0 0.45rem;
+  font-size: 1.35rem;
+}
+
+.pve-library-card__refs {
+  color: var(--faint);
+  font-size: 0.76rem;
+}
+
+.pve-library-card__footer {
+  align-items: center;
+  margin-top: auto;
+  padding-top: 1.25rem;
+  color: var(--muted);
+  border-top: 1px solid var(--line);
+  font-size: 0.78rem;
+}
+
+.pve-library-card__footer span {
+  color: var(--faint);
+  font-size: 0.7rem;
+}
+
+.pve-library-detail__meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.pve-library-detail__summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(240px, 0.6fr);
+  align-items: end;
+  gap: 2rem;
+}
+
+.pve-library-detail__count {
+  padding: 1.2rem;
+  text-align: right;
+}
+
+.pve-library-detail__count strong,
+.pve-library-detail__count span {
+  display: block;
+}
+
+.pve-library-detail__count strong {
+  font-size: 2.6rem;
+  line-height: 1;
+}
+
+.pve-library-detail__count span {
+  margin-top: 0.5rem;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.pve-library-team-list {
+  display: grid;
+  margin-top: 1rem;
+  gap: 1rem;
+}
+
+.pve-library-team {
+  min-width: 0;
+  padding: clamp(1rem, 3vw, 1.65rem);
+}
+
+.pve-library-team__heading h3 {
+  margin-bottom: 0;
+  font-size: 1.3rem;
+}
+
+.pve-library-team__notes {
+  margin: 1rem 0 0;
+  color: var(--muted);
+  font-size: 0.83rem;
+}
+
+.pve-portraits {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  margin: 1.25rem 0;
+  padding: 0;
+  gap: clamp(0.3rem, 1.5vw, 0.7rem);
+  list-style: none;
+}
+
+.pve-portrait {
+  position: relative;
+  min-width: 0;
+  aspect-ratio: 1;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--line);
+  border-radius: clamp(9px, 2vw, 16px);
+}
+
+.pve-portrait img,
+.pve-portrait__fallback {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+  object-fit: cover;
+}
+
+.pve-portrait__fallback {
+  color: var(--faint);
+  background:
+    radial-gradient(circle at 50% 36%, rgba(242, 203, 109, 0.2), transparent 28%),
+    var(--bg-raised);
+  font-size: clamp(1.2rem, 5vw, 2rem);
+  font-weight: 900;
+}
+
+.pve-portrait__position {
+  position: absolute;
+  right: 0.3rem;
+  bottom: 0.3rem;
+  display: grid;
+  width: 1.25rem;
+  height: 1.25rem;
+  place-items: center;
+  color: var(--ink);
+  background: rgba(13, 11, 18, 0.78);
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  font-size: 0.58rem;
+  font-weight: 850;
+}
+
+.pve-axis-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.pve-axis {
+  min-width: 0;
+  padding: 1rem;
+  background: rgba(0, 0, 0, 0.13);
+  border: 1px solid var(--line);
+  border-radius: 13px;
+}
+
+.pve-axis__heading h4,
+.pve-source__heading h5 {
+  margin: 0;
+}
+
+.pve-axis__heading code,
+.pve-source__heading code {
+  color: var(--faint);
+  font-size: 0.65rem;
+}
+
+.pve-axis__raw {
+  margin: 0.8rem 0 0;
+  color: var(--ink);
+  font-weight: 750;
+  white-space: pre-wrap;
+}
+
+.pve-axis__notes,
+.pve-axis__alignment {
+  margin: 0.55rem 0 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.pve-axis__alignment {
+  padding: 0.65rem 0.75rem;
+  color: #f4ddb0;
+  background: rgba(242, 203, 109, 0.07);
+  border-left: 3px solid var(--gold);
+}
+
+.pve-operation-variants,
+.pve-source-list {
+  display: grid;
+  margin-top: 0.9rem;
+  gap: 0.65rem;
+}
+
+.pve-operation-variant {
+  padding: 0.75rem;
+  background: rgba(255, 255, 255, 0.035);
+  border-radius: 10px;
+}
+
+.pve-operation-variant__meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  color: var(--faint);
+  font-size: 0.68rem;
+}
+
+.pve-set-pattern {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  margin: 0.65rem 0 0;
+  padding: 0;
+  gap: 0.35rem;
+  list-style: none;
+}
+
+.pve-set-pattern li {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0.25rem 0.55rem;
+  color: #bdf4de;
+  background: rgba(63, 184, 144, 0.12);
+  border: 1px solid rgba(125, 216, 189, 0.24);
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 850;
+}
+
+.pve-set-pattern li[data-state="NOT_SET"] {
+  color: #ffc2ca;
+  background: rgba(235, 86, 105, 0.11);
+  border-color: rgba(255, 143, 156, 0.25);
+}
+
+.pve-source {
+  min-width: 0;
+  padding: 0.8rem;
+  background: rgba(143, 188, 255, 0.045);
+  border: 1px solid rgba(143, 188, 255, 0.14);
+  border-radius: 10px;
+}
+
+.pve-source__heading {
+  align-items: center;
+}
+
+.pve-source__heading h5 {
+  font-size: 0.88rem;
+}
+
+.pve-source > .source-link {
+  margin-top: 0.75rem;
+}
+
+.pve-video {
+  margin-top: 0.75rem;
+}
+
+.pve-video__load {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  width: 100%;
+  min-height: 74px;
+  padding: 0.8rem 1rem;
+  gap: 0 0.75rem;
+  color: var(--ink);
+  background: #18131f;
+  border: 1px solid var(--line-strong);
+  border-radius: 11px;
+  cursor: pointer;
+  text-align: left;
+  font-weight: 800;
+}
+
+.pve-video__load > span {
+  grid-row: 1 / 3;
+  color: var(--coral-bright);
+  font-size: 1.4rem;
+}
+
+.pve-video__load small {
+  color: var(--faint);
+  font-weight: 600;
+}
+
+.pve-video__load:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.pve-video__frame {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+  padding-top: 56.25%;
+  background: #08070b;
+  border-radius: 11px;
+}
+
+.pve-video__frame iframe {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+.pve-library-provenance {
+  margin-top: 2rem;
+}
+
+.pve-library-provenance dl {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+
+@media (max-width: 900px) {
+  .pve-library-hero,
+  .pve-library-detail__summary {
+    grid-template-columns: 1fr;
+  }
+
+  .pve-library-detail__count {
+    max-width: 320px;
+    text-align: left;
+  }
+
+  .pve-library-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .pve-library-filter-actions {
+    grid-column: 1 / -1;
+  }
+
+  .pve-library-filters--compact {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+}
+
+@media (max-width: 620px) {
+  .site-header__inner {
+    flex-wrap: wrap;
+    padding: 0.55rem 0;
+    gap: 0.25rem 0.75rem;
+  }
+
+  .site-header nav {
+    justify-content: flex-end;
+    flex: 1 1 210px;
+    flex-wrap: wrap;
+  }
+
+  .pve-library-hero {
+    margin-top: 0;
+  }
+
+  .pve-mode-nav {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    margin: 0.7rem 0 1.35rem;
+  }
+
+  .pve-mode-nav__item {
+    padding: 0.75rem 0.45rem;
+    text-align: center;
+  }
+
+  .pve-mode-nav__item strong {
+    font-size: 0.82rem;
+  }
+
+  .pve-mode-nav__item span {
+    display: none;
+  }
+
+  .pve-library-filters {
+    grid-template-columns: 1fr;
+    padding: 0.9rem;
+  }
+
+  .pve-library-filters--compact {
+    grid-template-columns: 1fr;
+  }
+
+  .pve-library-filter-actions {
+    align-items: stretch;
+    flex-direction: column;
+    grid-column: auto;
+    white-space: normal;
+  }
+
+  .pve-library-filter-actions .primary-action,
+  .pve-library-filter-actions .text-link {
+    justify-content: center;
+    width: 100%;
+    text-align: center;
+  }
+
+  .pve-library-results,
+  .pve-library-card__topline,
+  .pve-library-team__heading,
+  .pve-axis__heading,
+  .pve-source__heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .pve-library-results p {
+    margin-top: 0.25rem;
+  }
+
+  .pve-library-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .pve-portraits {
+    gap: 0.25rem;
+  }
+
+  .pve-portrait__position {
+    right: 0.18rem;
+    bottom: 0.18rem;
+    width: 1rem;
+    height: 1rem;
+    font-size: 0.5rem;
+  }
+
+  .pve-operation-variant__meta {
+    display: block;
+  }
+
+  .pve-library-provenance dl {
+    grid-template-columns: 1fr;
   }
 }
 

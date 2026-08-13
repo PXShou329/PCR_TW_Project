@@ -89,10 +89,12 @@ def test_documented_local_command_uses_the_same_fail_closed_order() -> None:
     )
 
 
-def test_ci_runs_mock_parena_contract_before_the_real_stack_browser_suite() -> None:
+def test_ci_runs_mock_contracts_before_the_real_stack_browser_suite() -> None:
     workflow = CI_WORKFLOW.read_text(encoding="utf-8")
     install = workflow.index("- name: Install Chromium")
-    mock = workflow.index("- name: Run mock-backed P-Arena browser E2E", install)
+    mock = workflow.index(
+        "- name: Run mock-backed P-Arena and private-library browser E2E", install
+    )
     real = workflow.index("- name: Run real-stack browser E2E", mock)
     capture = workflow.index("- name: Capture container state", real)
     mock_step = workflow[mock:real]
@@ -100,6 +102,9 @@ def test_ci_runs_mock_parena_contract_before_the_real_stack_browser_suite() -> N
 
     assert install < mock < real < capture
     assert 'PLAYWRIGHT_BASE_URL: ""' in mock_step
-    assert "npm run test:e2e -- tests/e2e/parena-planner.spec.ts" in mock_step
+    assert (
+        "npm run test:e2e -- tests/e2e/parena-planner.spec.ts "
+        "tests/e2e/private-libraries" in mock_step
+    )
     assert "PLAYWRIGHT_BASE_URL" not in real_step
     assert "run: npm run test:e2e" in real_step

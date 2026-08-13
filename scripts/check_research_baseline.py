@@ -26,6 +26,7 @@ from pcr_pipeline.research_core_snapshot import (  # noqa: E402
 
 
 EXPECTED_MANIFEST_SHA256 = "eda30340c02f2f470475e652786104c521faf2ea4cc20be44cf09f3798fe8c5f"
+BASELINE_EVALUATION_DATE = "2026-08-10"
 MANIFEST_PATH = Path(__file__).with_name("research_core_rp_b4_0_manifest.sha256")
 MANIFEST_LINE = re.compile(r"^([0-9a-f]{64})  ([^\\]+(?:/[^\\]+)*)$")
 VALIDATOR_RUNTIME_PATHS = {
@@ -146,17 +147,28 @@ def verify_tree(root: Path) -> list[str]:
 def run(project: Path, expected: ExpectedRun) -> list[str]:
     environment = os.environ.copy()
     environment.update({"PYTHONUTF8": "1", "PYTHONDONTWRITEBYTECODE": "1"})
-    completed = subprocess.run(
-        (sys.executable, *expected.arguments),
-        cwd=project,
-        env=environment,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        check=False,
-    )
+    validator = project / "tools/validate_project.py"
+    original_validator = validator.read_bytes()
+    current_today = "TODAY = datetime.now(TAIPEI_TIMEZONE).date().isoformat()"
+    pinned_today = f'TODAY = "{BASELINE_EVALUATION_DATE}"'
+    validator_text = original_validator.decode("utf-8")
+    if validator_text.count(current_today) != 1:
+        return ["validate_project.py TODAY assignment is not uniquely pinnable"]
+    validator.write_bytes(validator_text.replace(current_today, pinned_today).encode("utf-8"))
+    try:
+        completed = subprocess.run(
+            (sys.executable, *expected.arguments),
+            cwd=project,
+            env=environment,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=False,
+        )
+    finally:
+        validator.write_bytes(original_validator)
     output = completed.stdout.rstrip()
     print(f"\n===== {expected.name} | exit={completed.returncode} =====")
     print(output)

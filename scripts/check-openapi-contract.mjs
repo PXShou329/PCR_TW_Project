@@ -93,6 +93,17 @@ const schemaToInterface = {
   StructuredTimelineSource: "StructuredTimelineSource",
   GapTimelineSource: "GapTimelineSource",
   GateSummary: "GateSummary",
+  PveLibrarySourceWorkbook: "PveLibrarySourceWorkbook",
+  PveLibraryMeta: "PveLibraryMeta",
+  PveStageRef: "PveStageRef",
+  PveProvenance: "PveProvenance",
+  PveStageSummary: "PveStageSummary",
+  PveOperationVariant: "PveOperationVariant",
+  PveOperation: "PveOperation",
+  PveAxis: "PveAxis",
+  PvePortrait: "PvePortrait",
+  PveTeam: "PveTeam",
+  PveStageDetail: "PveStageDetail",
 };
 const interfaceToSchema = new Map(
   Object.entries(schemaToInterface).map(([schemaName, interfaceName]) => [interfaceName, schemaName])

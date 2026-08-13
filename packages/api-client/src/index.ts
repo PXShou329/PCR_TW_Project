@@ -7,12 +7,18 @@ import type {
   Claim,
   Evidence,
   GachaCommunitySource,
+  GachaLibraryEnvelope,
+  GachaLibraryForecastData,
   GachaTimelineEvent,
   PvpCharacter,
   PvpCounter,
   ParenaEnvironment,
   ParenaSolveData,
   ParenaSolveRequest,
+  PveLibraryEnvelope,
+  PveLibraryStageFilters,
+  PveStageDetail,
+  PveStageListData,
   StageDetail,
   StageSummary,
   TeamDetail,
@@ -41,7 +47,7 @@ function trimTrailingSlash(value: string): string {
 export function createApiClient({ baseUrl, fetchImpl = fetch }: ApiClientOptions) {
   const origin = trimTrailingSlash(baseUrl);
 
-  async function get<T>(path: string): Promise<ApiEnvelope<T>> {
+  async function getEnvelope<T>(path: string): Promise<T> {
     const response = await fetchImpl(`${origin}${path}`, {
       headers: { Accept: "application/json" },
       cache: "no-store",
@@ -55,13 +61,19 @@ export function createApiClient({ baseUrl, fetchImpl = fetch }: ApiClientOptions
         problem = undefined;
       }
       throw new ApiError(
-        problem?.detail?.code ?? `API request failed with ${response.status}`,
+        problem?.detail?.code ??
+          problem?.error?.code ??
+          `API request failed with ${response.status}`,
         response.status,
         problem,
       );
     }
 
-    return (await response.json()) as ApiEnvelope<T>;
+    return (await response.json()) as T;
+  }
+
+  async function get<T>(path: string): Promise<ApiEnvelope<T>> {
+    return getEnvelope<ApiEnvelope<T>>(path);
   }
 
   async function post<T>(path: string, body: unknown): Promise<ApiEnvelope<T>> {
@@ -80,7 +92,9 @@ export function createApiClient({ baseUrl, fetchImpl = fetch }: ApiClientOptions
         problem = undefined;
       }
       throw new ApiError(
-        problem?.detail?.code ?? `API request failed with ${response.status}`,
+        problem?.detail?.code ??
+          problem?.error?.code ??
+          `API request failed with ${response.status}`,
         response.status,
         problem,
       );
@@ -103,6 +117,12 @@ export function createApiClient({ baseUrl, fetchImpl = fetch }: ApiClientOptions
       get<GachaTimelineEvent[]>("/api/v1/gacha/timeline"),
     getGachaCommunitySources: () =>
       get<GachaCommunitySource[]>("/api/v1/gacha/community-sources"),
+    getGachaLibraryForecasts: (): Promise<
+      GachaLibraryEnvelope<GachaLibraryForecastData>
+    > =>
+      getEnvelope<GachaLibraryEnvelope<GachaLibraryForecastData>>(
+        "/api/v1/gacha-library/forecasts",
+      ),
     getPvpCharacters: () => get<PvpCharacter[]>("/api/v1/pvp/characters"),
     getPvpCounters: (defenseSignature?: string) => {
       const query = defenseSignature
@@ -114,5 +134,24 @@ export function createApiClient({ baseUrl, fetchImpl = fetch }: ApiClientOptions
       get<ParenaEnvironment[]>("/api/v1/parena/environments"),
     solveParena: (request: ParenaSolveRequest) =>
       post<ParenaSolveData>("/api/v1/solver/parena", request),
+    getPveLibraryStages: (
+      filters: PveLibraryStageFilters = {},
+    ): Promise<PveLibraryEnvelope<PveStageListData>> => {
+      const query = new URLSearchParams();
+      if (filters.mode !== undefined) query.set("mode", filters.mode);
+      if (filters.element !== undefined) query.set("element", filters.element);
+      if (filters.area !== undefined) query.set("area", String(filters.area));
+      if (filters.stage !== undefined) query.set("stage", String(filters.stage));
+      const suffix = query.size > 0 ? `?${query.toString()}` : "";
+      return getEnvelope<PveLibraryEnvelope<PveStageListData>>(
+        `/api/v1/pve-library/stages${suffix}`,
+      );
+    },
+    getPveLibraryStage: (
+      stageId: string,
+    ): Promise<PveLibraryEnvelope<PveStageDetail>> =>
+      getEnvelope<PveLibraryEnvelope<PveStageDetail>>(
+        `/api/v1/pve-library/stages/${encodeURIComponent(stageId)}`,
+      ),
   };
 }

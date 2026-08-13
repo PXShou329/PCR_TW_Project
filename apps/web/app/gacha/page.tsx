@@ -1,24 +1,63 @@
+import { ApiError } from "@pcr-tw/api-client";
 import type { GachaCommunitySource, GachaTimelineEvent } from "@pcr-tw/api-client";
 import { Badge, Definition, EmptyState, Panel } from "@pcr-tw/ui";
 import { EvidenceDrawer } from "../../components/evidence-drawer";
+import { PrivateGachaForecastSection } from "../../features/private-gacha/components/forecast";
 import { serverApi } from "../../lib/api";
 
 export const dynamic = "force-dynamic";
 
-export default async function GachaPage() {
+async function loadCanonicalGacha() {
   const api = serverApi();
-  const [timelineResponse, communityResponse] = await Promise.all([
+  const [timelineResult, communityResult] = await Promise.allSettled([
     api.getGachaTimeline(),
     api.getGachaCommunitySources(),
   ]);
-  const timeline = [...timelineResponse.data].sort((left, right) =>
-    left.jp_date.localeCompare(right.jp_date),
+  if (timelineResult.status === "fulfilled" && communityResult.status === "fulfilled") {
+    return {
+      communityResponse: communityResult.value,
+      status: "ready" as const,
+      timelineResponse: timelineResult.value,
+    };
+  }
+
+  const failures = [timelineResult, communityResult].filter(
+    (result): result is PromiseRejectedResult => result.status === "rejected",
   );
+  const unexpectedFailure = failures.find(({ reason }) => !isDatabaseUnavailable(reason));
+  if (unexpectedFailure) {
+    throw unexpectedFailure.reason;
+  }
+  console.error(
+    "Canonical Gacha data is unavailable; private DOCX forecasts remain enabled.",
+    failures.map(({ reason }) => (reason as ApiError).message).join(", "),
+  );
+  return { status: "unavailable" as const };
+}
+
+function isDatabaseUnavailable(error: unknown): error is ApiError {
+  return (
+    error instanceof ApiError &&
+    error.status === 503 &&
+    error.problem?.detail?.code === "DATABASE_UNAVAILABLE"
+  );
+}
+
+export default async function GachaPage() {
+  const canonical = await loadCanonicalGacha();
+  const timeline =
+    canonical.status === "ready"
+      ? [...canonical.timelineResponse.data].sort((left, right) =>
+          left.jp_date.localeCompare(right.jp_date),
+        )
+      : [];
   const matureCount = timeline.filter((event) => event.maturity === "MATURE").length;
   const researchCount = timeline.length - matureCount;
-  const checkedSources = communityResponse.data.filter(
-    (source) => source.update_status === "CHECKED",
-  ).length;
+  const checkedSources =
+    canonical.status === "ready"
+      ? canonical.communityResponse.data.filter((source) => source.update_status === "CHECKED")
+          .length
+      : 0;
 
   return (
     <>
@@ -30,68 +69,97 @@ export default async function GachaPage() {
         </p>
       </header>
 
-      <Panel className="gacha-scope">
-        <div className="gacha-scope__heading">
-          <div>
-            <p className="eyebrow">PUBLIC RESEARCH SCOPE</p>
-            <h2>模型是日期參考，不是個人抽卡指令</h2>
+      {canonical.status === "ready" ? (
+        <Panel className="gacha-scope">
+          <div className="gacha-scope__heading">
+            <div>
+              <p className="eyebrow">PUBLIC RESEARCH SCOPE</p>
+              <h2>模型是日期參考，不是個人抽卡指令</h2>
+            </div>
+            <div className="badge-row">
+              <Badge tone="success">MATURE {matureCount}</Badge>
+              <Badge tone="info">RESEARCH {researchCount}</Badge>
+              <Badge tone="neutral">現行社群來源 {checkedSources}</Badge>
+            </div>
           </div>
-          <div className="badge-row">
-            <Badge tone="success">MATURE {matureCount}</Badge>
-            <Badge tone="info">RESEARCH {researchCount}</Badge>
-            <Badge tone="neutral">現行社群來源 {checkedSources}</Badge>
-          </div>
-        </div>
-        <dl className="gacha-summary" aria-label="Gacha 資料範圍">
-          <Definition term="研究方向">JP 官方事件 → TW 公共未來視</Definition>
-          <Definition term="最後核對">{timelineResponse.meta.verified_at ?? "UNKNOWN"}</Definition>
-          <Definition term="資料修訂">
-            <code title={timelineResponse.meta.data_revision}>
-              {shortRevision(timelineResponse.meta.data_revision)}
-            </code>
-          </Definition>
-          <Definition term="鮮度">{timelineResponse.meta.stale_status}</Definition>
-        </dl>
-        <p className="gacha-scope__disclosure">
-          本頁不讀取帳號、持有角色或個人寶石，也不產生帳號專屬推薦。日期區間可能因台服排程調整而變動；社群來源不會升格為官方證據。
-        </p>
-      </Panel>
+          <dl className="gacha-summary" aria-label="Gacha 資料範圍">
+            <Definition term="研究方向">JP 官方事件 → TW 公共未來視</Definition>
+            <Definition term="最後核對">
+              {canonical.timelineResponse.meta.verified_at ?? "UNKNOWN"}
+            </Definition>
+            <Definition term="資料修訂">
+              <code title={canonical.timelineResponse.meta.data_revision}>
+                {shortRevision(canonical.timelineResponse.meta.data_revision)}
+              </code>
+            </Definition>
+            <Definition term="鮮度">{canonical.timelineResponse.meta.stale_status}</Definition>
+          </dl>
+          <p className="gacha-scope__disclosure">
+            本頁不讀取帳號、持有角色或個人寶石，也不產生帳號專屬推薦。日期區間可能因台服排程調整而變動；社群來源不會升格為官方證據。
+          </p>
+        </Panel>
+      ) : null}
 
-      <section className="section-block" aria-labelledby="gacha-timeline-heading">
-        <div className="section-heading">
-          <div>
-            <p className="eyebrow">CANONICAL TIMELINE</p>
-            <h2 id="gacha-timeline-heading">日服事件與台服模型區間</h2>
-          </div>
-          <p>MATURE 才提供已完成的公共價值研究；RESEARCH 僅保留可證日期與明示缺口。</p>
-        </div>
-        {timeline.length > 0 ? (
-          <div className="gacha-timeline-grid">
-            {timeline.map((event) => <TimelineCard event={event} key={event.event_id} />)}
-          </div>
-        ) : (
-          <Panel>
-            <EmptyState eyebrow="NO TIMELINE MATERIALIZATION" title="目前沒有可供應的 Gacha 時間線">
-              <p>平台不會用搜尋摘要或理論角色補出未來卡池；資料閉合後才會顯示。</p>
+      <PrivateGachaForecastSection />
+
+      {canonical.status === "unavailable" ? (
+        <section
+          aria-label="公共時間線狀態"
+          className="section-block gacha-canonical-status"
+          data-load-state="error"
+        >
+          <Panel className="private-gacha-status">
+            <EmptyState eyebrow="PUBLIC RESEARCH UNAVAILABLE" title="公共時間線目前無法取得">
+              <p>
+                上方私人 DOCX 未來視仍可使用；公共時間線需要資料庫，恢復後重新載入頁面即可顯示。
+              </p>
             </EmptyState>
           </Panel>
-        )}
-      </section>
+        </section>
+      ) : (
+        <>
+          <section className="section-block" aria-labelledby="gacha-timeline-heading">
+            <div className="section-heading">
+              <div>
+                <p className="eyebrow">CANONICAL TIMELINE</p>
+                <h2 id="gacha-timeline-heading">日服事件與台服模型區間</h2>
+              </div>
+              <p>MATURE 才提供已完成的公共價值研究；RESEARCH 僅保留可證日期與明示缺口。</p>
+            </div>
+            {timeline.length > 0 ? (
+              <div className="gacha-timeline-grid">
+                {timeline.map((event) => (
+                  <TimelineCard event={event} key={event.event_id} />
+                ))}
+              </div>
+            ) : (
+              <Panel>
+                <EmptyState
+                  eyebrow="NO TIMELINE MATERIALIZATION"
+                  title="目前沒有可供應的 Gacha 時間線"
+                >
+                  <p>平台不會用搜尋摘要或理論角色補出未來卡池；資料閉合後才會顯示。</p>
+                </EmptyState>
+              </Panel>
+            )}
+          </section>
 
-      <section className="section-block" aria-labelledby="gacha-community-heading">
-        <div className="section-heading">
-          <div>
-            <p className="eyebrow">COMMUNITY SOURCE INDEX</p>
-            <h2 id="gacha-community-heading">社群未來視來源狀態</h2>
-          </div>
-          <p>CHECKED 代表正文已實開且仍在維護，不代表其日期或主觀評價為官方事實。</p>
-        </div>
-        <div className="community-grid">
-          {communityResponse.data.map((source) => (
-            <CommunitySourceCard key={source.source_id} source={source} />
-          ))}
-        </div>
-      </section>
+          <section className="section-block" aria-labelledby="gacha-community-heading">
+            <div className="section-heading">
+              <div>
+                <p className="eyebrow">COMMUNITY SOURCE INDEX</p>
+                <h2 id="gacha-community-heading">社群未來視來源狀態</h2>
+              </div>
+              <p>CHECKED 代表正文已實開且仍在維護，不代表其日期或主觀評價為官方事實。</p>
+            </div>
+            <div className="community-grid">
+              {canonical.communityResponse.data.map((source) => (
+                <CommunitySourceCard key={source.source_id} source={source} />
+              ))}
+            </div>
+          </section>
+        </>
+      )}
     </>
   );
 }
