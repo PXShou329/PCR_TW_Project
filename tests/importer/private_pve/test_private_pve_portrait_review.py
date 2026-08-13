@@ -6,10 +6,10 @@ import json
 
 import pytest
 
-from pcr_pipeline.xlsx_ingest.character_mapping import map_catalog_characters
-from pcr_pipeline.xlsx_ingest.cli import main
-from pcr_pipeline.xlsx_ingest.estertion_index import parse_estertion_index
-from pcr_pipeline.xlsx_ingest.portrait_review import (
+from pcr_pipeline.private_pve.character_mapping import map_catalog_characters
+from pcr_pipeline.private_pve.cli import main
+from pcr_pipeline.private_pve.estertion_index import parse_estertion_index
+from pcr_pipeline.private_pve.portrait_review import (
     CONFIRMED,
     PENDING,
     REVIEWED_UNKNOWN,

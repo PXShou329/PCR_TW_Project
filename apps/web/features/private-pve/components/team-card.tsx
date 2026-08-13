@@ -1,5 +1,5 @@
-import { PvePortrait } from "./pve-portrait";
-import { PveYouTubeMedia } from "./pve-source-media";
+import { PvePortrait } from "./portrait";
+import { PveYouTubeMedia } from "./source-media";
 
 interface PveSourceLinkView {
   alias_label: string | null;

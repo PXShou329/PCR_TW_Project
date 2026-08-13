@@ -7,9 +7,9 @@ from openpyxl import Workbook, load_workbook
 from openpyxl.drawing.image import Image as WorksheetImage
 from PIL import Image
 
-from pcr_pipeline.xlsx_ingest.cli import main
-from pcr_pipeline.xlsx_ingest.models import WorkbookLayoutError
-from pcr_pipeline.xlsx_ingest.workbook_2 import (
+from pcr_pipeline.private_pve.cli import main
+from pcr_pipeline.private_pve.models import WorkbookLayoutError
+from pcr_pipeline.private_pve.workbook_2 import (
     DEEP_8_10_SHEETS,
     LUNA_SHEET,
     REMEMBRANCE_SHEETS,

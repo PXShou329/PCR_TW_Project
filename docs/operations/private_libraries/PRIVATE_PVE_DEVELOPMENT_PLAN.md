@@ -203,7 +203,7 @@ silently disappearing from the library.
 - The API and Web processes are intentionally lightweight and only guarantee the PVE
   library paths. Docker Desktop was not started, so existing database-backed pages are
   not part of this running instance.
-- The isolated full-stack Compose overlay in `infra/compose.private-pve.yml` uses the
+- The isolated full-stack Compose overlay in `infra/private/compose.local-libraries.yml` uses the
   derived mapped catalog, explicitly enables the fixed-origin external icon adapter,
   and keeps the complete catalog/assets mount read-only. The application-wide feature
   default remains disabled, so only this private local overlay opts in.

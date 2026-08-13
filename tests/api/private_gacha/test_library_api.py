@@ -22,7 +22,7 @@ A_NS = "http://schemas.openxmlformats.org/drawingml/2006/main"
 R_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 REL_NS = "http://schemas.openxmlformats.org/package/2006/relationships"
 CT_NS = "http://schemas.openxmlformats.org/package/2006/content-types"
-REPO_ROOT = Path(__file__).resolve().parents[2]
+REPO_ROOT = Path(__file__).resolve().parents[3]
 REAL_CANDIDATE_PATH = REPO_ROOT / ".runtime/gacha_forecast/docx-candidates.json"
 REAL_DOCX_PATH = Path(
     os.getenv(

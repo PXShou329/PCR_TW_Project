@@ -9,15 +9,15 @@ from openpyxl.drawing.image import Image as WorksheetImage
 from openpyxl.styles import PatternFill
 from PIL import Image
 
-from pcr_pipeline.xlsx_ingest.cli import format_stdout_summary, main
-from pcr_pipeline.xlsx_ingest.deep_1_7 import extract_deep_1_7_workbook
-from pcr_pipeline.xlsx_ingest.media import MediaCatalog
-from pcr_pipeline.xlsx_ingest.models import WorkbookLayoutError
-from pcr_pipeline.xlsx_ingest.operations import (
+from pcr_pipeline.private_pve.cli import format_stdout_summary, main
+from pcr_pipeline.private_pve.deep_1_7 import extract_deep_1_7_workbook
+from pcr_pipeline.private_pve.media import MediaCatalog
+from pcr_pipeline.private_pve.models import WorkbookLayoutError
+from pcr_pipeline.private_pve.operations import (
     merge_parsed_operations,
     parse_operation,
 )
-from pcr_pipeline.xlsx_ingest.sources import SOURCE_ALIASES, extract_source_refs
+from pcr_pipeline.private_pve.sources import SOURCE_ALIASES, extract_source_refs
 
 
 DEEP_SHEETS = (

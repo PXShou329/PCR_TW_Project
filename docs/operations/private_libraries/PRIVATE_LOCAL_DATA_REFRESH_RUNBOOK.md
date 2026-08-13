@@ -40,7 +40,7 @@ candidate，不用修改現行資料來取得綠燈。
 | PVE 圖片 | 兩份 XLSX 的 exact embedded bytes | candidate `assets/` | `.runtime/private_pve/assets/` | asset 數量、長度或 digest 不符即 API 503 | 還原整組 catalog + assets |
 | 人工頭像判定 | `review/portrait-overrides.json`、EsterTion index、`review/evidence/` | mapping、mapped catalog、materialization manifest | `.runtime/private_pve/mapped/` | registry/base hash、exact variant、證據或 material hash 不閉合 | 回到 Excel 圖；不可猜角色 |
 | Gacha | `Downloads/卡池未來視.docx` | `docx-candidates.json` + content-addressed DOCX | `.runtime/gacha_forecast/` | deterministic replay、DOCX 安全檢查或 source hash 不符即 API 503 | 還原 catalog + 同 hash DOCX |
-| Local API/Web | 上述兩個 read-only runtime | 無 DB write | compose base + `infra/compose.private-pve.yml` | structured 503、health、desktop/mobile smoke | 停止 API/Web，整組目錄回復後重啟 |
+| Local API/Web | 上述兩個 read-only runtime | 無 DB write | compose base + `infra/private/compose.local-libraries.yml` | structured 503、health、desktop/mobile smoke | 停止 API/Web，整組目錄回復後重啟 |
 | Canonical SSOT | `research_core/pcr_tw_project/**` | 不適用 | 既有 DB read mirror／canonical UI | 更新前後全樹 hash manifest 差異 | 立即中止；私人更新不得修寫 canonical |
 
 目前已知 checkpoint（只用於第一次執行的 sanity check，不得硬編碼成未來上限）：
@@ -178,7 +178,7 @@ $PveSnapshot2 = Join-Path $PveSourceDir (Split-Path -Leaf $PveWorkbook2)
 # A verified recovery copy exists before any cutover.
 Copy-Item -LiteralPath $LivePve -Destination $RollbackDir -Recurse
 Copy-Item -LiteralPath $LiveGacha -Destination $RollbackDir -Recurse
-Copy-Item -LiteralPath (Join-Path $Repo 'infra\compose.private-pve.yml') -Destination $RollbackDir
+Copy-Item -LiteralPath (Join-Path $Repo 'infra\private\compose.local-libraries.yml') -Destination $RollbackDir
 
 $pveBackupDelta = Compare-Object @(Get-TreeManifest $LivePve) `
   @(Get-TreeManifest (Join-Path $RollbackDir 'private_pve')) -Property path,bytes,sha256
@@ -204,15 +204,15 @@ $CandidateMapped = Join-Path $CandidatePve 'mapped'
 $CandidateAudit = Join-Path $CycleRoot 'audit\pve'
 New-Item -ItemType Directory -Path $CandidatePve,$CandidateAssets,$CandidateMapped,$CandidateAudit | Out-Null
 
-python -m pcr_pipeline.xlsx_ingest.cli extract `
+python -m pcr_pipeline.private_pve.cli extract `
   --input $PveSnapshot1 --output (Join-Path $CandidatePve 'workbook-1.catalog.json')
-python -m pcr_pipeline.xlsx_ingest.cli extract-workbook-2 `
+python -m pcr_pipeline.private_pve.cli extract-workbook-2 `
   --input $PveSnapshot2 --output (Join-Path $CandidatePve 'workbook-2.catalog.json')
 
 # 第二次抽取寫到 audit 位置；兩次輸出必須 byte-identical。
-python -m pcr_pipeline.xlsx_ingest.cli extract `
+python -m pcr_pipeline.private_pve.cli extract `
   --input $PveSnapshot1 --output (Join-Path $CandidateAudit 'workbook-1.replay.json')
-python -m pcr_pipeline.xlsx_ingest.cli extract-workbook-2 `
+python -m pcr_pipeline.private_pve.cli extract-workbook-2 `
   --input $PveSnapshot2 --output (Join-Path $CandidateAudit 'workbook-2.replay.json')
 foreach ($name in @('workbook-1','workbook-2')) {
   $a = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $CandidatePve "$name.catalog.json")).Hash
@@ -220,13 +220,13 @@ foreach ($name in @('workbook-1','workbook-2')) {
   if ($a -ne $b) { throw "Non-deterministic extraction: $name" }
 }
 
-python -m pcr_pipeline.xlsx_ingest.cli export-media `
+python -m pcr_pipeline.private_pve.cli export-media `
   --input $PveSnapshot1 --catalog (Join-Path $CandidatePve 'workbook-1.catalog.json') `
   --output-dir $CandidateAssets
-python -m pcr_pipeline.xlsx_ingest.cli export-media `
+python -m pcr_pipeline.private_pve.cli export-media `
   --input $PveSnapshot2 --catalog (Join-Path $CandidatePve 'workbook-2.catalog.json') `
   --output-dir $CandidateAssets
-python -m pcr_pipeline.xlsx_ingest.cli merge-catalogs `
+python -m pcr_pipeline.private_pve.cli merge-catalogs `
   --input (Join-Path $CandidatePve 'workbook-1.catalog.json') `
   --input (Join-Path $CandidatePve 'workbook-2.catalog.json') `
   --output (Join-Path $CandidatePve 'catalog.json')
@@ -252,7 +252,7 @@ XLSX 的可見資料。數字改變可以是合法更新，但不能只因「預
 # 保留舊人工證據作為參考；這只是 candidate copy，不會改 live registry。
 Copy-Item -LiteralPath (Join-Path $LivePve 'review') -Destination $CandidatePve -Recurse
 $CandidateReview = Join-Path $CandidatePve 'review'
-python -m pcr_pipeline.xlsx_ingest.cli build-review-queue `
+python -m pcr_pipeline.private_pve.cli build-review-queue `
   --catalog (Join-Path $CandidatePve 'catalog.json') `
   --output (Join-Path $CandidateAudit 'portrait-review-queue.unreviewed.json')
 
@@ -277,12 +277,12 @@ $OldRegistry = Get-Content -LiteralPath (Join-Path $LivePve 'review\portrait-ove
 `$CandidateReview/portrait-overrides.json`，再執行：
 
 ```powershell
-python -m pcr_pipeline.xlsx_ingest.cli build-review-queue `
+python -m pcr_pipeline.private_pve.cli build-review-queue `
   --catalog (Join-Path $CandidatePve 'catalog.json') `
   --overrides (Join-Path $CandidateReview 'portrait-overrides.json') `
   --output (Join-Path $CandidateReview 'portrait-review-queue.json')
 
-python -m pcr_pipeline.xlsx_ingest.cli materialize-character-catalog `
+python -m pcr_pipeline.private_pve.cli materialize-character-catalog `
   --catalog (Join-Path $CandidatePve 'catalog.json') `
   --overrides (Join-Path $CandidateReview 'portrait-overrides.json') `
   --estertion-index (Join-Path $CandidateReview 'estertion-unit-index.html') `
@@ -299,7 +299,7 @@ $Queue.summary | Format-List
 $Mapping.summary | Format-List
 
 # Full real-candidate load validates schema, counts, every asset byte and every member reference.
-python -c "from pathlib import Path; from pcr_api.pve_library import PveLibraryRuntime; s=PveLibraryRuntime(Path(r'$CandidateMapped\catalog.json'),Path(r'$CandidateAssets')).snapshot(); print({'dataset_sha256':s.dataset_sha256,'stages':len(s.stages),'assets':len(s.assets_by_sha256)})"
+python -c "from pathlib import Path; from pcr_api.private_pve.runtime import PveLibraryRuntime; s=PveLibraryRuntime(Path(r'$CandidateMapped\catalog.json'),Path(r'$CandidateAssets')).snapshot(); print({'dataset_sha256':s.dataset_sha256,'stages':len(s.stages),'assets':len(s.assets_by_sha256)})"
 ```
 
 人工覆核接受條件：所有非 `RESOLVED` mapping 的 `display_source` 皆為
@@ -324,10 +324,10 @@ if ((Get-FileHash -Algorithm SHA256 -LiteralPath $GachaSnapshot).Hash.ToLowerInv
   throw 'Gacha source snapshot mismatch'
 }
 
-python -m pcr_pipeline.gacha_ingest.cli `
+python -m pcr_pipeline.private_gacha.cli `
   --input $GachaSnapshot --source-id GACHA-COMM-002 `
   --output (Join-Path $CandidateGacha 'docx-candidates.json')
-python -m pcr_pipeline.gacha_ingest.cli `
+python -m pcr_pipeline.private_gacha.cli `
   --input $GachaSnapshot --source-id GACHA-COMM-002 `
   --output (Join-Path $GachaAudit 'docx-candidates.replay.json')
 $first = (Get-FileHash -Algorithm SHA256 -LiteralPath `
@@ -336,14 +336,14 @@ $replay = (Get-FileHash -Algorithm SHA256 -LiteralPath `
   (Join-Path $GachaAudit 'docx-candidates.replay.json')).Hash
 if ($first -ne $replay) { throw 'Non-deterministic Gacha extraction' }
 
-python -c "from pathlib import Path; from pcr_api.gacha_library import GachaLibraryRuntime; s=GachaLibraryRuntime(Path(r'$CandidateGacha\docx-candidates.json'),Path(r'$GachaSnapshot')).snapshot(); assert s.source['source_id']=='GACHA-COMM-002'; assert all(x['review_status']=='PENDING' and x['promotion_eligible'] is False and x['proposed_event_id'] is None for x in s.candidates); print({'dataset_sha256':s.dataset_sha256,'forecasts':len(s.candidates),'assets':len(s.assets_by_sha256)})"
+python -c "from pathlib import Path; from pcr_api.private_gacha.runtime import GachaLibraryRuntime; s=GachaLibraryRuntime(Path(r'$CandidateGacha\docx-candidates.json'),Path(r'$GachaSnapshot')).snapshot(); assert s.source['source_id']=='GACHA-COMM-002'; assert all(x['review_status']=='PENDING' and x['promotion_eligible'] is False and x['proposed_event_id'] is None for x in s.candidates); print({'dataset_sha256':s.dataset_sha256,'forecasts':len(s.candidates),'assets':len(s.assets_by_sha256)})"
 ```
 
 更新 DOCX 後，17／39 等舊數字可以合法變動；但 raw names 不得被自動校正，圖片上的日服
 日期不得 OCR 成台服日期，且 `canonical_write_count` 必須仍為 0。若 parser warning 增加，
 必須保留在 UI 並列入人工覆核，不得為消除 warning 修改原文。
 
-因 `infra/compose.private-pve.yml` 目前 pin 住 content-addressed filename，只有 Gacha hash
+因 `infra/private/compose.local-libraries.yml` 目前 pin 住 content-addressed filename，只有 Gacha hash
 變更時才調整該檔的一處 `PCR_GACHA_LIBRARY_DOCX_PATH`。先保存的 rollback copy 是回復依據；
 overlay 即使尚未被 Git 追蹤，也要由 rollback 原始 bytes 推導 expected replacement，並確認
 實際寫入 bytes 完全相等；因此不依賴 `git diff` 判定變更範圍。
@@ -352,17 +352,17 @@ overlay 即使尚未被 Git 追蹤，也要由 rollback 原始 bytes 推導 expe
 
 ```powershell
 python -m pytest `
-  tests/importer/test_private_pve_xlsx_ingest.py `
-  tests/importer/test_private_pve_xlsx_workbook_2.py `
-  tests/importer/test_private_pve_catalog.py `
-  tests/importer/test_private_pve_character_mapping.py `
-  tests/importer/test_private_pve_portrait_review.py `
-  tests/importer/test_gacha_docx_ingest.py `
-  tests/api/test_pve_library_api.py `
-  tests/api/test_gacha_library_api.py
+  tests/importer/private_pve/test_private_pve_xlsx_ingest.py `
+  tests/importer/private_pve/test_private_pve_xlsx_workbook_2.py `
+  tests/importer/private_pve/test_private_pve_catalog.py `
+  tests/importer/private_pve/test_private_pve_character_mapping.py `
+  tests/importer/private_pve/test_private_pve_portrait_review.py `
+  tests/importer/private_gacha/test_gacha_docx_ingest.py `
+  tests/api/private_pve/test_library_api.py `
+  tests/api/private_gacha/test_library_api.py
 npm run typecheck --workspaces --if-present
 npm run check:contract
-npx playwright test tests/e2e/pve-library.spec.ts tests/e2e/gacha-library.spec.ts
+npx playwright test tests/e2e/private-libraries/pve-library.spec.ts tests/e2e/private-libraries/gacha-library.spec.ts
 git diff --check
 ```
 
@@ -403,8 +403,8 @@ process 中直接替換檔案，否則 immutable runtime 會正確進入 `*_LIBR
 ```powershell
 # Gacha refresh 才更新一個 content-addressed compose path；0 或 >1 match 都停止。
 if ($RefreshGacha) {
-  $Overlay = Join-Path $Repo 'infra\compose.private-pve.yml'
-  $OverlayBaseline = Join-Path $RollbackDir 'compose.private-pve.yml'
+  $Overlay = Join-Path $Repo 'infra\private\compose.local-libraries.yml'
+  $OverlayBaseline = Join-Path $RollbackDir 'compose.local-libraries.yml'
   $utf8 = [Text.UTF8Encoding]::new($false, $true)
   $baselineBytes = [IO.File]::ReadAllBytes($OverlayBaseline)
   $preEditBytes = [IO.File]::ReadAllBytes($Overlay)
@@ -431,8 +431,8 @@ if ($RefreshGacha) {
   }
 }
 
-docker compose --env-file .env -f infra/compose.yml -f infra/compose.private-pve.yml config --quiet
-docker compose --env-file .env -f infra/compose.yml -f infra/compose.private-pve.yml stop web api
+docker compose --env-file .env -f infra/compose.yml -f infra/private/compose.local-libraries.yml config --quiet
+docker compose --env-file .env -f infra/compose.yml -f infra/private/compose.local-libraries.yml stop web api
 
 $RetiredDir = New-Item -ItemType Directory -Path (Join-Path $CycleRoot 'retired')
 $PveSwitched = $false
@@ -451,7 +451,7 @@ if ($RefreshGacha) {
   $GachaSwitched = $true
 }
 
-docker compose --env-file .env -f infra/compose.yml -f infra/compose.private-pve.yml up --build --wait api web
+docker compose --env-file .env -f infra/compose.yml -f infra/private/compose.local-libraries.yml up --build --wait api web
 ```
 
 若第二個 `Move-Item` 失敗，不要繼續啟動；立即把 `$RetiredDir/private_pve` 或
@@ -464,7 +464,7 @@ if ($pve.data.total -lt 1 -or $gacha.data.total -lt 1) { throw 'Empty private li
 if ($gacha.meta.canonical_write_count -ne 0) { throw 'Gacha canonical write guard failed' }
 
 $env:PLAYWRIGHT_BASE_URL = 'http://127.0.0.1:3600'
-npx playwright test tests/e2e/pve-library.spec.ts tests/e2e/gacha-library.spec.ts `
+npx playwright test tests/e2e/private-libraries/pve-library.spec.ts tests/e2e/private-libraries/gacha-library.spec.ts `
   --project=desktop-chromium --project=mobile-chromium
 Remove-Item Env:PLAYWRIGHT_BASE_URL
 ```
@@ -489,7 +489,7 @@ Remove-Item Env:PLAYWRIGHT_BASE_URL
 已切換後的 rollback：
 
 ```powershell
-docker compose --env-file .env -f infra/compose.yml -f infra/compose.private-pve.yml stop web api
+docker compose --env-file .env -f infra/compose.yml -f infra/private/compose.local-libraries.yml stop web api
 $FailedDir = New-Item -ItemType Directory -Path (Join-Path $CycleRoot ('failed-' + (Get-Date -Format 'yyyyMMdd-HHmmss')))
 
 # 若是另開 PowerShell，先按 cycle log 與 retired/ 內容把這兩個值設成實際切換狀態。
@@ -500,12 +500,12 @@ if ($PveSwitched) {
 if ($GachaSwitched) {
   Move-Item -LiteralPath $LiveGacha -Destination $FailedDir
   Copy-Item -LiteralPath (Join-Path $RollbackDir 'gacha_forecast') -Destination $LiveGacha -Recurse
-  Copy-Item -LiteralPath (Join-Path $RollbackDir 'compose.private-pve.yml') `
-    -Destination (Join-Path $Repo 'infra\compose.private-pve.yml') -Force
+  Copy-Item -LiteralPath (Join-Path $RollbackDir 'compose.local-libraries.yml') `
+    -Destination (Join-Path $Repo 'infra\private\compose.local-libraries.yml') -Force
 }
 
-docker compose --env-file .env -f infra/compose.yml -f infra/compose.private-pve.yml config --quiet
-docker compose --env-file .env -f infra/compose.yml -f infra/compose.private-pve.yml up --build --wait api web
+docker compose --env-file .env -f infra/compose.yml -f infra/private/compose.local-libraries.yml config --quiet
+docker compose --env-file .env -f infra/compose.yml -f infra/private/compose.local-libraries.yml up --build --wait api web
 Invoke-RestMethod 'http://127.0.0.1:8600/api/v1/pve-library/stages' | Out-Null
 Invoke-RestMethod 'http://127.0.0.1:8600/api/v1/gacha-library/forecasts' | Out-Null
 ```

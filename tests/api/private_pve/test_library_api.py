@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 
 from pcr_api.config import Settings
 from pcr_api.main import create_app
-from pcr_api.pve_library import media_for_url
+from pcr_api.private_pve.runtime import media_for_url
 
 
 def _sha256(data: bytes) -> str:

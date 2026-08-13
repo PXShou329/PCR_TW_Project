@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Query, Request, Response
 
-from ..pve_library import (
+from .runtime import (
     PveLibraryNotFound,
     PveLibraryRuntime,
     available_stage_filters,
@@ -11,7 +11,7 @@ from ..pve_library import (
     stage_detail_view,
     stage_summary_view,
 )
-from ..pve_library_schemas import (
+from .schemas import (
     PveLibraryErrorResponse,
     PveLibraryEnvelope,
     PveStageDetail,

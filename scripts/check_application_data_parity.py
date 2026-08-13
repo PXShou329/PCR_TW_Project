@@ -24,6 +24,10 @@ for package_root in ("apps/api", "data_pipeline", "database"):
 
 STATS_PATH = REPOSITORY_ROOT / "research_core/pcr_tw_project/tools/stats.json"
 PUBLIC_STRATEGY_PREFIX = "/api/v1/"
+LOCAL_FILE_LIBRARY_PREFIXES = (
+    "/api/v1/gacha-library",
+    "/api/v1/pve-library",
+)
 REQUIRED_PVP_DATA_SCHEMAS = {
     "/api/v1/pvp/characters": "PvpCharacterData",
     "/api/v1/pvp/counters": "ArenaCounterData",
@@ -131,6 +135,13 @@ def _is_admin_path(path: str) -> bool:
     return path == "/api/v1/admin" or path.startswith("/api/v1/admin/")
 
 
+def _is_local_file_library_path(path: str) -> bool:
+    return any(
+        path == prefix or path.startswith(f"{prefix}/")
+        for prefix in LOCAL_FILE_LIBRARY_PREFIXES
+    )
+
+
 def _validate_envelope_response(
     *,
     path: str,
@@ -197,15 +208,33 @@ def validate_openapi(document: Mapping[str, Any]) -> list[str]:
     if schemas is None:
         return ["OpenAPI components.schemas must be an object"]
 
-    public_paths = {
+    strategy_paths = {
         path: item
         for path, item in paths.items()
         if isinstance(path, str)
         and path.startswith(PUBLIC_STRATEGY_PREFIX)
         and not _is_admin_path(path)
     }
+    public_paths = {
+        path: item
+        for path, item in strategy_paths.items()
+        if not _is_local_file_library_path(path)
+    }
     if not public_paths:
         errors.append("no public /api/v1/* strategy paths")
+
+    for path, raw_path_item in sorted(strategy_paths.items()):
+        path_item = _mapping(raw_path_item)
+        if path_item is None:
+            errors.append(f"{path}: path item must be an object")
+            continue
+        for method in sorted(STATE_CHANGING_METHODS & set(path_item)):
+            errors.append(f"{path}: public write method is forbidden: {method.upper()}")
+        post = _mapping(path_item.get("post"))
+        if post is not None and path not in READ_ONLY_COMPUTE_POST_PATHS:
+            errors.append(f"{path}: public write method is forbidden: POST")
+        if _is_local_file_library_path(path) and _mapping(path_item.get("get")) is None:
+            errors.append(f"{path}: local file library path must define GET")
 
     for missing in sorted(REQUIRED_PVP_PATHS - set(public_paths)):
         errors.append(f"missing required PVP path: {missing}")
@@ -243,12 +272,7 @@ def validate_openapi(document: Mapping[str, Any]) -> list[str]:
         if path_item is None:
             errors.append(f"{path}: path item must be an object")
             continue
-        for method in sorted(STATE_CHANGING_METHODS & set(path_item)):
-            errors.append(f"{path}: public write method is forbidden: {method.upper()}")
         post = _mapping(path_item.get("post"))
-        if post is not None and path not in READ_ONLY_COMPUTE_POST_PATHS:
-            errors.append(f"{path}: public write method is forbidden: POST")
-
         get = _mapping(path_item.get("get"))
         if get is None and not (
             path in READ_ONLY_COMPUTE_POST_PATHS and post is not None

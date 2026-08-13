@@ -7,8 +7,8 @@ import {
   type PveMode,
   pveElementLabels,
   pveModeLabels,
-} from "../../../../components/pve-library-ui";
-import { PveTeamCard } from "../../../../components/pve-team-card";
+} from "../../../../features/private-pve/components/library-ui";
+import { PveTeamCard } from "../../../../features/private-pve/components/team-card";
 import { serverApi } from "../../../../lib/api";
 
 export const dynamic = "force-dynamic";

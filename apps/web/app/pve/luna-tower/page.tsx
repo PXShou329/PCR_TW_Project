@@ -3,7 +3,7 @@ import {
   PveModeNav,
   PveStageGrid,
   PveWorkbookDisclosure,
-} from "../../../components/pve-library-ui";
+} from "../../../features/private-pve/components/library-ui";
 import { serverApi } from "../../../lib/api";
 
 export const dynamic = "force-dynamic";

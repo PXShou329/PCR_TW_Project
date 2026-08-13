@@ -2,7 +2,7 @@ import { ApiError } from "@pcr-tw/api-client";
 import type { GachaCommunitySource, GachaTimelineEvent } from "@pcr-tw/api-client";
 import { Badge, Definition, EmptyState, Panel } from "@pcr-tw/ui";
 import { EvidenceDrawer } from "../../components/evidence-drawer";
-import { PrivateGachaForecastSection } from "../../components/private-gacha-forecast";
+import { PrivateGachaForecastSection } from "../../features/private-gacha/components/forecast";
 import { serverApi } from "../../lib/api";
 
 export const dynamic = "force-dynamic";

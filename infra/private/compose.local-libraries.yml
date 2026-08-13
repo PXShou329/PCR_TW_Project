@@ -7,5 +7,6 @@ services:
       PCR_GACHA_LIBRARY_CATALOG_PATH: /app/gacha-forecast/docx-candidates.json
       PCR_GACHA_LIBRARY_DOCX_PATH: /app/gacha-forecast/source/0600faf911747c6df1a98afddfe1fe8e5af585ff72af11e2d34299f5e70c4cfe.docx
     volumes:
+      # Relative paths resolve from the first Compose file (infra/compose.yml).
       - ../.runtime/private_pve:/app/private-pve:ro
       - ../.runtime/gacha_forecast:/app/gacha-forecast:ro

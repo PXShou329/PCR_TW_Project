@@ -8,8 +8,8 @@ from xml.sax.saxutils import escape
 
 import pytest
 
-from pcr_pipeline.gacha_ingest.cli import main, write_atomic
-from pcr_pipeline.gacha_ingest.docx import (
+from pcr_pipeline.private_gacha.cli import main, write_atomic
+from pcr_pipeline.private_gacha.docx import (
     CANDIDATE_SCHEMA_VERSION,
     GachaDocxError,
     canonical_json_bytes,
@@ -433,7 +433,7 @@ def test_atomic_write_failure_preserves_existing_output_and_removes_temp(
     def fail_replace(_source: Path, _destination: Path) -> None:
         raise OSError("injected replace failure")
 
-    monkeypatch.setattr("pcr_pipeline.gacha_ingest.cli.os.replace", fail_replace)
+    monkeypatch.setattr("pcr_pipeline.private_gacha.cli.os.replace", fail_replace)
     with pytest.raises(OSError, match="injected replace failure"):
         write_atomic(output, b"replacement")
 

@@ -15,13 +15,13 @@ from types import MappingProxyType
 from typing import Any, Mapping
 from xml.etree import ElementTree
 
-from pcr_pipeline.gacha_ingest.docx import (
+from pcr_pipeline.private_gacha.docx import (
     GachaDocxError,
     canonical_json_bytes as replay_json_bytes,
     extract_gacha_forecast_docx,
 )
 
-from .config import Settings
+from ..config import Settings
 
 
 CATALOG_SCHEMA_VERSION = "gacha-community-docx-candidates/v1"

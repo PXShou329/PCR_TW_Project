@@ -10,19 +10,19 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from .config import Settings
 from .database import build_engine, build_session_factory
-from .gacha_library import (
+from .private_gacha.runtime import (
     GachaLibraryNotFound,
     GachaLibraryRuntime,
     GachaLibraryUnavailable,
 )
-from .pve_library import (
+from .private_pve.runtime import (
     PveLibraryNotFound,
     PveLibraryRuntime,
     PveLibraryUnavailable,
 )
 from .routes.health import router as health_router
-from .routes.gacha_library import router as gacha_library_router
-from .routes.pve_library import router as pve_library_router
+from .private_gacha.router import router as gacha_library_router
+from .private_pve.router import router as pve_library_router
 from .routes.v1 import router as v1_router
 
 

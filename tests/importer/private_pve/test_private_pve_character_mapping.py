@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pcr_pipeline.xlsx_ingest.character_mapping import (
+from pcr_pipeline.private_pve.character_mapping import (
     AMBIGUOUS,
     REVIEWED_UNKNOWN,
     RESOLVED,
@@ -8,7 +8,7 @@ from pcr_pipeline.xlsx_ingest.character_mapping import (
     map_catalog_characters,
     resolve_character_mapping,
 )
-from pcr_pipeline.xlsx_ingest.estertion_index import parse_estertion_index
+from pcr_pipeline.private_pve.estertion_index import parse_estertion_index
 
 
 SNAPSHOT = r"""

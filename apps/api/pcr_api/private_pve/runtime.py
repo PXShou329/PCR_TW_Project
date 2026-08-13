@@ -10,7 +10,7 @@ from types import MappingProxyType
 from typing import Any, Mapping
 from urllib.parse import parse_qs, urlsplit
 
-from .config import Settings
+from ..config import Settings
 
 
 CATALOG_SCHEMA_VERSION = "private-pve-local-catalog/v1"
